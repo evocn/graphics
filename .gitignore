@@ -1,0 +1,8 @@
+screenshots/
+profiles/
+*.ini
+tags
+*.tweaks
+*.exe
+*.pdb
+*.build
