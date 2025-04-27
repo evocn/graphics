@@ -4,22 +4,31 @@
 
 DEBUG :: true;
 
-width                 : u32 = 1280;
-height                : u32 = 720;
+width                   : u32 = 1280;
+height                  : u32 = 720;
 
-window                : Window_Type;
+window                  : Window_Type;
 
-instance              : VkInstance;
-debug_callback_handle : VkDebugReportCallbackEXT;
+instance                : VkInstance;
+debug_callback_handle   : VkDebugReportCallbackEXT;
 
-surface               : VkSurfaceKHR;
+surface                 : VkSurfaceKHR;
 
-physical_device       : VkPhysicalDevice;
-queue_family_index    : u32;
-device                : VkDevice;
-queue                 : VkQueue;
+physical_device         : VkPhysicalDevice;
+queue_family_index      : u32;
+device                  : VkDevice;
+queue                   : VkQueue;
+
+shader_module           : VkShaderModule;
+shader_stages           : [2] VkPipelineShaderStageCreateInfo;
 
 main :: () {
+    set_working_directory_to_base_folder :: () {
+        executable_path := path_strip_filename(get_path_of_running_executable());
+        set_working_directory(tprint("%/../", executable_path));
+    }
+    set_working_directory_to_base_folder();
+
     // Create window
     window = create_window(xx width, xx height, program_title);
   
@@ -48,6 +57,50 @@ main :: () {
         return;
     }
     defer deinit_swapchain();
+
+
+    // Shader Module
+    {
+        // Read spirv from file
+        spirv : string;
+        {
+            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug.spv");
+
+            success : bool;
+            spirv, success = read_entire_file(shader_file_path);
+            assert(success, "Unable to read shader file %", shader_file_path);
+        }
+
+        // Create Shader Module
+        {
+            createInfo: VkShaderModuleCreateInfo;
+            createInfo.sType = .SHADER_MODULE_CREATE_INFO;
+            createInfo.codeSize = cast(u64)spirv.count;
+            createInfo.pCode = cast(*u32)spirv.data;
+
+            result := vkCreateShaderModule(device, *createInfo, null, *shader_module);
+            assert(result == .SUCCESS, "Unable to create shader module!");
+        }
+
+        // Create Shader Stages
+        {
+            vertShaderStageInfo : VkPipelineShaderStageCreateInfo;
+            vertShaderStageInfo.sType = .PIPELINE_SHADER_STAGE_CREATE_INFO;
+            vertShaderStageInfo.stage = .VK_SHADER_STAGE_VERTEX_BIT;
+            vertShaderStageInfo.module = shader_module;
+            vertShaderStageInfo.pName = "vertexMain";
+
+            fragShaderStageInfo : VkPipelineShaderStageCreateInfo;
+            fragShaderStageInfo.sType = .PIPELINE_SHADER_STAGE_CREATE_INFO;
+            fragShaderStageInfo.stage = .VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragShaderStageInfo.module = shader_module;
+            fragShaderStageInfo.pName = "fragmentMain";
+
+            shader_stages = .[vertShaderStageInfo, fragShaderStageInfo];
+        }
+    }
+    // @TODO: Cleanup shader / file string
+
 
     init_render();
     defer deinit_render();
@@ -388,67 +441,63 @@ draw_frame :: () {
     beginInfo.flags = .ONE_TIME_SUBMIT_BIT;
 
     vkBeginCommandBuffer(commandBuffers[index], *beginInfo);
-
-    // @@ ...
-
-
-    // Clear frame
-    subResourceRange : VkImageSubresourceRange;
     {
-        using subResourceRange;
-        aspectMask     = .COLOR_BIT;
-        baseMipLevel   = 0;
-        levelCount     = VK_REMAINING_MIP_LEVELS;
-        baseArrayLayer = 0;
-        layerCount     = VK_REMAINING_ARRAY_LAYERS;
+        // Clear frame
+        subResourceRange : VkImageSubresourceRange;
+        {
+            using subResourceRange;
+            aspectMask     = .COLOR_BIT;
+            baseMipLevel   = 0;
+            levelCount     = VK_REMAINING_MIP_LEVELS;
+            baseArrayLayer = 0;
+            layerCount     = VK_REMAINING_ARRAY_LAYERS;
+        }
+
+        // Change layout of image to be optimal for clearing
+        imgMemoryBarrier : VkImageMemoryBarrier;
+        {
+            using imgMemoryBarrier;
+            srcAccessMask       = 0;
+            dstAccessMask       = .TRANSFER_WRITE_BIT;
+            oldLayout           = .UNDEFINED;
+            newLayout           = .TRANSFER_DST_OPTIMAL;
+            srcQueueFamilyIndex = queue_family_index;
+            dstQueueFamilyIndex = queue_family_index;
+            image               = swapchainImages[imageIndex];
+            subresourceRange    = subResourceRange;
+        }
+
+        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .TRANSFER_BIT, 
+                             0, 0, null, 0, null, 1, *imgMemoryBarrier);
+
+        clearColor : VkClearColorValue;
+        {
+            // Pick a color with which to clear the screen
+            color1 := Vector4.{1,  1, 0, 1};
+            color2 := Vector4.{.5, 0, 1, 1};
+
+            now := seconds_since_init();
+            t := cos(cast(float) now) * .5 + .5;
+            Clamp(*t, 0, 1);
+            color := lerp(color1, color2, t);
+            clearColor._float32 = color.component;
+            // clearColor.float32 = float.[1, 1, 0, 1];
+        }
+
+        vkCmdClearColorImage(commandBuffers[index], swapchainImages[imageIndex], .TRANSFER_DST_OPTIMAL, *clearColor, 1, *subResourceRange);
+
+        // Change layout of image to be optimal for presenting
+        imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE_BIT;
+        imgMemoryBarrier.dstAccessMask = .MEMORY_READ_BIT;
+        imgMemoryBarrier.oldLayout     = .TRANSFER_DST_OPTIMAL;
+        imgMemoryBarrier.newLayout     = .PRESENT_SRC_KHR;
+        //imgMemoryBarrier.srcQueueFamilyIndex = queue_family_index;
+        //imgMemoryBarrier.dstQueueFamilyIndex = queue_family_index;
+        //imgMemoryBarrier.image = swapchainImages[imageIndex];
+        //imgMemoryBarrier.subresourceRange = subResourceRange;
+        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .BOTTOM_OF_PIPE_BIT,
+            0, 0, null, 0, null, 1, *imgMemoryBarrier);
     }
-    
-    // Change layout of image to be optimal for clearing
-    imgMemoryBarrier : VkImageMemoryBarrier;
-    {
-        using imgMemoryBarrier;
-        srcAccessMask       = 0;
-        dstAccessMask       = .TRANSFER_WRITE_BIT;
-        oldLayout           = .UNDEFINED;
-        newLayout           = .TRANSFER_DST_OPTIMAL;
-        srcQueueFamilyIndex = queue_family_index;
-        dstQueueFamilyIndex = queue_family_index;
-        image               = swapchainImages[imageIndex];
-        subresourceRange    = subResourceRange;
-    }
-    
-    vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .TRANSFER_BIT, 
-                         0, 0, null, 0, null, 1, *imgMemoryBarrier);
-
-    clearColor : VkClearColorValue;
-    {
-        // Pick a color with which to clear the screen
-        color1 := Vector4.{1,  1, 0, 1};
-        color2 := Vector4.{.5, 0, 1, 1};
-
-        now := seconds_since_init();
-        t := cos(cast(float) now) * .5 + .5;
-        Clamp(*t, 0, 1);
-        color := lerp(color1, color2, t);
-        clearColor._float32 = color.component;
-        // clearColor.float32 = float.[1, 1, 0, 1];
-    }
-    
-    vkCmdClearColorImage(commandBuffers[index], swapchainImages[imageIndex], .TRANSFER_DST_OPTIMAL, *clearColor, 1, *subResourceRange);
-
-    // Change layout of image to be optimal for presenting
-    imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE_BIT;
-    imgMemoryBarrier.dstAccessMask = .MEMORY_READ_BIT;
-    imgMemoryBarrier.oldLayout     = .TRANSFER_DST_OPTIMAL;
-    imgMemoryBarrier.newLayout     = .PRESENT_SRC_KHR;
-    //imgMemoryBarrier.srcQueueFamilyIndex = queue_family_index;
-    //imgMemoryBarrier.dstQueueFamilyIndex = queue_family_index;
-    //imgMemoryBarrier.image = swapchainImages[imageIndex];
-    //imgMemoryBarrier.subresourceRange = subResourceRange;
-    vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .BOTTOM_OF_PIPE_BIT,
-        0, 0, null, 0, null, 1, *imgMemoryBarrier);
-
-
     vkEndCommandBuffer(commandBuffers[index]);
 
     submitInfo: VkSubmitInfo; 
@@ -478,9 +527,13 @@ draw_frame :: () {
 
 #import "Window_Creation";
 #import "Input";
+
+#import "System";
 #if OS ==.WINDOWS {
     #import "Windows";
 }
+
+#import "File";
 
 #load "utils.jai";
 #load "init.jai";

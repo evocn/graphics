@@ -17,6 +17,8 @@ build_settings : struct {
 
 program_title :: "Graphics";
 
+compiled_shaders_directory :: "shaders/compiled";
+
 DONE
 #run add_build_string(shared_data, w = -1);
 
@@ -216,3 +218,6 @@ plugins: [..] *Metaprogram_Plugin;
 
 // Local Project Modules
 #import "ctags";
+
+#load "shaders/compile-shaders.jai";
+#run compile_shaders();
