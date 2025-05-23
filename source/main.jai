@@ -4,8 +4,14 @@
 
 DEBUG :: true;
 
-width                   : u32 = 1280;
-height                  : u32 = 720;
+//width                   : u32 = 1280;
+//height                  : u32 = 720;
+//width                   : u32 = 1920;
+//height                  : u32 = 1080;
+width                   : u32 = 2560;
+height                  : u32 = 1440;
+//width                   : u32 = 3840;
+//height                  : u32 = 2160;
 
 window                  : Window_Type;
 
@@ -19,8 +25,21 @@ queue_family_index      : u32;
 device                  : VkDevice;
 queue                   : VkQueue;
 
-shader_module           : VkShaderModule;
-shader_stages           : [2] VkPipelineShaderStageCreateInfo;
+
+shaders                 : [2] VkShaderEXT;
+
+using functions : struct {
+    vkCreateShadersEXT : PFN_vkCreateShadersEXT;
+    vkCmdBindShadersEXT : PFN_vkCmdBindShadersEXT;
+}
+load_vulkan_functions :: () {
+    vkCreateShadersEXT = xx vkGetDeviceProcAddr(device, "vkCreateShadersEXT");
+    assert(vkCreateShadersEXT != null);
+
+    vkCmdBindShadersEXT = xx vkGetDeviceProcAddr(device, "vkCmdBindShadersEXT");
+    assert(vkCmdBindShadersEXT != null);
+}
+
 
 main :: () {
     set_working_directory_to_base_folder :: () {
@@ -30,7 +49,12 @@ main :: () {
     set_working_directory_to_base_folder();
 
     // Create window
-    window = create_window(xx width, xx height, program_title);
+    window = create_window(
+        xx width, xx height,
+        program_title,
+        window_x = 1080,
+        window_y = 0,
+    );
   
     print_available_vulkan_extensions();
 
@@ -52,6 +76,8 @@ main :: () {
     }
     defer deinit_device();
 
+    load_vulkan_functions();
+
     if !init_swapchain() {
         print("Swapchain initialization failed.\n");
         return;
@@ -59,47 +85,84 @@ main :: () {
     defer deinit_swapchain();
 
 
-    // Shader Module
+    // Shader Objects
     {
         // Read spirv from file
-        spirv : string;
+        spirv : [2] string;
         {
-            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug.spv");
+            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug-vertex.spv");
 
             success : bool;
-            spirv, success = read_entire_file(shader_file_path);
+            spirv[0], success = read_entire_file(shader_file_path);
             assert(success, "Unable to read shader file %", shader_file_path);
         }
 
-        // Create Shader Module
         {
-            createInfo: VkShaderModuleCreateInfo;
-            createInfo.sType = .SHADER_MODULE_CREATE_INFO;
-            createInfo.codeSize = cast(u64)spirv.count;
-            createInfo.pCode = cast(*u32)spirv.data;
+            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug-fragment.spv");
 
-            result := vkCreateShaderModule(device, *createInfo, null, *shader_module);
-            assert(result == .SUCCESS, "Unable to create shader module!");
+            success : bool;
+            spirv[1], success = read_entire_file(shader_file_path);
+            assert(success, "Unable to read shader file %", shader_file_path);
         }
 
-        // Create Shader Stages
+        // Shader Object Create Infos
         {
-            vertShaderStageInfo : VkPipelineShaderStageCreateInfo;
-            vertShaderStageInfo.sType = .PIPELINE_SHADER_STAGE_CREATE_INFO;
-            vertShaderStageInfo.stage = .VK_SHADER_STAGE_VERTEX_BIT;
-            vertShaderStageInfo.module = shader_module;
-            vertShaderStageInfo.pName = "vertexMain";
+            shaderCreateInfos : [2] VkShaderCreateInfoEXT;
 
-            fragShaderStageInfo : VkPipelineShaderStageCreateInfo;
-            fragShaderStageInfo.sType = .PIPELINE_SHADER_STAGE_CREATE_INFO;
-            fragShaderStageInfo.stage = .VK_SHADER_STAGE_FRAGMENT_BIT;
-            fragShaderStageInfo.module = shader_module;
-            fragShaderStageInfo.pName = "fragmentMain";
+            {
+                using shaderCreateInfos[0];
+                sType = .SHADER_CREATE_INFO_EXT;
+                flags = .VK_SHADER_CREATE_LINK_STAGE_BIT_EXT;
 
-            shader_stages = .[vertShaderStageInfo, fragShaderStageInfo];
+                stage       = .VK_SHADER_STAGE_VERTEX_BIT;
+                nextStage   = .VK_SHADER_STAGE_FRAGMENT_BIT;
+
+                codeType    = .VK_SHADER_CODE_TYPE_SPIRV_EXT;
+                codeSize    = xx spirv[0].count;
+                pCode       = spirv[0].data;
+
+                pName       = "vertexMain";
+
+                setLayoutCount = 0;
+                pSetLayouts = null;
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            {
+                using shaderCreateInfos[1];
+                sType = .SHADER_CREATE_INFO_EXT;
+                flags = .VK_SHADER_CREATE_LINK_STAGE_BIT_EXT;
+
+                stage       = .VK_SHADER_STAGE_FRAGMENT_BIT;
+                nextStage   = 0;
+
+                codeType    = .VK_SHADER_CODE_TYPE_SPIRV_EXT;
+                codeSize    = xx spirv[1].count;
+                pCode       = spirv[1].data;
+
+                pName       = "fragmentMain";
+
+                setLayoutCount = 0;
+                pSetLayouts = null;
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            result := vkCreateShadersEXT(device, 2, shaderCreateInfos.data, null, shaders.data);
+
+            if (result != .SUCCESS)
+            {
+                log("fuck!");
+            }
         }
     }
-    // @TODO: Cleanup shader / file string
+
+    // Dynamic State
+    {
+    }
 
 
     init_render();
@@ -110,6 +173,21 @@ main :: () {
         update_window_events();
 
         for events_this_frame {
+            if it.type == {
+                case .KEYBOARD;
+                    // Alt binds
+                    if it.alt_pressed {
+                        if it.key_pressed && it.key_code == .F4 {
+                            running = false;
+                        }
+                    }
+
+                    // Debug inputs
+                    if it.key_pressed && it.key_code == .ESCAPE {
+                        running = false;
+                    }
+            }
+
             if it.type == .QUIT then running = false;
         }
 
@@ -123,11 +201,11 @@ init_vulkan :: () -> bool {
     // Application Info
     app_info: VkApplicationInfo;
     app_info.sType              = .APPLICATION_INFO;
-    app_info.pApplicationName   = "Vulkan example";
-    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.pEngineName        = "No Engine";
-    app_info.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion         = VK_API_VERSION_1_0;
+    app_info.pApplicationName   = program_title.data;
+    app_info.applicationVersion = VK_MAKE_VERSION(1, 4, 0);
+    app_info.pEngineName        = "graphics engine";
+    app_info.engineVersion      = VK_MAKE_VERSION(1, 5, 0);
+    app_info.apiVersion         = VK_API_VERSION_1_4;
 
     // Create Vulkan Instance
     create_info : VkInstanceCreateInfo;
@@ -156,9 +234,14 @@ init_vulkan :: () -> bool {
     create_info.ppEnabledExtensionNames = extensions.data;
 
     #if DEBUG {
+        enabled_layers: [..] *u8;
+        {
+            array_add(*enabled_layers, "VK_LAYER_LUNARG_standard_validation");
+        }
+
         debug_create_info := create_info;
-        debug_create_info.enabledLayerCount = 1;
-        debug_create_info.ppEnabledLayerNames = (*u8).["VK_LAYER_LUNARG_standard_validation"].data;
+        debug_create_info.enabledLayerCount = xx enabled_layers.count;
+        debug_create_info.ppEnabledLayerNames = enabled_layers.data;
 
         result = vkCreateInstance(*debug_create_info, null, *instance);
         if result == .SUCCESS {
@@ -171,6 +254,7 @@ init_vulkan :: () -> bool {
                 debug_callback_create_info.flags |= .ERROR_BIT_EXT;
                 debug_callback_create_info.flags |= .WARNING_BIT_EXT;
                 debug_callback_create_info.pfnCallback = debug_callback;
+                debug_callback_create_info.pUserData = xx *context;
 
                 vkCreateDebugReportCallbackEXT(instance, *debug_callback_create_info, null, *debug_callback_handle);
             }
@@ -268,15 +352,21 @@ init_device :: () -> bool {
     device_create_info: VkDeviceCreateInfo;
     {
         using device_create_info;
-        exexe: [1] *u8;
-        exexe[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME.data;
+
         queueCreateInfoCount    = 1;
         pQueueCreateInfos       = *queue_create_info;
         enabledLayerCount       = 0;
         ppEnabledLayerNames     = null;
 
-        enabledExtensionCount   = exexe.count;
-        ppEnabledExtensionNames = exexe.data;
+        // Select device extensions
+        device_extensions: [..] *u8;
+        {
+            array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
+            array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
+        }
+
+        enabledExtensionCount   = xx device_extensions.count;
+        ppEnabledExtensionNames = device_extensions.data;
         pEnabledFeatures = null;
     }
     
@@ -296,7 +386,8 @@ MAX_PRESENT_MODE_COUNT :: 6; // At the moment in spec
 MAX_SWAPCHAIN_IMAGES   :: 3;
 swapchain: VkSwapchainKHR;
 swapchainImageCount: u32;
-swapchainImages: [MAX_SWAPCHAIN_IMAGES] VkImage;
+swapchainImages     : [MAX_SWAPCHAIN_IMAGES] VkImage;
+swapchainImageViews : [MAX_SWAPCHAIN_IMAGES] VkImageView;
 swapchainExtent: VkExtent2D;
 surfaceFormat  : VkSurfaceFormatKHR;
 
@@ -362,6 +453,35 @@ init_swapchain :: () -> bool {
 
     vkGetSwapchainImagesKHR(device, swapchain, *swapchainImageCount, null);
     vkGetSwapchainImagesKHR(device, swapchain, *swapchainImageCount, swapchainImages.data);
+
+    // Create image views of all swapchain images
+    {
+        for 0..swapchainImageCount {
+            create_info : VkImageViewCreateInfo;
+
+            {
+                using create_info;
+                sType = .IMAGE_VIEW_CREATE_INFO;
+                image = swapchainImages[it];
+                viewType = .VK_IMAGE_VIEW_TYPE_2D;
+                format = surfaceFormat.format;
+                components.r = .VK_COMPONENT_SWIZZLE_IDENTITY;
+                components.g = .VK_COMPONENT_SWIZZLE_IDENTITY;
+                components.b = .VK_COMPONENT_SWIZZLE_IDENTITY;
+                components.a = .VK_COMPONENT_SWIZZLE_IDENTITY;
+
+                subresourceRange.aspectMask = .VK_IMAGE_ASPECT_COLOR_BIT;
+                subresourceRange.baseMipLevel = 0;
+                subresourceRange.levelCount = 1;
+                subresourceRange.baseArrayLayer = 0;
+                subresourceRange.layerCount = 1;
+            }
+
+            result := vkCreateImageView(device, *create_info, null, *swapchainImageViews[it]);
+
+            assert(result == .SUCCESS);
+        }
+    }
 
     return true;
 }
@@ -485,6 +605,82 @@ draw_frame :: () {
         }
 
         vkCmdClearColorImage(commandBuffers[index], swapchainImages[imageIndex], .TRANSFER_DST_OPTIMAL, *clearColor, 1, *subResourceRange);
+
+
+        // Try some shader stuff here
+        {
+            {
+                stages := VkShaderStageFlagBits.[
+                    .VK_SHADER_STAGE_VERTEX_BIT,
+                    .VK_SHADER_STAGE_FRAGMENT_BIT,
+                ];
+
+                vkCmdBindShadersEXT(commandBuffers[index], stages.count, stages.data, shaders.data);
+            }
+
+            // Potentially don't need this if you disable geometry and tessellation shaders in the devicecreateinfo...
+            {
+                unused_stages := VkShaderStageFlagBits.[
+                    .VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                    .VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                    .VK_SHADER_STAGE_GEOMETRY_BIT,
+                ];
+
+                vkCmdBindShadersEXT(commandBuffers[index], unused_stages.count, unused_stages.data, null);
+            }
+
+            // Dynamic rendering
+            rendering_info : VkRenderingInfo;
+            {
+                colorAttachment : VkRenderingAttachmentInfoKHR;
+                // New structures are used to define the attachments used in dynamic rendering
+                {
+                    {
+                        using colorAttachment;
+
+                        sType = .RENDERING_ATTACHMENT_INFO_KHR;
+                        imageView = swapchainImageViews[imageIndex];
+                        imageLayout = .VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                        loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
+                        storeOp = .VK_ATTACHMENT_STORE_OP_STORE;
+                        //clearValue.color = ;
+                    }
+
+                    /*
+                    depthStencilAttachment : VkRenderingAttachmentInfoKHR;
+                    {
+                        using depthStencilAttachment;
+
+                        // A single depth stencil attachment info can be used, but they can also be specified separately.
+                        // When both are specified separately, the only requirement is that the image view is identical.			
+                        sType = .RENDERING_ATTACHMENT_INFO_KHR;
+                        imageView = depthStencil.view;
+                        imageLayout = .VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                        loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
+                        storeOp = .VK_ATTACHMENT_STORE_OP_STORE;
+                        clearValue.depthStencil = .{ 1.0,  0 }.data;
+                    }
+                    */
+                }
+
+
+                using rendering_info;
+                sType = .RENDERING_INFO_KHR;
+                renderArea = .{ .{0, 0}, .{width, height} };
+                layerCount = 1;
+                colorAttachmentCount = 1;
+                pColorAttachments = *colorAttachment;
+                pDepthAttachment = null;
+                pStencilAttachment = null;
+            }
+
+            vkCmdBeginRendering(
+                commandBuffers[index],
+                *rendering_info,
+            );
+
+            vkCmdDraw(commandBuffers[index], 3, 1, 0, 0);
+        }
 
         // Change layout of image to be optimal for presenting
         imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE_BIT;

@@ -22,8 +22,9 @@ error_callback :: (error: s32, description: *u8) #c_call {
 
 
 debug_callback :: (flags: VkDebugReportFlagsEXT, objType: VkDebugReportObjectTypeEXT, obj: u64, location: u64, code: s32, layerPrefix: *u8, msg: *u8, userData: *void) -> VkBool32 #c_call {
-    new_context: Context;
-    push_context new_context {
+    c : *Context = xx *userData;
+
+    push_context c {
         print("VULKAN VALIDATION: %\n", msg);
     }
     
