@@ -4,9 +4,9 @@
 
 #import "Process";
 
-slangc :: (filename: string, entry_point: string) -> success : bool {
+slangc :: (output_filename: string, filename: string, entry_point: string) -> success : bool {
     input_file  := tprint("%.slang", filename);
-    output_file := tprint("compiled/%.spv", filename);
+    output_file := tprint("compiled/%.spv", output_filename);
 
     process_result := run_command(
         args = ...[
@@ -14,7 +14,7 @@ slangc :: (filename: string, entry_point: string) -> success : bool {
             input_file,
             tprint("-o %", output_file),
             tprint("-entry %", entry_point),
-            "-profile glsl_450",
+            "-profile glsl_460",
             "-target spirv",
         ],
         working_directory = #filepath,
@@ -37,6 +37,7 @@ slangc :: (filename: string, entry_point: string) -> success : bool {
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
     success : bool;
-    success = slangc("debug", "vertexMain");
+    success = slangc("debug-fragment", "debug", "vertexMain");
+    success = slangc("debug-vertex", "debug", "fragmentMain");
     print("Compiled all shaders.\n\n");
 }
