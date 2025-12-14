@@ -1,8 +1,11 @@
-screenshots/
-profiles/
-*.ini
 tags
+bin/screenshots/
+bin/profiles/
+bin/packages/
+.fleet/
+*.ini
 *.tweaks
 *.exe
 *.pdb
+*.rdbg
 *.build

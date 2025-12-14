@@ -37,14 +37,18 @@ VertexStageOutput vertexMain(
     Vertex vertex
 )
 {
-    VertexStageOutput output;
-
     float3 position = vertex.position;
     float3 color    = vertex.color;
 
-    output.coarseVertex.color = color;
-    output.sv_position = mul(modelViewProjection, float4(position, 1.0));
-    output.sv_position = float4(position, 1.0);
+    VertexStageOutput output;
+    {
+        {
+            output.coarseVertex.color = color;
+        }
+
+        //output.sv_position = mul(modelViewProjection, float4(position, 1.0));
+        output.sv_position = float4(position, 1.0);
+    }
 
     return output;
 }
@@ -65,6 +69,8 @@ FragmentStageOutput fragmentMain(
     float3 color = coarseVertex.color;
 
     FragmentStageOutput output;
-    output.color = float4(color, 1.0);
+    {
+        output.color = float4(color, 1.0);
+    }
     return output;
 }

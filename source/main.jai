@@ -33,6 +33,17 @@ descriptor_sets         : [1] VkDescriptorSet;
 
 shaders                 : [2] VkShaderEXT;
 
+Vertex :: struct {
+    position    : Vector3;
+    color       : Vector3;
+}
+
+vertices := Vertex.[
+    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}},
+    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}},
+    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}},
+];
+
 main :: () {
     set_working_directory_to_base_folder :: () {
         executable_path := path_strip_filename(get_path_of_running_executable());
@@ -168,17 +179,6 @@ main :: () {
         {
             // Vertex Buffer
             {
-                Vertex :: struct {
-                    position    : Vector3;
-                    color       : Vector3;
-                }
-
-                vertices := Vertex.[
-                    .{position = .{-0.5, -0.5, 0.0}, color = .{1, 0, 0}},
-                    .{position = .{ 0.5, -0.5, 0.0}, color = .{0, 1, 0}},
-                    .{position = .{ 0.0,  0.5, 0.0}, color = .{0, 0, 1}},
-                ];
-
                 create_info : VkBufferCreateInfo;
                 {
                     using create_info;
@@ -433,8 +433,8 @@ init_instance :: () -> bool {
     app_info: VkApplicationInfo;
     app_info.pApplicationName   = program_title.data;
     app_info.applicationVersion = VK_MAKE_VERSION(1, 4, 0);
-    app_info.pEngineName        = "graphics engine";
-    app_info.engineVersion      = VK_MAKE_VERSION(1, 5, 0);
+    app_info.pEngineName        = program_title.data;
+    app_info.engineVersion      = VK_MAKE_VERSION(1, 4, 0);
     app_info.apiVersion         = VK_API_VERSION_1_4;
 
     // Create Vulkan Instance
@@ -907,10 +907,54 @@ draw_frame :: () {
         {
             // Set up my dynamic state
             {
-                vkCmdSetPrimitiveTopology(command_buffers[index],       .TRIANGLE_LIST);
+                vkCmdSetRasterizerDiscardEnable(command_buffers[index], VK_FALSE);
                 vkCmdSetPrimitiveRestartEnable(command_buffers[index],  VK_TRUE);
-                vkCmdSetRasterizerDiscardEnable(command_buffers[index], VK_TRUE);
 
+                vkCmdSetPrimitiveTopology(command_buffers[index],       .TRIANGLE_LIST);
+
+                vkCmdSetDepthTestEnable(command_buffers[index],         VK_FALSE);
+                vkCmdSetDepthWriteEnable(command_buffers[index],        VK_FALSE);
+                vkCmdSetDepthBiasEnable(command_buffers[index],         VK_FALSE);
+                vkCmdSetDepthBoundsTestEnable(command_buffers[index],   VK_FALSE);
+                vkCmdSetDepthClampEnableEXT(command_buffers[index],     VK_FALSE);
+
+                vkCmdSetStencilTestEnable(command_buffers[index],       VK_FALSE);
+
+                vkCmdSetPolygonModeEXT(command_buffers[index],          .FILL);
+                vkCmdSetFrontFace(command_buffers[index],               .CLOCKWISE);
+                vkCmdSetCullMode(command_buffers[index],                .BACK);
+
+                // @TODO: All of these dynamic states... What are they for?
+                vkCmdSetAlphaToCoverageEnableEXT(command_buffers[index],VK_FALSE);
+                vkCmdSetLogicOpEnableEXT(command_buffers[index],        VK_FALSE);
+
+                color_blend_enables : [1] VkBool32;
+                {
+                    color_blend_enables[0] = VK_FALSE;
+                }
+
+                vkCmdSetColorBlendEnableEXT(command_buffers[index],
+                    firstAttachment = 0,
+                    attachmentCount = color_blend_enables.count,
+                    pColorBlendEnables = color_blend_enables.data,
+                );
+
+                color_write_masks : [1] VkColorComponentFlags;
+                {
+                    color_write_masks[0] = .R | .G | .B | .A;
+                }
+                vkCmdSetColorWriteMaskEXT(command_buffers[index],
+                    firstAttachment = 0,
+                    attachmentCount = color_write_masks.count,
+                    pColorWriteMasks = color_write_masks.data
+                );
+
+                vkCmdSetRasterizationSamplesEXT(command_buffers[index], .e1);
+                sample_mask : VkSampleMask = 1;
+                vkCmdSetSampleMaskEXT(command_buffers[index], .e1, *sample_mask);
+
+
+                // Viewports
                 {
                     viewports : [1] VkViewport;
                     {
@@ -921,12 +965,13 @@ draw_frame :: () {
                             width       = xx swapchain_extent.width;
                             height      = xx swapchain_extent.height;
                             minDepth = 0;
-                            maxDepth = 0;
+                            maxDepth = 1;
                         }
                     }
                     vkCmdSetViewportWithCount(command_buffers[index], viewports.count, viewports.data);
                 }
 
+                // Scissors
                 {
                     scissors : [1] VkRect2D;
                     {
@@ -939,34 +984,37 @@ draw_frame :: () {
                     vkCmdSetScissorWithCount(command_buffers[index], scissors.count, scissors.data);
                 }
 
+                // Vertex Input
                 {
                     vertex_input_binding_descriptions : [1] VkVertexInputBindingDescription2EXT;
                     {
                         {
                             using vertex_input_binding_descriptions[0];
                             binding     = 0;
-                            stride      = size_of(float) * 6;
-                            inputRate   = .INSTANCE;
+                            stride      = size_of(Vertex);
+                            inputRate   = .VERTEX;
                             divisor     = 1;
                         }
                     }
 
                     vertex_input_attribute_descriptions : [2] VkVertexInputAttributeDescription2EXT;
                     {
+                        // Position
                         {
                             using vertex_input_attribute_descriptions[0];
                             location    = 0;
                             binding     = 0;
                             format      = .R32G32B32_SFLOAT;
-                            offset      = 0;
+                            offset      = offset_of(Vertex, "position");
                         }
 
+                        // Color
                         {
                             using vertex_input_attribute_descriptions[1];
                             location    = 1;
                             binding     = 0;
                             format      = .R32G32B32_SFLOAT;
-                            offset      = size_of(float) * 3;
+                            offset      = offset_of(Vertex, "color");
                         }
                     }
 
@@ -1073,20 +1121,29 @@ draw_frame :: () {
 
             // Bind Data
             {
-                offset : VkDeviceSize = 0;
+                offsets : [1] VkDeviceSize;
+                {
+                    offsets[0] = 0;
+                }
 
                 vkCmdBindVertexBuffers(
                     command_buffers[index],
                     0,
                     1,
                     *vertex_buffer,
-                    *offset
+                    offsets.data,
                 );
             }
 
             // Draw!
             {
-                vkCmdDraw(command_buffers[index], 3, 1, 0, 0);
+                vkCmdDraw(
+                    command_buffers[index],
+                    vertexCount = 3,
+                    instanceCount = 1,
+                    firstVertex = 0,
+                    firstInstance = 0
+                );
             }
         }
         vkCmdEndRendering(command_buffers[index]);
