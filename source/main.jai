@@ -1,6 +1,7 @@
-// Graphics
+
 // Main
-// April 2025
+
+////////////////////////////////////////////////////////////////////////////////
 
 DEBUG :: true;
 
@@ -25,21 +26,7 @@ queue_family_index      : u32;
 device                  : VkDevice;
 queue                   : VkQueue;
 
-
 shaders                 : [2] VkShaderEXT;
-
-using functions : struct {
-    vkCreateShadersEXT : PFN_vkCreateShadersEXT;
-    vkCmdBindShadersEXT : PFN_vkCmdBindShadersEXT;
-}
-load_vulkan_functions :: () {
-    vkCreateShadersEXT = xx vkGetDeviceProcAddr(device, "vkCreateShadersEXT");
-    assert(vkCreateShadersEXT != null);
-
-    vkCmdBindShadersEXT = xx vkGetDeviceProcAddr(device, "vkCmdBindShadersEXT");
-    assert(vkCmdBindShadersEXT != null);
-}
-
 
 main :: () {
     set_working_directory_to_base_folder :: () {
@@ -55,14 +42,24 @@ main :: () {
         window_x = 1080,
         window_y = 0,
     );
+
+    #if OS == .WINDOWS {
+        vulkan_library := LoadLibraryA("vulkan-1.dll");
+        assert(vulkan_library != null, "Unable to find vulkan-1.dll.");
+    }
+
+    vkGIPA := GetProcAddress(vulkan_library, "vkGetInstanceProcAddr");
+    vk_load_global_functions(vkGIPA);
   
     print_available_vulkan_extensions();
 
-    if !init_vulkan() {
-        print("Vulkan initialization failed.\n");
+    if !init_instance() {
+        print("Instance initialization failed.\n");
         return;
     }
-    defer deinit_vulkan();
+    defer deinit_instance();
+
+    vk_load_instance_functions(instance);
 
     if !init_surface() {
         print("Window surface creation failed.\n");
@@ -76,7 +73,9 @@ main :: () {
     }
     defer deinit_device();
 
-    load_vulkan_functions();
+    vk_load_device_functions(device);
+
+    vkGetDeviceQueue(device, queue_family_index, queueIndex=0, *queue);
 
     if !init_swapchain() {
         print("Swapchain initialization failed.\n");
@@ -109,22 +108,48 @@ main :: () {
         {
             shaderCreateInfos : [2] VkShaderCreateInfoEXT;
 
+
+            vertexLayout : VkDescriptorSetLayout;
+            {
+                bindings : [1] VkDescriptorSetLayoutBinding;
+                {
+                    {
+                        using bindings[0];
+                        binding = 0;
+                        descriptorType = .UNIFORM_BUFFER;
+                        descriptorCount = 1;
+                        stageFlags = .VERTEX;
+                    }
+                }
+
+                create_info : VkDescriptorSetLayoutCreateInfo;
+                {
+                    using create_info;
+                    flags = 0;
+                    bindingCount = 1;
+                    pBindings = bindings.data;
+                }
+
+                result := vkCreateDescriptorSetLayout(device, *create_info, null, *vertexLayout);
+                assert(result == .SUCCESS);
+            }
+
             {
                 using shaderCreateInfos[0];
-                sType = .SHADER_CREATE_INFO_EXT;
-                flags = .VK_SHADER_CREATE_LINK_STAGE_BIT_EXT;
+                flags = .LINK_STAGE;
 
-                stage       = .VK_SHADER_STAGE_VERTEX_BIT;
-                nextStage   = .VK_SHADER_STAGE_FRAGMENT_BIT;
+                stage       = .VERTEX;
+                nextStage   = .FRAGMENT;
 
-                codeType    = .VK_SHADER_CODE_TYPE_SPIRV_EXT;
+                codeType    = .SPIRV;
                 codeSize    = xx spirv[0].count;
                 pCode       = spirv[0].data;
 
-                pName       = "vertexMain";
+                pName       = "main";
 
-                setLayoutCount = 0;
-                pSetLayouts = null;
+                setLayoutCount = 1;
+                pSetLayouts = *vertexLayout;
+
                 pushConstantRangeCount = 0;
                 pPushConstantRanges = null;
                 pSpecializationInfo = null;
@@ -132,20 +157,20 @@ main :: () {
 
             {
                 using shaderCreateInfos[1];
-                sType = .SHADER_CREATE_INFO_EXT;
-                flags = .VK_SHADER_CREATE_LINK_STAGE_BIT_EXT;
+                flags = .LINK_STAGE;
 
-                stage       = .VK_SHADER_STAGE_FRAGMENT_BIT;
+                stage       = .FRAGMENT;
                 nextStage   = 0;
 
-                codeType    = .VK_SHADER_CODE_TYPE_SPIRV_EXT;
+                codeType    = .SPIRV;
                 codeSize    = xx spirv[1].count;
                 pCode       = spirv[1].data;
 
-                pName       = "fragmentMain";
+                pName       = "main";
 
                 setLayoutCount = 0;
                 pSetLayouts = null;
+
                 pushConstantRangeCount = 0;
                 pPushConstantRanges = null;
                 pSpecializationInfo = null;
@@ -195,12 +220,11 @@ main :: () {
     }
 }
 
-init_vulkan :: () -> bool {
+init_instance :: () -> bool {
     result : VkResult = .ERROR_INITIALIZATION_FAILED;
     
     // Application Info
     app_info: VkApplicationInfo;
-    app_info.sType              = .APPLICATION_INFO;
     app_info.pApplicationName   = program_title.data;
     app_info.applicationVersion = VK_MAKE_VERSION(1, 4, 0);
     app_info.pEngineName        = "graphics engine";
@@ -209,7 +233,6 @@ init_vulkan :: () -> bool {
 
     // Create Vulkan Instance
     create_info : VkInstanceCreateInfo;
-    create_info.sType                   = .INSTANCE_CREATE_INFO;
     create_info.pApplicationInfo        = *app_info;
 
     #if !DEBUG {
@@ -236,7 +259,7 @@ init_vulkan :: () -> bool {
     #if DEBUG {
         enabled_layers: [..] *u8;
         {
-            array_add(*enabled_layers, "VK_LAYER_LUNARG_standard_validation");
+            array_add(*enabled_layers, "VK_LAYER_KHRONOS_validation");
         }
 
         debug_create_info := create_info;
@@ -251,8 +274,8 @@ init_vulkan :: () -> bool {
 
             if vkCreateDebugReportCallbackEXT {
                 debug_callback_create_info: VkDebugReportCallbackCreateInfoEXT;
-                debug_callback_create_info.flags |= .ERROR_BIT_EXT;
-                debug_callback_create_info.flags |= .WARNING_BIT_EXT;
+                debug_callback_create_info.flags |= .ERROR;
+                debug_callback_create_info.flags |= .WARNING;
                 debug_callback_create_info.pfnCallback = debug_callback;
                 debug_callback_create_info.pUserData = xx *context;
 
@@ -262,6 +285,7 @@ init_vulkan :: () -> bool {
     }
 
     if result != .SUCCESS {
+        log("Hey, just a heads up, we're not able to do the debug instance, so we're just making a normal one.");
         result = vkCreateInstance(*create_info, null, *instance);
     }
 
@@ -269,7 +293,7 @@ init_vulkan :: () -> bool {
 }
 
 
-deinit_vulkan :: () {
+deinit_instance :: () {
     #if DEBUG {
         if vkDestroyDebugReportCallbackEXT && debug_callback_handle {
             vkDestroyDebugReportCallbackEXT(instance, debug_callback_handle, null);
@@ -282,7 +306,6 @@ init_surface :: () -> bool {
     #if OS == .WINDOWS {
         my_hwnd := window;
         surfaceCreateInfo: VkWin32SurfaceCreateInfoKHR; 
-        surfaceCreateInfo.sType     = .WIN32_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.hinstance = GetModuleHandleW(null);
         surfaceCreateInfo.hwnd      = my_hwnd;
         result := vkCreateWin32SurfaceKHR(instance, *surfaceCreateInfo, null, *surface);
@@ -328,7 +351,7 @@ init_device :: () -> bool {
 
             print("Queue family properites: %.\n", queue_family_properties[j]);
 
-            if supports_present && (queue_family_properties[j].queueFlags & .GRAPHICS_BIT) {
+            if supports_present && (queue_family_properties[j].queueFlags & .GRAPHICS) {
                 queue_family_index = j;
                 physical_device = device_handles[i];
                 print("Queue family % supports present and graphics.\n", j);
@@ -344,7 +367,6 @@ init_device :: () -> bool {
     // Logical device
     //
     queue_create_info: VkDeviceQueueCreateInfo;
-    queue_create_info.sType = .DEVICE_QUEUE_CREATE_INFO;
     queue_create_info.queueFamilyIndex = queue_family_index;
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = float.[1.0].data;
@@ -355,24 +377,57 @@ init_device :: () -> bool {
 
         queueCreateInfoCount    = 1;
         pQueueCreateInfos       = *queue_create_info;
-        enabledLayerCount       = 0;
-        ppEnabledLayerNames     = null;
 
-        // Select device extensions
-        device_extensions: [..] *u8;
+        // Device Layers don't exist...
         {
-            array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
+            enabledLayerCount       = 0;
+            ppEnabledLayerNames     = null;
         }
 
-        enabledExtensionCount   = xx device_extensions.count;
-        ppEnabledExtensionNames = device_extensions.data;
-        pEnabledFeatures = null;
+        // Device Extensions
+        {
+            device_extensions: [..] *u8;
+            {
+                array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
+                array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
+            }
+
+            enabledExtensionCount   = xx device_extensions.count;
+            ppEnabledExtensionNames = device_extensions.data;
+        }
+
+        // Enabled Features
+        {
+            // This is the old way.
+            /*
+            features : VkPhysicalDeviceFeatures;
+            vkGetPhysicalDeviceFeatures(physical_device, *features);
+            pEnabledFeatures = *features;
+            */
+
+            pEnabledFeatures = null;
+
+            last_feature : *void;
+            {
+                shader_object_features : VkPhysicalDeviceShaderObjectFeaturesEXT;
+                // Enable Shader Object
+                {
+                    shader_object_features.shaderObject = VK_TRUE;
+                    shader_object_features.pNext = null;
+                }
+
+                last_feature = *shader_object_features;
+            }
+
+            features2 : VkPhysicalDeviceFeatures2;
+            vkGetPhysicalDeviceFeatures2(physical_device, *features2);
+            features2.pNext = last_feature;
+
+            pNext = *features2;
+        }
     }
     
     result := vkCreateDevice(physical_device, *device_create_info, null, *device);
-
-    vkGetDeviceQueue(device, queue_family_index, queueIndex=0, *queue);
 
     return result == .SUCCESS;
 }
@@ -407,15 +462,15 @@ init_swapchain :: () -> bool {
     presentModeCount = min(presentModeCount, MAX_PRESENT_MODE_COUNT);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, *presentModeCount, presentModes.data);
 
-    presentMode : VkPresentModeKHR = .FIFO_KHR;   // always supported.
+    presentMode : VkPresentModeKHR = .FIFO;   // always supported.
     for 0..presentModeCount-1 {
-        if presentModes[it] == .MAILBOX_KHR {
-            presentMode = .MAILBOX_KHR;
+        if presentModes[it] == .MAILBOX {
+            presentMode = .MAILBOX;
             break;
         }
     }
     
-    swapchainImageCount = ifx presentMode == .MAILBOX_KHR  then PRESENT_MODE_MAILBOX_IMAGE_COUNT else  PRESENT_MODE_DEFAULT_IMAGE_COUNT;
+    swapchainImageCount = ifx presentMode == .MAILBOX  then PRESENT_MODE_MAILBOX_IMAGE_COUNT else  PRESENT_MODE_DEFAULT_IMAGE_COUNT;
 
     surfaceCapabilities: VkSurfaceCapabilitiesKHR;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, *surfaceCapabilities);
@@ -437,11 +492,11 @@ init_swapchain :: () -> bool {
         imageColorSpace             = surfaceFormat.colorSpace;
         imageExtent                 = swapchainExtent;
         imageArrayLayers            = 1; // 2 for stereo
-        imageUsage                  |= .COLOR_ATTACHMENT_BIT;
-        imageUsage                  |=  .TRANSFER_DST_BIT;
+        imageUsage                  |= .COLOR_ATTACHMENT;
+        imageUsage                  |=  .TRANSFER_DST;
         imageSharingMode            = .EXCLUSIVE;
         preTransform                = surfaceCapabilities.currentTransform;
-        compositeAlpha              = .OPAQUE_BIT_KHR;
+        compositeAlpha              = .OPAQUE;
         presentMode                 = presentMode;
         clipped                     = VK_TRUE;
     }
@@ -456,21 +511,20 @@ init_swapchain :: () -> bool {
 
     // Create image views of all swapchain images
     {
-        for 0..swapchainImageCount {
+        for 0..swapchainImageCount-1 {
             create_info : VkImageViewCreateInfo;
 
             {
                 using create_info;
-                sType = .IMAGE_VIEW_CREATE_INFO;
                 image = swapchainImages[it];
-                viewType = .VK_IMAGE_VIEW_TYPE_2D;
+                viewType = .e2D;
                 format = surfaceFormat.format;
-                components.r = .VK_COMPONENT_SWIZZLE_IDENTITY;
-                components.g = .VK_COMPONENT_SWIZZLE_IDENTITY;
-                components.b = .VK_COMPONENT_SWIZZLE_IDENTITY;
-                components.a = .VK_COMPONENT_SWIZZLE_IDENTITY;
+                components.r = .IDENTITY;
+                components.g = .IDENTITY;
+                components.b = .IDENTITY;
+                components.a = .IDENTITY;
 
-                subresourceRange.aspectMask = .VK_IMAGE_ASPECT_COLOR_BIT;
+                subresourceRange.aspectMask = .COLOR;
                 subresourceRange.baseMipLevel = 0;
                 subresourceRange.levelCount = 1;
                 subresourceRange.baseArrayLayer = 0;
@@ -496,7 +550,7 @@ FRAME_COUNT :: 2;
 frame_index := 0;
 commandPool   : VkCommandPool;
 commandBuffers: [FRAME_COUNT]VkCommandBuffer;
-frameFences   : [FRAME_COUNT]VkFence; // Create with VK_FENCE_CREATE_SIGNALED_BIT.
+frameFences   : [FRAME_COUNT]VkFence; // Create with VK_FENCE_CREATE_SIGNALED.
 imageAvailableSemaphores: [FRAME_COUNT]VkSemaphore;
 renderFinishedSemaphores: [FRAME_COUNT]VkSemaphore;
 
@@ -505,7 +559,7 @@ init_render :: () {
     log("init_render\n");
 
     commandPoolCreateInfo: VkCommandPoolCreateInfo;
-    commandPoolCreateInfo.flags            = .RESET_COMMAND_BUFFER_BIT;
+    commandPoolCreateInfo.flags            = .RESET_COMMAND_BUFFER;
     commandPoolCreateInfo.queueFamilyIndex = queue_family_index;
     vkCreateCommandPool(device, *commandPoolCreateInfo, null, *commandPool);
 
@@ -523,7 +577,7 @@ init_render :: () {
     vkCreateSemaphore(device, *semaphoreCreateInfo, null, *renderFinishedSemaphores[1]);
 
     fenceCreateInfo: VkFenceCreateInfo;
-    fenceCreateInfo.flags = .SIGNALED_BIT;
+    fenceCreateInfo.flags = .SIGNALED;
 
     vkCreateFence(device, *fenceCreateInfo, null, *frameFences[0]);
     vkCreateFence(device, *fenceCreateInfo, null, *frameFences[1]);
@@ -558,7 +612,7 @@ draw_frame :: () {
     vkAcquireNextImageKHR(device, swapchain, u64_high, imageAvailableSemaphores[index], VK_NULL_HANDLE, *imageIndex);
 
     beginInfo: VkCommandBufferBeginInfo;
-    beginInfo.flags = .ONE_TIME_SUBMIT_BIT;
+    beginInfo.flags = .ONE_TIME_SUBMIT;
 
     vkBeginCommandBuffer(commandBuffers[index], *beginInfo);
     {
@@ -566,7 +620,7 @@ draw_frame :: () {
         subResourceRange : VkImageSubresourceRange;
         {
             using subResourceRange;
-            aspectMask     = .COLOR_BIT;
+            aspectMask     = .COLOR;
             baseMipLevel   = 0;
             levelCount     = VK_REMAINING_MIP_LEVELS;
             baseArrayLayer = 0;
@@ -578,7 +632,7 @@ draw_frame :: () {
         {
             using imgMemoryBarrier;
             srcAccessMask       = 0;
-            dstAccessMask       = .TRANSFER_WRITE_BIT;
+            dstAccessMask       = .TRANSFER_WRITE;
             oldLayout           = .UNDEFINED;
             newLayout           = .TRANSFER_DST_OPTIMAL;
             srcQueueFamilyIndex = queue_family_index;
@@ -587,7 +641,7 @@ draw_frame :: () {
             subresourceRange    = subResourceRange;
         }
 
-        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .TRANSFER_BIT, 
+        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER, .TRANSFER, 
                              0, 0, null, 0, null, 1, *imgMemoryBarrier);
 
         clearColor : VkClearColorValue;
@@ -600,7 +654,7 @@ draw_frame :: () {
             t := cos(cast(float) now) * .5 + .5;
             Clamp(*t, 0, 1);
             color := lerp(color1, color2, t);
-            clearColor._float32 = color.component;
+            clearColor.float32_ = color.component;
             // clearColor.float32 = float.[1, 1, 0, 1];
         }
 
@@ -611,8 +665,8 @@ draw_frame :: () {
         {
             {
                 stages := VkShaderStageFlagBits.[
-                    .VK_SHADER_STAGE_VERTEX_BIT,
-                    .VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .VERTEX,
+                    .FRAGMENT,
                 ];
 
                 vkCmdBindShadersEXT(commandBuffers[index], stages.count, stages.data, shaders.data);
@@ -621,9 +675,9 @@ draw_frame :: () {
             // Potentially don't need this if you disable geometry and tessellation shaders in the devicecreateinfo...
             {
                 unused_stages := VkShaderStageFlagBits.[
-                    .VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
-                    .VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-                    .VK_SHADER_STAGE_GEOMETRY_BIT,
+                    .TESSELLATION_CONTROL,
+                    .TESSELLATION_EVALUATION,
+                    .GEOMETRY,
                 ];
 
                 vkCmdBindShadersEXT(commandBuffers[index], unused_stages.count, unused_stages.data, null);
@@ -638,11 +692,10 @@ draw_frame :: () {
                     {
                         using colorAttachment;
 
-                        sType = .RENDERING_ATTACHMENT_INFO_KHR;
                         imageView = swapchainImageViews[imageIndex];
-                        imageLayout = .VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                        loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
-                        storeOp = .VK_ATTACHMENT_STORE_OP_STORE;
+                        imageLayout = .COLOR_ATTACHMENT_OPTIMAL;
+                        loadOp = .CLEAR;
+                        storeOp = .STORE;
                         //clearValue.color = ;
                     }
 
@@ -653,7 +706,6 @@ draw_frame :: () {
 
                         // A single depth stencil attachment info can be used, but they can also be specified separately.
                         // When both are specified separately, the only requirement is that the image view is identical.			
-                        sType = .RENDERING_ATTACHMENT_INFO_KHR;
                         imageView = depthStencil.view;
                         imageLayout = .VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                         loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -665,7 +717,6 @@ draw_frame :: () {
 
 
                 using rendering_info;
-                sType = .RENDERING_INFO_KHR;
                 renderArea = .{ .{0, 0}, .{width, height} };
                 layerCount = 1;
                 colorAttachmentCount = 1;
@@ -683,15 +734,15 @@ draw_frame :: () {
         }
 
         // Change layout of image to be optimal for presenting
-        imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE_BIT;
-        imgMemoryBarrier.dstAccessMask = .MEMORY_READ_BIT;
+        imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE;
+        imgMemoryBarrier.dstAccessMask = .MEMORY_READ;
         imgMemoryBarrier.oldLayout     = .TRANSFER_DST_OPTIMAL;
         imgMemoryBarrier.newLayout     = .PRESENT_SRC_KHR;
         //imgMemoryBarrier.srcQueueFamilyIndex = queue_family_index;
         //imgMemoryBarrier.dstQueueFamilyIndex = queue_family_index;
         //imgMemoryBarrier.image = swapchainImages[imageIndex];
         //imgMemoryBarrier.subresourceRange = subResourceRange;
-        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER_BIT, .BOTTOM_OF_PIPE_BIT,
+        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER, .BOTTOM_OF_PIPE,
             0, 0, null, 0, null, 1, *imgMemoryBarrier);
     }
     vkEndCommandBuffer(commandBuffers[index]);
@@ -699,7 +750,7 @@ draw_frame :: () {
     submitInfo: VkSubmitInfo; 
     submitInfo.waitSemaphoreCount   = 1;
     submitInfo.pWaitSemaphores      = *imageAvailableSemaphores[index];
-    submitInfo.pWaitDstStageMask    = VkPipelineStageFlags.[.COLOR_ATTACHMENT_OUTPUT_BIT].data;
+    submitInfo.pWaitDstStageMask    = VkPipelineStageFlags.[.COLOR_ATTACHMENT_OUTPUT].data;
     submitInfo.commandBufferCount   = 1;
     submitInfo.pCommandBuffers      = *commandBuffers[index];
     submitInfo.signalSemaphoreCount = 1;
@@ -718,14 +769,15 @@ draw_frame :: () {
 
 #import "Basic";
 #import "String";
-#import "Vulkan";
 #import "Math";
+
+#import "Vulkan";
 
 #import "Window_Creation";
 #import "Input";
 
 #import "System";
-#if OS ==.WINDOWS {
+#if OS == .WINDOWS {
     #import "Windows";
 }
 

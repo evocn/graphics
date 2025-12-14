@@ -37,7 +37,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
     success : bool;
-    success = slangc("debug-fragment", "debug", "vertexMain");
-    success = slangc("debug-vertex", "debug", "fragmentMain");
+    success = slangc("debug-fragment", "debug", "fragmentMain");
+    success = slangc("debug-vertex", "debug", "vertexMain");
     print("Compiled all shaders.\n\n");
 }
