@@ -4,13 +4,13 @@
 
 error_callback :: (error: s32, description: *u8) #c_call {
     push_context {
-        print("Error: %\n", to_string(description));
+        print("Error: %\n\n", to_string(description));
     }
 }
 
 debug_callback :: (flags: VkDebugReportFlagsEXT, objType: VkDebugReportObjectTypeEXT, obj: u64, location: u64, code: s32, layerPrefix: *u8, msg: *u8, userData: *void) -> VkBool32 #c_call {
     push_context {
-        print("VULKAN VALIDATION: %\n", to_string(msg));
+        print("VULKAN VALIDATION: %\n\n", to_string(msg));
     }
     
     return VK_FALSE;

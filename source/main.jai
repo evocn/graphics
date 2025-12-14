@@ -5,16 +5,12 @@
 
 DEBUG :: true;
 
-//width                   : u32 = 1280;
-//height                  : u32 = 720;
-//width                   : u32 = 1920;
-//height                  : u32 = 1080;
-width                   : u32 = 2560;
-height                  : u32 = 1440;
-//width                   : u32 = 3840;
-//height                  : u32 = 2160;
+program_state : struct {
+    window_width    : u32 = 2560;
+    window_height   : u32 = 1440;
 
-window                  : Window_Type;
+    window          : Window_Type;
+}
 
 instance                : VkInstance;
 debug_callback_handle   : VkDebugReportCallbackEXT;
@@ -23,8 +19,17 @@ surface                 : VkSurfaceKHR;
 
 physical_device         : VkPhysicalDevice;
 queue_family_index      : u32;
+memory_properties       : VkPhysicalDeviceMemoryProperties;
+
 device                  : VkDevice;
 queue                   : VkQueue;
+
+uniform_buffer          : VkBuffer;
+vertex_buffer           : VkBuffer;
+
+descriptor_set_layouts  : [1] VkDescriptorSetLayout;
+pipeline_layout         : VkPipelineLayout;
+descriptor_sets         : [1] VkDescriptorSet;
 
 shaders                 : [2] VkShaderEXT;
 
@@ -36,8 +41,8 @@ main :: () {
     set_working_directory_to_base_folder();
 
     // Create window
-    window = create_window(
-        xx width, xx height,
+    program_state.window = create_window(
+        xx program_state.window_width, xx program_state.window_height,
         program_title,
         window_x = 1080,
         window_y = 0,
@@ -51,7 +56,7 @@ main :: () {
     vkGIPA := GetProcAddress(vulkan_library, "vkGetInstanceProcAddr");
     vk_load_global_functions(vkGIPA);
   
-    print_available_vulkan_extensions();
+    //print_available_vulkan_extensions();
 
     if !init_instance() {
         print("Instance initialization failed.\n");
@@ -84,6 +89,234 @@ main :: () {
     defer deinit_swapchain();
 
 
+    // Descriptor Sets
+    {
+        // Descriptor Set Layouts
+        {
+            using descriptor_set_layouts[0];
+            layout := *descriptor_set_layouts[0];
+
+            bindings : [2] VkDescriptorSetLayoutBinding;
+            {
+                {
+                    using bindings[0];
+                    binding = 0;
+                    descriptorType = .UNIFORM_BUFFER;
+                    descriptorCount = 1;
+                    stageFlags = .VERTEX;
+                }
+
+                {
+                    using bindings[1];
+                    binding = 0;
+                    descriptorType = .UNIFORM_BUFFER;
+                    descriptorCount = 0;
+                    stageFlags = .FRAGMENT;
+                }
+            }
+
+            create_info : VkDescriptorSetLayoutCreateInfo;
+            {
+                using create_info;
+                flags = 0;
+                bindingCount = 1;
+                pBindings = bindings.data;
+            }
+
+            result := vkCreateDescriptorSetLayout(device, *create_info, null, layout);
+            assert(result == .SUCCESS);
+        }
+
+        // Pipeline Layout
+        {
+            create_info : VkPipelineLayoutCreateInfo;
+            {
+                using create_info;
+                setLayoutCount = descriptor_set_layouts.count;
+                pSetLayouts = descriptor_set_layouts.data;
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+            }
+
+            result := vkCreatePipelineLayout(device, *create_info, null, *pipeline_layout);
+            assert(result == .SUCCESS);
+        }
+
+        descriptor_pool : VkDescriptorPool;
+        {
+            pool_sizes : [1] VkDescriptorPoolSize;
+            {
+                {
+                    using pool_sizes[0];
+                    type = .UNIFORM_BUFFER;
+                    descriptorCount = 100;
+                }
+            }
+
+            create_info : VkDescriptorPoolCreateInfo;
+            {
+                using create_info;
+                poolSizeCount = pool_sizes.count;
+                pPoolSizes = pool_sizes.data;
+                maxSets = 100;
+            }
+
+            vkCreateDescriptorPool(device, *create_info, null, *descriptor_pool);
+        }
+
+        // Data
+        {
+            // Vertex Buffer
+            {
+                Vertex :: struct {
+                    position    : Vector3;
+                    color       : Vector3;
+                }
+
+                vertices := Vertex.[
+                    .{position = .{-0.5, -0.5, 0.0}, color = .{1, 0, 0}},
+                    .{position = .{ 0.5, -0.5, 0.0}, color = .{0, 1, 0}},
+                    .{position = .{ 0.0,  0.5, 0.0}, color = .{0, 0, 1}},
+                ];
+
+                create_info : VkBufferCreateInfo;
+                {
+                    using create_info;
+                    size = size_of(type_of(vertices));
+                    usage = .VERTEX_BUFFER;
+                }
+
+                vkCreateBuffer(device, *create_info, null, *vertex_buffer);
+
+                device_memory : VkDeviceMemory;
+                {
+                    allocate_info : VkMemoryAllocateInfo;
+                    {
+                        using allocate_info;
+                        allocationSize = size_of(type_of(vertices));
+                        memoryTypeIndex = 1;
+                    }
+
+                    vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                }
+
+                // Map
+                {
+                    data : *void;
+                    result := vkMapMemory(
+                        device,
+                        device_memory,
+                        0,
+                        VK_WHOLE_SIZE,
+                        0,
+                        *data
+                    );
+                    assert(result == .SUCCESS);
+
+                    memcpy(data, *vertices, size_of(type_of(vertices)));
+                }
+
+                // Bind
+                {
+                    vkBindBufferMemory(
+                        device,
+                        vertex_buffer,
+                        device_memory,
+                        0
+                    );
+                }
+            }
+
+
+            // Uniform Buffer
+            {
+                create_info : VkBufferCreateInfo;
+                {
+                    using create_info;
+                    size = 16 * size_of(float);
+                    usage = .UNIFORM_BUFFER;
+                }
+
+                vkCreateBuffer(device, *create_info, null, *uniform_buffer);
+
+                device_memory : VkDeviceMemory;
+                {
+                    allocate_info : VkMemoryAllocateInfo;
+                    {
+                        using allocate_info;
+                        allocationSize = 16 * size_of(float);
+                        memoryTypeIndex = 0;
+                    }
+
+                    vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                }
+
+                {
+                    vkBindBufferMemory(
+                        device,
+                        uniform_buffer,
+                        device_memory,
+                        0
+                    );
+                }
+            }
+        }
+
+        // Descriptor Sets
+        {
+            {
+                using descriptor_sets[0];
+                set := *descriptor_sets[0];
+
+                // Allocate
+                {
+                    allocation_info : VkDescriptorSetAllocateInfo;
+                    {
+                        using allocation_info;
+                        descriptorPool = descriptor_pool;
+                        descriptorSetCount = descriptor_set_layouts.count;
+                        pSetLayouts = descriptor_set_layouts.data;
+                    }
+
+                    result := vkAllocateDescriptorSets(device, *allocation_info, set);
+                    assert(result == .SUCCESS);
+                }
+
+                // Update
+                {
+                    write_descriptor_sets : [1] VkWriteDescriptorSet;
+                    {
+                        {
+                            using write_descriptor_sets[0];
+
+                            descriptor_buffer_info : VkDescriptorBufferInfo;
+                            {
+                                using descriptor_buffer_info;
+                                buffer = uniform_buffer;
+                                offset = 0;
+                                range = VK_WHOLE_SIZE;
+                            }
+
+                            dstSet = set.*;
+                            dstBinding = 0;
+                            dstArrayElement = 0;
+                            descriptorCount = 1;
+                            descriptorType = .UNIFORM_BUFFER;
+                            pBufferInfo = *descriptor_buffer_info;
+                        }
+                    }
+
+                    vkUpdateDescriptorSets(device,
+                        write_descriptor_sets.count,
+                        write_descriptor_sets.data,
+                        0,
+                        null
+                    );
+                }
+            }
+        }
+    }
+
     // Shader Objects
     {
         // Read spirv from file
@@ -106,36 +339,10 @@ main :: () {
 
         // Shader Object Create Infos
         {
-            shaderCreateInfos : [2] VkShaderCreateInfoEXT;
-
-
-            vertexLayout : VkDescriptorSetLayout;
-            {
-                bindings : [1] VkDescriptorSetLayoutBinding;
-                {
-                    {
-                        using bindings[0];
-                        binding = 0;
-                        descriptorType = .UNIFORM_BUFFER;
-                        descriptorCount = 1;
-                        stageFlags = .VERTEX;
-                    }
-                }
-
-                create_info : VkDescriptorSetLayoutCreateInfo;
-                {
-                    using create_info;
-                    flags = 0;
-                    bindingCount = 1;
-                    pBindings = bindings.data;
-                }
-
-                result := vkCreateDescriptorSetLayout(device, *create_info, null, *vertexLayout);
-                assert(result == .SUCCESS);
-            }
+            shader_create_infos : [2] VkShaderCreateInfoEXT;
 
             {
-                using shaderCreateInfos[0];
+                using shader_create_infos[0];
                 flags = .LINK_STAGE;
 
                 stage       = .VERTEX;
@@ -147,8 +354,8 @@ main :: () {
 
                 pName       = "main";
 
-                setLayoutCount = 1;
-                pSetLayouts = *vertexLayout;
+                setLayoutCount = descriptor_set_layouts.count;
+                pSetLayouts = descriptor_set_layouts.data;
 
                 pushConstantRangeCount = 0;
                 pPushConstantRanges = null;
@@ -156,7 +363,7 @@ main :: () {
             }
 
             {
-                using shaderCreateInfos[1];
+                using shader_create_infos[1];
                 flags = .LINK_STAGE;
 
                 stage       = .FRAGMENT;
@@ -168,15 +375,19 @@ main :: () {
 
                 pName       = "main";
 
-                setLayoutCount = 0;
-                pSetLayouts = null;
+                setLayoutCount = descriptor_set_layouts.count;
+                pSetLayouts = descriptor_set_layouts.data;
 
                 pushConstantRangeCount = 0;
                 pPushConstantRanges = null;
                 pSpecializationInfo = null;
             }
 
-            result := vkCreateShadersEXT(device, 2, shaderCreateInfos.data, null, shaders.data);
+            result := vkCreateShadersEXT(device,
+                shader_create_infos.count, shader_create_infos.data,
+                null,
+                shaders.data
+            );
 
             if (result != .SUCCESS)
             {
@@ -184,11 +395,6 @@ main :: () {
             }
         }
     }
-
-    // Dynamic State
-    {
-    }
-
 
     init_render();
     defer deinit_render();
@@ -304,7 +510,7 @@ deinit_instance :: () {
 
 init_surface :: () -> bool {
     #if OS == .WINDOWS {
-        my_hwnd := window;
+        my_hwnd := program_state.window;
         surfaceCreateInfo: VkWin32SurfaceCreateInfoKHR; 
         surfaceCreateInfo.hinstance = GetModuleHandleW(null);
         surfaceCreateInfo.hwnd      = my_hwnd;
@@ -364,8 +570,16 @@ init_device :: () -> bool {
         }
     }
 
+    vkGetPhysicalDeviceMemoryProperties(physical_device, *memory_properties);
+    {
+        using memory_properties;
+        log("Physical Device Memory");
+        for 0..memoryTypeCount-1 {
+            log("%", memoryTypes[it]);
+        }
+    }
+
     // Logical device
-    //
     queue_create_info: VkDeviceQueueCreateInfo;
     queue_create_info.queueFamilyIndex = queue_family_index;
     queue_create_info.queueCount = 1;
@@ -390,6 +604,7 @@ init_device :: () -> bool {
             {
                 array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
                 array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
+                array_add(*device_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data);
             }
 
             enabledExtensionCount   = xx device_extensions.count;
@@ -398,22 +613,20 @@ init_device :: () -> bool {
 
         // Enabled Features
         {
-            // This is the old way.
-            /*
-            features : VkPhysicalDeviceFeatures;
-            vkGetPhysicalDeviceFeatures(physical_device, *features);
-            pEnabledFeatures = *features;
-            */
-
-            pEnabledFeatures = null;
-
             last_feature : *void;
             {
-                shader_object_features : VkPhysicalDeviceShaderObjectFeaturesEXT;
-                // Enable Shader Object
+                dynamic_rendering_features : VkPhysicalDeviceDynamicRenderingFeatures;
                 {
-                    shader_object_features.shaderObject = VK_TRUE;
-                    shader_object_features.pNext = null;
+                    using dynamic_rendering_features;
+                    dynamicRendering = VK_TRUE;
+                    pNext = null;
+                }
+
+                shader_object_features : VkPhysicalDeviceShaderObjectFeaturesEXT;
+                {
+                    using shader_object_features;
+                    shaderObject = VK_TRUE;
+                    pNext = *dynamic_rendering_features;
                 }
 
                 last_feature = *shader_object_features;
@@ -428,7 +641,6 @@ init_device :: () -> bool {
     }
     
     result := vkCreateDevice(physical_device, *device_create_info, null, *device);
-
     return result == .SUCCESS;
 }
 
@@ -443,8 +655,8 @@ swapchain: VkSwapchainKHR;
 swapchainImageCount: u32;
 swapchainImages     : [MAX_SWAPCHAIN_IMAGES] VkImage;
 swapchainImageViews : [MAX_SWAPCHAIN_IMAGES] VkImageView;
-swapchainExtent: VkExtent2D;
-surfaceFormat  : VkSurfaceFormatKHR;
+swapchain_extent    : VkExtent2D;
+surfaceFormat       : VkSurfaceFormatKHR;
 
 init_swapchain :: () -> bool {
     PRESENT_MODE_MAILBOX_IMAGE_COUNT :u32: 3;
@@ -475,10 +687,18 @@ init_swapchain :: () -> bool {
     surfaceCapabilities: VkSurfaceCapabilitiesKHR;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, *surfaceCapabilities);
 
-    swapchainExtent = surfaceCapabilities.currentExtent;
-    if swapchainExtent.width == U32_MAX {
-        swapchainExtent.width  = clamp(width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-        swapchainExtent.height = clamp(height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+    swapchain_extent = surfaceCapabilities.currentExtent;
+    if swapchain_extent.width == U32_MAX {
+        swapchain_extent.width  = clamp(
+            program_state.window_width,
+            surfaceCapabilities.minImageExtent.width,
+            surfaceCapabilities.maxImageExtent.width
+        );
+        swapchain_extent.height = clamp(
+            program_state.window_height,
+            surfaceCapabilities.minImageExtent.height,
+            surfaceCapabilities.maxImageExtent.height
+        );
     }
 
     swapChainCreateInfo: VkSwapchainCreateInfoKHR;
@@ -490,7 +710,7 @@ init_swapchain :: () -> bool {
         minImageCount               = swapchainImageCount;
         imageFormat                 = surfaceFormat.format;
         imageColorSpace             = surfaceFormat.colorSpace;
-        imageExtent                 = swapchainExtent;
+        imageExtent                 = swapchain_extent;
         imageArrayLayers            = 1; // 2 for stereo
         imageUsage                  |= .COLOR_ATTACHMENT;
         imageUsage                  |=  .TRANSFER_DST;
@@ -549,15 +769,13 @@ deinit_swapchain :: () {
 FRAME_COUNT :: 2;
 frame_index := 0;
 commandPool   : VkCommandPool;
-commandBuffers: [FRAME_COUNT]VkCommandBuffer;
+command_buffers: [FRAME_COUNT]VkCommandBuffer;
 frameFences   : [FRAME_COUNT]VkFence; // Create with VK_FENCE_CREATE_SIGNALED.
 imageAvailableSemaphores: [FRAME_COUNT]VkSemaphore;
 renderFinishedSemaphores: [FRAME_COUNT]VkSemaphore;
 
 
 init_render :: () {
-    log("init_render\n");
-
     commandPoolCreateInfo: VkCommandPoolCreateInfo;
     commandPoolCreateInfo.flags            = .RESET_COMMAND_BUFFER;
     commandPoolCreateInfo.queueFamilyIndex = queue_family_index;
@@ -568,7 +786,7 @@ init_render :: () {
     commandBufferAllocInfo.level              = .PRIMARY;
     commandBufferAllocInfo.commandBufferCount = FRAME_COUNT;
 
-    vkAllocateCommandBuffers(device, *commandBufferAllocInfo, commandBuffers.data);
+    vkAllocateCommandBuffers(device, *commandBufferAllocInfo, command_buffers.data);
 
     semaphoreCreateInfo: VkSemaphoreCreateInfo;
     vkCreateSemaphore(device, *semaphoreCreateInfo, null, *imageAvailableSemaphores[0]);
@@ -584,8 +802,6 @@ init_render :: () {
 }
 
 deinit_render :: () {
-    log("deinit_render\n");
-
     vkDeviceWaitIdle(device);
     vkDestroyFence(device, frameFences[0], null);
     vkDestroyFence(device, frameFences[1], null);
@@ -614,12 +830,12 @@ draw_frame :: () {
     beginInfo: VkCommandBufferBeginInfo;
     beginInfo.flags = .ONE_TIME_SUBMIT;
 
-    vkBeginCommandBuffer(commandBuffers[index], *beginInfo);
+    vkBeginCommandBuffer(command_buffers[index], *beginInfo);
     {
-        // Clear frame
-        subResourceRange : VkImageSubresourceRange;
+        // Set up some state which is needed throughout this procedure
+        swapchainImageSubResourceRange : VkImageSubresourceRange;
         {
-            using subResourceRange;
+            using swapchainImageSubResourceRange;
             aspectMask     = .COLOR;
             baseMipLevel   = 0;
             levelCount     = VK_REMAINING_MIP_LEVELS;
@@ -628,131 +844,279 @@ draw_frame :: () {
         }
 
         // Change layout of image to be optimal for clearing
+        {
+            imgMemoryBarrier : VkImageMemoryBarrier;
+            {
+                using imgMemoryBarrier;
+                srcAccessMask       = 0;
+                dstAccessMask       = .TRANSFER_WRITE;
+                oldLayout           = .UNDEFINED;
+                newLayout           = .TRANSFER_DST_OPTIMAL;
+                srcQueueFamilyIndex = queue_family_index;
+                dstQueueFamilyIndex = queue_family_index;
+                image               = swapchainImages[imageIndex];
+                subresourceRange    = swapchainImageSubResourceRange;
+            }
+
+            vkCmdPipelineBarrier(command_buffers[index], .TRANSFER, .TRANSFER, 
+                                 0, 0, null, 0, null, 1, *imgMemoryBarrier);
+        }
+
+
+        color_attachment : VkRenderingAttachmentInfoKHR;
+        {
+            using color_attachment;
+            imageView = swapchainImageViews[imageIndex];
+            imageLayout = .COLOR_ATTACHMENT_OPTIMAL;
+            loadOp = .CLEAR;
+            storeOp = .STORE;
+        }
+
+        /*
+        depthStencilAttachment : VkRenderingAttachmentInfoKHR;
+        {
+            using depthStencilAttachment;
+
+            // A single depth stencil attachment info can be used, but they can also be specified separately.
+            // When both are specified separately, the only requirement is that the image view is identical.			
+            imageView = depthStencil.view;
+            imageLayout = .VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
+            storeOp = .VK_ATTACHMENT_STORE_OP_STORE;
+            clearValue.depthStencil = .{ 1.0,  0 }.data;
+        }
+        */
+
+        rendering_info : VkRenderingInfo;
+        {
+            using rendering_info;
+            renderArea = VkRect2D.{
+                offset = .{0, 0},
+                extent = swapchain_extent,
+            };
+            layerCount = 1;
+            viewMask = 0;
+            colorAttachmentCount = 1;
+            pColorAttachments = *color_attachment;
+            pDepthAttachment = null;
+            pStencilAttachment = null;
+
+        }
+
+        vkCmdBeginRendering(command_buffers[index], *rendering_info);
+        {
+            // Set up my dynamic state
+            {
+                vkCmdSetPrimitiveTopology(command_buffers[index],       .TRIANGLE_LIST);
+                vkCmdSetPrimitiveRestartEnable(command_buffers[index],  VK_TRUE);
+                vkCmdSetRasterizerDiscardEnable(command_buffers[index], VK_TRUE);
+
+                {
+                    viewports : [1] VkViewport;
+                    {
+                        {
+                            using viewports[0];
+                            x = 0;                    
+                            y = 0;
+                            width       = xx swapchain_extent.width;
+                            height      = xx swapchain_extent.height;
+                            minDepth = 0;
+                            maxDepth = 0;
+                        }
+                    }
+                    vkCmdSetViewportWithCount(command_buffers[index], viewports.count, viewports.data);
+                }
+
+                {
+                    scissors : [1] VkRect2D;
+                    {
+                        {
+                            using scissors[0];
+                            offset = .{0, 0};
+                            extent = swapchain_extent;
+                        }
+                    }
+                    vkCmdSetScissorWithCount(command_buffers[index], scissors.count, scissors.data);
+                }
+
+                {
+                    vertex_input_binding_descriptions : [1] VkVertexInputBindingDescription2EXT;
+                    {
+                        {
+                            using vertex_input_binding_descriptions[0];
+                            binding     = 0;
+                            stride      = size_of(float) * 6;
+                            inputRate   = .INSTANCE;
+                            divisor     = 1;
+                        }
+                    }
+
+                    vertex_input_attribute_descriptions : [2] VkVertexInputAttributeDescription2EXT;
+                    {
+                        {
+                            using vertex_input_attribute_descriptions[0];
+                            location    = 0;
+                            binding     = 0;
+                            format      = .R32G32B32_SFLOAT;
+                            offset      = 0;
+                        }
+
+                        {
+                            using vertex_input_attribute_descriptions[1];
+                            location    = 1;
+                            binding     = 0;
+                            format      = .R32G32B32_SFLOAT;
+                            offset      = size_of(float) * 3;
+                        }
+                    }
+
+                    vkCmdSetVertexInputEXT(
+                        command_buffers[index],
+                        vertex_input_binding_descriptions.count,
+                        vertex_input_binding_descriptions.data,
+                        vertex_input_attribute_descriptions.count,
+                        vertex_input_attribute_descriptions.data,
+                    );
+                }
+            }
+
+            // Clear frame
+            {
+                clear_color : VkClearColorValue;
+                {
+                    // Pick a color with which to clear the screen
+                    color1 := Vector4.{1,  1, 0, 1};
+                    color2 := Vector4.{.5, 0, 1, 1};
+
+                    now := seconds_since_init();
+                    t := cos(cast(float) now) * .5 + .5;
+                    Clamp(*t, 0, 1);
+                    color := lerp(color1, color2, t);
+                    clear_color.float32_ = color.component;
+                }
+
+                clear_attachments : [1] VkClearAttachment;
+                {
+                    {
+                        using clear_attachments[0];
+                        aspectMask = .COLOR;
+                        colorAttachment = 0;
+                        clearValue.color = clear_color;
+                    }
+                }
+
+                clear_rects : [1] VkClearRect;
+                {
+                    {
+                        using clear_rects[0];
+                        rect = .{
+                            offset = .{0, 0},
+                            extent = swapchain_extent,
+                        };
+                        baseArrayLayer = 0;
+                        layerCount = 1;
+                    }
+                }
+
+                vkCmdClearAttachments(command_buffers[index],
+                    clear_attachments.count, clear_attachments.data,
+                    clear_rects.count, clear_rects.data
+                );
+            }
+
+            // Bind Descriptor Sets
+            {
+                dynamic_offsets : [0] u32;
+                {
+                }
+
+                vkCmdBindDescriptorSets(
+                    command_buffers[index],
+                    pipelineBindPoint = .GRAPHICS,
+                    layout = pipeline_layout,
+                    firstSet = 0,
+                    descriptorSetCount = descriptor_sets.count,
+                    pDescriptorSets = descriptor_sets.data,
+                    dynamicOffsetCount = dynamic_offsets.count,
+                    pDynamicOffsets = dynamic_offsets.data
+                );
+            }
+
+            // Bind Shaders
+            {
+                {
+                    stages := VkShaderStageFlagBits.[
+                        .VERTEX,
+                        .FRAGMENT,
+                    ];
+
+                    vkCmdBindShadersEXT(
+                        command_buffers[index],
+                        stages.count, stages.data, shaders.data
+                    );
+                }
+
+                // @TODO(alex): Apparently you don't need this if you disable geometry and tessellation shaders in the devicecreateinfo...
+                {
+                    unused_stages := VkShaderStageFlagBits.[
+                        .TESSELLATION_CONTROL,
+                        .TESSELLATION_EVALUATION,
+                        .GEOMETRY,
+                    ];
+
+                    vkCmdBindShadersEXT(
+                        command_buffers[index],
+                        unused_stages.count, unused_stages.data, null
+                    );
+                }
+            }
+
+            // Bind Data
+            {
+                offset : VkDeviceSize = 0;
+
+                vkCmdBindVertexBuffers(
+                    command_buffers[index],
+                    0,
+                    1,
+                    *vertex_buffer,
+                    *offset
+                );
+            }
+
+            // Draw!
+            {
+                vkCmdDraw(command_buffers[index], 3, 1, 0, 0);
+            }
+        }
+        vkCmdEndRendering(command_buffers[index]);
+
+        // Change layout of image to be optimal for presenting
         imgMemoryBarrier : VkImageMemoryBarrier;
         {
             using imgMemoryBarrier;
-            srcAccessMask       = 0;
-            dstAccessMask       = .TRANSFER_WRITE;
-            oldLayout           = .UNDEFINED;
-            newLayout           = .TRANSFER_DST_OPTIMAL;
+            srcAccessMask       = .TRANSFER_WRITE;
+            dstAccessMask       = .MEMORY_READ;
+            oldLayout           = .TRANSFER_DST_OPTIMAL;
+            newLayout           = .PRESENT_SRC_KHR;
             srcQueueFamilyIndex = queue_family_index;
             dstQueueFamilyIndex = queue_family_index;
             image               = swapchainImages[imageIndex];
-            subresourceRange    = subResourceRange;
-        }
-
-        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER, .TRANSFER, 
-                             0, 0, null, 0, null, 1, *imgMemoryBarrier);
-
-        clearColor : VkClearColorValue;
-        {
-            // Pick a color with which to clear the screen
-            color1 := Vector4.{1,  1, 0, 1};
-            color2 := Vector4.{.5, 0, 1, 1};
-
-            now := seconds_since_init();
-            t := cos(cast(float) now) * .5 + .5;
-            Clamp(*t, 0, 1);
-            color := lerp(color1, color2, t);
-            clearColor.float32_ = color.component;
-            // clearColor.float32 = float.[1, 1, 0, 1];
-        }
-
-        vkCmdClearColorImage(commandBuffers[index], swapchainImages[imageIndex], .TRANSFER_DST_OPTIMAL, *clearColor, 1, *subResourceRange);
-
-
-        // Try some shader stuff here
-        {
-            {
-                stages := VkShaderStageFlagBits.[
-                    .VERTEX,
-                    .FRAGMENT,
-                ];
-
-                vkCmdBindShadersEXT(commandBuffers[index], stages.count, stages.data, shaders.data);
-            }
-
-            // Potentially don't need this if you disable geometry and tessellation shaders in the devicecreateinfo...
-            {
-                unused_stages := VkShaderStageFlagBits.[
-                    .TESSELLATION_CONTROL,
-                    .TESSELLATION_EVALUATION,
-                    .GEOMETRY,
-                ];
-
-                vkCmdBindShadersEXT(commandBuffers[index], unused_stages.count, unused_stages.data, null);
-            }
-
-            // Dynamic rendering
-            rendering_info : VkRenderingInfo;
-            {
-                colorAttachment : VkRenderingAttachmentInfoKHR;
-                // New structures are used to define the attachments used in dynamic rendering
-                {
-                    {
-                        using colorAttachment;
-
-                        imageView = swapchainImageViews[imageIndex];
-                        imageLayout = .COLOR_ATTACHMENT_OPTIMAL;
-                        loadOp = .CLEAR;
-                        storeOp = .STORE;
-                        //clearValue.color = ;
-                    }
-
-                    /*
-                    depthStencilAttachment : VkRenderingAttachmentInfoKHR;
-                    {
-                        using depthStencilAttachment;
-
-                        // A single depth stencil attachment info can be used, but they can also be specified separately.
-                        // When both are specified separately, the only requirement is that the image view is identical.			
-                        imageView = depthStencil.view;
-                        imageLayout = .VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                        loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR;
-                        storeOp = .VK_ATTACHMENT_STORE_OP_STORE;
-                        clearValue.depthStencil = .{ 1.0,  0 }.data;
-                    }
-                    */
-                }
-
-
-                using rendering_info;
-                renderArea = .{ .{0, 0}, .{width, height} };
-                layerCount = 1;
-                colorAttachmentCount = 1;
-                pColorAttachments = *colorAttachment;
-                pDepthAttachment = null;
-                pStencilAttachment = null;
-            }
-
-            vkCmdBeginRendering(
-                commandBuffers[index],
-                *rendering_info,
-            );
-
-            vkCmdDraw(commandBuffers[index], 3, 1, 0, 0);
+            subresourceRange    = swapchainImageSubResourceRange;
         }
 
         // Change layout of image to be optimal for presenting
-        imgMemoryBarrier.srcAccessMask = .TRANSFER_WRITE;
-        imgMemoryBarrier.dstAccessMask = .MEMORY_READ;
-        imgMemoryBarrier.oldLayout     = .TRANSFER_DST_OPTIMAL;
-        imgMemoryBarrier.newLayout     = .PRESENT_SRC_KHR;
-        //imgMemoryBarrier.srcQueueFamilyIndex = queue_family_index;
-        //imgMemoryBarrier.dstQueueFamilyIndex = queue_family_index;
-        //imgMemoryBarrier.image = swapchainImages[imageIndex];
-        //imgMemoryBarrier.subresourceRange = subResourceRange;
-        vkCmdPipelineBarrier(commandBuffers[index], .TRANSFER, .BOTTOM_OF_PIPE,
+        vkCmdPipelineBarrier(command_buffers[index], .TRANSFER, .BOTTOM_OF_PIPE,
             0, 0, null, 0, null, 1, *imgMemoryBarrier);
     }
-    vkEndCommandBuffer(commandBuffers[index]);
+    vkEndCommandBuffer(command_buffers[index]);
 
     submitInfo: VkSubmitInfo; 
     submitInfo.waitSemaphoreCount   = 1;
     submitInfo.pWaitSemaphores      = *imageAvailableSemaphores[index];
     submitInfo.pWaitDstStageMask    = VkPipelineStageFlags.[.COLOR_ATTACHMENT_OUTPUT].data;
     submitInfo.commandBufferCount   = 1;
-    submitInfo.pCommandBuffers      = *commandBuffers[index];
+    submitInfo.pCommandBuffers      = *command_buffers[index];
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores    = *renderFinishedSemaphores[index];
     vkQueueSubmit(queue, 1, *submitInfo, frameFences[index]);
