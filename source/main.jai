@@ -190,11 +190,15 @@ main :: () {
 
                 device_memory : VkDeviceMemory;
                 {
+                    // @TODO: A more fully-featured way to specify what memory type you want things out of.
+                    memory_type_index := get_host_visible_memory_type(memory_properties);
+                    assert(memory_type_index != -1);
+
                     allocate_info : VkMemoryAllocateInfo;
                     {
                         using allocate_info;
                         allocationSize = size_of(type_of(vertices));
-                        memoryTypeIndex = 1;
+                        memoryTypeIndex = xx memory_type_index;
                     }
 
                     vkAllocateMemory(device, *allocate_info, null, *device_memory);
@@ -1214,5 +1218,6 @@ draw_frame :: () {
 
 #import "File";
 
+#load "memory.jai";
 #load "utils.jai";
 #load "init.jai";
