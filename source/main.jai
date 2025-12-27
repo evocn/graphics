@@ -541,31 +541,41 @@ init_device :: () -> bool {
     physical_device_count = min(physical_device_count, MAX_DEVICE_COUNT);
     vkEnumeratePhysicalDevices(instance, *physical_device_count, device_handles.data);
 
-    print("Physical device count: %\n", physical_device_count);
+    log("Physical device count: %\n", physical_device_count);
 
     for i: 0..physical_device_count-1 {
-        queue_family_count: u32 = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device_handles[i], *queue_family_count, null);
-        queue_family_count = min(queue_family_count, MAX_QUEUE_COUNT);
-        vkGetPhysicalDeviceQueueFamilyProperties(device_handles[i], *queue_family_count, queue_family_properties.data);
+        is_discrete : bool;
+        {
+            physical_device_properties : VkPhysicalDeviceProperties;
+            vkGetPhysicalDeviceProperties(device_handles[i], *physical_device_properties);
+            is_discrete = physical_device_properties.deviceType == .DISCRETE_GPU;
+        }
 
-        print("Physical device % supports % queues families.\n", i, queue_family_count);
+        has_graphics_queue_which_supports_present : bool;
+        {
+            queue_family_count: u32 = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(device_handles[i], *queue_family_count, null);
+            queue_family_count = min(queue_family_count, MAX_QUEUE_COUNT);
+            vkGetPhysicalDeviceQueueFamilyProperties(device_handles[i], *queue_family_count, queue_family_properties.data);
+            log("Physical device % supports % queues families.\n", i, queue_family_count);
 
-        for j: 0..queue_family_count-1 {
-            supports_present := VK_FALSE;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device_handles[i], j, surface, *supports_present);
+            for j: 0..queue_family_count-1 {
+                supports_present := VK_FALSE;
+                vkGetPhysicalDeviceSurfaceSupportKHR(device_handles[i], j, surface, *supports_present);
 
-            print("Queue family properites: %.\n", queue_family_properties[j]);
+                print("Queue family properites: %.\n", queue_family_properties[j]);
 
-            if supports_present && (queue_family_properties[j].queueFlags & .GRAPHICS) {
-                queue_family_index = j;
-                physical_device = device_handles[i];
-                print("Queue family % supports present and graphics.\n", j);
-                break;
+                if supports_present && (queue_family_properties[j].queueFlags & .GRAPHICS) {
+                    queue_family_index = j;
+                    has_graphics_queue_which_supports_present = true;
+                    log("Queue family % supports present and graphics.\n", j);
+                    break;
+                }
             }
         }
 
-        if (physical_device) {
+        if has_graphics_queue_which_supports_present && is_discrete {
+            physical_device = device_handles[i];
             break;
         }
     }
