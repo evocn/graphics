@@ -9,4 +9,4 @@ bin/packages/
 *.pdb
 *.rdbg
 *.build
-shaders/compiled/
+**/compiled/

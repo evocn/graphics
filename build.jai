@@ -21,6 +21,8 @@ build_settings : struct {
 program_title :: "Graphics";
 
 compiled_shaders_directory :: "shaders/compiled";
+source\ _shaders_directory :: "shaders";
+
 
 DONE
 #run add_build_string(shared_data, w = -1);

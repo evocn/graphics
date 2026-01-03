@@ -1,12 +1,11 @@
-// Graphics
-// Compile Shaders
-// Alex Hartford
 
-#import "Process";
+// Compile Shaders
+
+////////////////////////////////////////////////////////////////////////////////
 
 slangc :: (output_filename: string, filename: string, entry_point: string) -> success : bool {
-    input_file  := tprint("%.slang", filename);
-    output_file := tprint("compiled/%.spv", output_filename);
+    input_file  := tprint("%/%.slang", source_shaders_directory, filename);
+    output_file := tprint("%/%.spv", compiled_shaders_directory, output_filename);
 
     process_result := run_command(
         args = ...[
@@ -17,7 +16,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             "-profile glsl_460",
             "-target spirv",
         ],
-        working_directory = #filepath,
+        //working_directory = #filepath,
         //capture_and_return_output = false,
         //print_captured_output = false,
         //timeout_ms = -1,
@@ -36,8 +35,21 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
+
+    {
+        success := make_directory_if_it_does_not_exist(compiled_shaders_directory, recursive = true);
+        if !success {
+            log("Could not make the directory for compiled shaders: %", compiled_shaders_directory);
+            return;
+        }
+    }
+
     success : bool;
     success = slangc("debug-fragment", "debug", "fragmentMain");
     success = slangc("debug-vertex", "debug", "vertexMain");
+
     print("Compiled all shaders.\n\n");
 }
+
+#import "Process";
+#import "File";
