@@ -44,6 +44,14 @@ vertices := Vertex.[
     .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}},
 ];
 
+vertices_data_pointer : *void;
+
+mvp := Matrix4.[
+    Matrix4_Identity
+];
+
+uniform_data_pointer : *void;
+
 main :: () {
     set_working_directory_to_base_folder :: () {
         executable_path := path_strip_filename(get_path_of_running_executable());
@@ -202,18 +210,17 @@ main :: () {
 
                 // Map
                 {
-                    data : *void;
                     result := vkMapMemory(
                         device,
                         device_memory,
                         0,
                         VK_WHOLE_SIZE,
                         0,
-                        *data
+                        *vertices_data_pointer
                     );
                     assert(result == .SUCCESS);
 
-                    memcpy(data, *vertices, size_of(type_of(vertices)));
+                    memcpy(vertices_data_pointer, *vertices, size_of(type_of(vertices)));
                 }
 
                 // Bind
@@ -233,24 +240,41 @@ main :: () {
                 create_info : VkBufferCreateInfo;
                 {
                     using create_info;
-                    size = 16 * size_of(float);
+                    size = size_of(type_of(mvp));
                     usage = .UNIFORM_BUFFER;
                 }
 
                 vkCreateBuffer(device, *create_info, null, *uniform_buffer);
 
+                // Allocate
                 device_memory : VkDeviceMemory;
                 {
                     allocate_info : VkMemoryAllocateInfo;
                     {
                         using allocate_info;
-                        allocationSize = 16 * size_of(float);
-                        memoryTypeIndex = 0;
+                        allocationSize = size_of(type_of(mvp));
+                        memoryTypeIndex = 1;
                     }
 
                     vkAllocateMemory(device, *allocate_info, null, *device_memory);
                 }
 
+                // Map
+                {
+                    result := vkMapMemory(
+                        device,
+                        device_memory,
+                        0,
+                        VK_WHOLE_SIZE,
+                        0,
+                        *uniform_data_pointer
+                    );
+                    assert(result == .SUCCESS);
+
+                    memcpy(uniform_data_pointer, *mvp, size_of(type_of(mvp)));
+                }
+
+                // Bind
                 {
                     vkBindBufferMemory(
                         device,
@@ -421,6 +445,79 @@ main :: () {
 
             if it.type == .QUIT then running = false;
         }
+
+        {
+            {
+                // Model
+                model_matrix := Matrix4_Identity;
+                {
+                    quaternion : Quaternion;
+                    {
+                        now := seconds_since_init();
+                        t := cos(cast(float) now) * .5 + .5;
+                        Clamp(*t, 0, 1);
+                        z_axis := Vector3.{0, 0, 1};
+                        degrees := t * 360.0;
+
+                        theta := degrees_to_radians(degrees);
+
+                        set_from_axis_and_angle(*quaternion, z_axis, theta);
+                    }
+
+                    rotation_matrix := rotate(Matrix4_Identity, quaternion);
+
+                    //model_matrix = rotation_matrix;
+                }
+
+                // View
+                view_matrix := Matrix4_Identity; 
+                {
+                    /*
+                    look_at_vector   := Vector3.{0, 0, 1};
+                    viewpoint_vector := Vector3.{0, 0, 0};
+
+                    look_at_matrix := make_look_at_matrix(
+                        viewpoint = viewpoint_vector,
+                        look_at = look_at_vector,
+                        reference_up_vector = Vector3.{0, 1, 0},
+                        x_is_forward = false
+                    );
+
+                    view_matrix = look_at_matrix;
+                    */
+                }
+
+                // Projection
+                projection_matrix := Matrix4_Identity;
+                {
+                    generated_projection_matrix := make_projection_matrix(
+                        fov_vertical = 90.0,
+                        aspect_ratio_horizontal_over_vertical = 16.0 / 9.0,
+                        z_near = 0.001,
+                        z_far = 1000.0,
+                    );
+
+                    correction_matrix := Matrix4.{
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 0.5, 0.5,
+                        0, 0, 0, 1
+                    };
+
+                    projection_matrix = generated_projection_matrix;
+                    //projection_matrix = correction_matrix * generated_projection_matrix;
+                }
+
+                mvp[0] = 
+                    projection_matrix
+                    * view_matrix
+                    * model_matrix
+                ;
+            }
+            memcpy(uniform_data_pointer, *mvp, size_of(type_of(mvp)));
+        }
+
+        //memcpy(vertices_data_pointer, *vertices, size_of(type_of(vertices)));
 
         draw_frame();
     }
@@ -1072,24 +1169,6 @@ draw_frame :: () {
                 );
             }
 
-            // Bind Descriptor Sets
-            {
-                dynamic_offsets : [0] u32;
-                {
-                }
-
-                vkCmdBindDescriptorSets(
-                    command_buffers[index],
-                    pipelineBindPoint = .GRAPHICS,
-                    layout = pipeline_layout,
-                    firstSet = 0,
-                    descriptorSetCount = descriptor_sets.count,
-                    pDescriptorSets = descriptor_sets.data,
-                    dynamicOffsetCount = dynamic_offsets.count,
-                    pDynamicOffsets = dynamic_offsets.data
-                );
-            }
-
             // Bind Shaders
             {
                 {
@@ -1121,18 +1200,45 @@ draw_frame :: () {
 
             // Bind Data
             {
-                offsets : [1] VkDeviceSize;
+                // Vertex Buffers
                 {
-                    offsets[0] = 0;
+                    offsets : [1] VkDeviceSize;
+                    {
+                        offsets[0] = 0;
+                    }
+
+                    vkCmdBindVertexBuffers(
+                        command_buffers[index],
+                        0,
+                        1,
+                        *vertex_buffer,
+                        offsets.data,
+                    );
                 }
 
-                vkCmdBindVertexBuffers(
-                    command_buffers[index],
-                    0,
-                    1,
-                    *vertex_buffer,
-                    offsets.data,
-                );
+                // Descriptor Sets
+                {
+                    dynamic_offsets : [0] u32;
+                    {
+                    }
+
+                    bind_descriptor_sets_info : VkBindDescriptorSetsInfo;
+                    {
+                        using bind_descriptor_sets_info;
+                        stageFlags = .VERTEX;
+                        layout = pipeline_layout;
+                        firstSet = 0;
+                        descriptorSetCount = descriptor_sets.count;
+                        pDescriptorSets = descriptor_sets.data;
+                        dynamicOffsetCount = dynamic_offsets.count;
+                        pDynamicOffsets = dynamic_offsets.data;
+                    }
+
+                    vkCmdBindDescriptorSets2(
+                        command_buffers[index],
+                        *bind_descriptor_sets_info
+                    );
+                }
             }
 
             // Draw!

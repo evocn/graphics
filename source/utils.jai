@@ -3,6 +3,12 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+degrees_to_radians :: (degrees: float) -> float {
+    return degrees * PI / 180.0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 offset_of :: ($T: Type, $member: string) -> u32 {
     for type_info(T).members {
         if it.name == member return cast(u32)it.offset_in_bytes;

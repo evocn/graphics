@@ -1,6 +1,5 @@
-// Graphics
+
 // Debug Shader
-// April 2025
 
 ////////////////////////////////////////////////////////////////////////////////
 // Inputs
@@ -46,8 +45,7 @@ VertexStageOutput vertexMain(
             output.coarseVertex.color = color;
         }
 
-        //output.sv_position = mul(modelViewProjection, float4(position, 1.0));
-        output.sv_position = float4(position, 1.0);
+        output.sv_position = mul(modelViewProjection, float4(position, 1.0));
     }
 
     return output;
