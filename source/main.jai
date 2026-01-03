@@ -26,6 +26,7 @@ queue                   : VkQueue;
 
 uniform_buffer          : VkBuffer;
 vertex_buffer           : VkBuffer;
+index_buffer            : VkBuffer;
 
 descriptor_set_layouts  : [1] VkDescriptorSetLayout;
 pipeline_layout         : VkPipelineLayout;
@@ -39,12 +40,19 @@ Vertex :: struct {
 }
 
 vertices := Vertex.[
-    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}},
-    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}},
+    .{position = .{-1.0, -1.0,  0.0}, color = .{1, 0, 0}},
+    .{position = .{-1.0,  1.0,  0.0}, color = .{0, 1, 0}},
+    .{position = .{ 1.0, -1.0,  0.0}, color = .{0, 0, 1}},
+    .{position = .{ 1.0,  1.0,  0.0}, color = .{1, 1, 1}},
+];
+
+indices := u16.[
+    0, 2, 1,
+    1, 2, 3,
 ];
 
 vertices_data_pointer : *void;
+indices_data_pointer : *void;
 
 mvp := Matrix4.[
     Matrix4_Identity
@@ -232,6 +240,59 @@ main :: () {
                     vkBindBufferMemory(
                         device,
                         vertex_buffer,
+                        device_memory,
+                        0
+                    );
+                }
+            }
+
+            // Index Buffer
+            {
+                create_info : VkBufferCreateInfo;
+                {
+                    using create_info;
+                    size = size_of(type_of(indices));
+                    usage = .INDEX_BUFFER;
+                }
+
+                vkCreateBuffer(device, *create_info, null, *index_buffer);
+
+                device_memory : VkDeviceMemory;
+                {
+                    // @TODO: A more fully-featured way to specify what memory type you want things out of.
+                    memory_type_index := get_host_visible_memory_type(memory_properties);
+                    assert(memory_type_index != -1);
+
+                    allocate_info : VkMemoryAllocateInfo;
+                    {
+                        using allocate_info;
+                        allocationSize = size_of(type_of(indices));
+                        memoryTypeIndex = xx memory_type_index;
+                    }
+
+                    vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                }
+
+                // Map
+                {
+                    result := vkMapMemory(
+                        device,
+                        device_memory,
+                        0,
+                        VK_WHOLE_SIZE,
+                        0,
+                        *indices_data_pointer
+                    );
+                    assert(result == .SUCCESS);
+
+                    memcpy(indices_data_pointer, *indices, size_of(type_of(indices)));
+                }
+
+                // Bind
+                {
+                    vkBindBufferMemory(
+                        device,
+                        index_buffer,
                         device_memory,
                         0
                     );
@@ -477,7 +538,7 @@ main :: () {
                 view_matrix := Matrix4_Identity; 
                 {
                     look_at_vector   := Vector3.{0, 0, -1};
-                    viewpoint_vector := Vector3.{0, 0, 10};
+                    viewpoint_vector := Vector3.{0, 0, 5};
 
                     look_at_matrix := make_look_at_matrix(
                         viewpoint = viewpoint_vector,
@@ -1222,6 +1283,16 @@ draw_frame :: () {
                     );
                 }
 
+                // Index Buffers
+                {
+                    vkCmdBindIndexBuffer(
+                        command_buffers[index],
+                        index_buffer,
+                        0,
+                        .UINT16,
+                    );
+                }
+
                 // Descriptor Sets
                 {
                     dynamic_offsets : [0] u32;
@@ -1249,11 +1320,22 @@ draw_frame :: () {
 
             // Draw!
             {
+                /*
                 vkCmdDraw(
                     command_buffers[index],
                     vertexCount = 3,
                     instanceCount = 1,
                     firstVertex = 0,
+                    firstInstance = 0
+                );
+                */
+
+                vkCmdDrawIndexed(
+                    command_buffers[index],
+                    indexCount = indices.count,
+                    instanceCount = 1,
+                    firstIndex = 0,
+                    vertexOffset = 0,
                     firstInstance = 0
                 );
             }
