@@ -1326,4 +1326,3 @@ draw_frame :: () {
 
 #load "memory.jai";
 #load "utils.jai";
-#load "init.jai";
