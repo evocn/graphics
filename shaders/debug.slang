@@ -3,10 +3,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // Inputs
-cbuffer Uniforms
+
+// Uniform buffer
+struct CameraData
 {
     float4x4 modelViewProjection;
-}
+};
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<CameraData> Uniforms;
 
 // Per-vertex attributes to be assembled from bound vertex buffers.
 struct Vertex
@@ -45,7 +50,8 @@ VertexStageOutput vertexMain(
             output.coarseVertex.color = color;
         }
 
-        output.sv_position = mul(modelViewProjection, float4(position, 1.0));
+        //output.sv_position = float4(position, 1.0);
+        output.sv_position = mul(Uniforms.modelViewProjection, float4(position, 1.0));
     }
 
     return output;

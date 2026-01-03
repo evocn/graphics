@@ -470,15 +470,14 @@ main :: () {
 
                     rotation_matrix := rotate(Matrix4_Identity, quaternion);
 
-                    //model_matrix = rotation_matrix;
+                    model_matrix = rotation_matrix;
                 }
 
                 // View
                 view_matrix := Matrix4_Identity; 
                 {
-                    /*
-                    look_at_vector   := Vector3.{0, 0, 1};
-                    viewpoint_vector := Vector3.{0, 0, 0};
+                    look_at_vector   := Vector3.{0, 0, -1};
+                    viewpoint_vector := Vector3.{0, 0, 10};
 
                     look_at_matrix := make_look_at_matrix(
                         viewpoint = viewpoint_vector,
@@ -488,7 +487,6 @@ main :: () {
                     );
 
                     view_matrix = look_at_matrix;
-                    */
                 }
 
                 // Projection
@@ -499,23 +497,17 @@ main :: () {
                         aspect_ratio_horizontal_over_vertical = 16.0 / 9.0,
                         z_near = 0.001,
                         z_far = 1000.0,
+                        depth_range_01 = true
                     );
-
-                    correction_matrix := Matrix4.{
-                        1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 0.5, 0.5,
-                        0, 0, 0, 1
-                    };
 
                     projection_matrix = generated_projection_matrix;
                     //projection_matrix = correction_matrix * generated_projection_matrix;
                 }
 
-                mvp[0] = 
-                    projection_matrix
-                    * view_matrix
-                    * model_matrix
+                mvp[0] =
+                    projection_matrix *
+                    view_matrix *
+                    model_matrix
                 ;
             }
             memcpy(uniform_data_pointer, *mvp, size_of(type_of(mvp)));
