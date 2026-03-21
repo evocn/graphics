@@ -1,85 +1,211 @@
 VIDEO_XML_PATH :: "video.xml";
 
-#run {
-    set_build_options_dc(.{do_output = false});
+Video :: struct {
+    Constant :: struct {
+        name  : string;
+        type  : string;
+        value : string;
+    }
 
-    generate();
+    Structure_Member :: struct {
+        name              : string;
+        type              : string;
+        bitmask           : int;
+        array_prefix      : string;
+        number_of_pointer : int;
+        comment           : string;
+    }
+
+    Structure :: struct {
+        name    : string;
+        members : [..] Structure_Member;
+    }
+
+    Enum_Member :: struct {
+        name    : string;
+        alias   : string;
+        value   : string;
+        comment : string;
+    }
+
+    Enum :: struct {
+        name    : string;
+        members : [..] Enum_Member;
+    }
+
+    constants: [..] Constant;
+    structures: [..] Structure;
+    enums: [..] Enum;
 }
 
+video: Video;
+
 generate :: () {
-    at := current_time_monotonic();
-    start_time := to_float64_seconds(at);
+    start_time := current_time_monotonic();
 
     source_string, ok := read_entire_file(VIDEO_XML_PATH);
     if !ok {
         log_error("video.xml not found");
     }
 
-    root_node := parse_xml(source_string);
+    xml := parse_xml(source_string);
 
-    xml_parse_time := to_float64_seconds(current_time_monotonic());
-    log("Finished parsing video.xml in % seconds", xml_parse_time - start_time);
+    xml_parse_time := current_time_monotonic();
+    log("Finished parsing video.xml in % seconds", to_float64_seconds(xml_parse_time - start_time));
 
-    loop(root_node);
+    walk_children(*xml, 1, #code {
+        if it.text == {
+        case "types";
+            handle_types(*xml, it_index);
+        case "enums";
+            handle_enums(*xml, it_index);
+        case "extensions";
+            handle_extensions(*xml, it_index);
+        }
+    });
 
-    generation_time := to_float64_seconds(current_time_monotonic());
-    log("Finished generation in        % seconds", generation_time - xml_parse_time);
+    generation_time := current_time_monotonic();
+    log("Finished generation in        % seconds", to_float64_seconds(generation_time - xml_parse_time));
 
     output();
-    at = current_time_monotonic();
-    end_time := to_float64_seconds(at);
-    log("Finished writing to file in   % seconds", end_time - generation_time);
-    log("Video binding generated in    % seconds", end_time - start_time);
+    end_time := current_time_monotonic();
+    log("Finished writing to file in   % seconds", to_float64_seconds(end_time - generation_time));
+    log("Video binding generated in    % seconds", to_float64_seconds(end_time - start_time));
 }
 
-Video_Constant :: struct {
-    name  : string;
-    type  : string;
-    value : string;
-}
+handle_types :: (xml: *XML, idx: XML.Node.IDX) {
+    walk_children(xml, idx, #code {
+        ok, category := find_attribute(xml, it_index, "category");
+        if !ok continue;
 
-Video_Struct_Member :: struct {
-    name              : string;
-    type              : string;
-    bitmask           : int;
-    array_prefix      : string;
-    number_of_pointer : int;
-    comment           : string;
-}
-
-Video_Struct :: struct {
-    name    : string;
-    members : [..]Video_Struct_Member;
-}
-
-Video_Enum_Member :: struct {
-    name    : string;
-    alias   : string;
-    value   : string;
-    comment : string;
-}
-
-Video_Enum :: struct {
-    name    : string;
-    members : [..]Video_Enum_Member;
-}
-
-video_constants : [..]Video_Constant;
-video_structs   : [..]Video_Struct;
-video_enums     : [..]Video_Enum;
-
-
-loop :: (root_node: Node) {
-    for root_child: root_node.children {
-        if root_child.tag_name == {
-        case "types";
-            handle_types(root_child);
-        case "enums";
-            handle_enums(root_child);
-        case "extensions";
-            handle_extensions(root_child);
+        if category == {
+        case "define";
+            handle_type_define(xml, it_index);
+        case "struct";
+            handle_type_structure(xml, it_index);
         }
-    }
+    });
+}
+
+handle_type_define :: (xml: *XML, idx: XML.Node.IDX) {
+    ok, requires := find_attribute(xml, idx, "requires");
+    if !ok return;
+
+    constant: Video.Constant;
+
+    walk_children(xml, idx, #code {
+        if it.type == .ELEMENT {
+            if it.text == "name" {
+                constant.name = inner_text(xml, it_index);
+            }
+        } else {
+            if begins_with(it.text, "(") && ends_with(it.text, ")") {
+                constant.value = sprint("#run VK_MAKE_VIDEO_STD_VERSION%", it.text);
+            }
+        }
+    });
+
+    array_add(*video.constants, constant);
+}
+
+handle_type_structure :: (xml: *XML, idx: XML.Node.IDX) {
+    structure: Video.Structure;
+    ok: bool;
+    ok, structure.name = find_attribute(xml, idx, "name");
+    assert(ok);
+
+    walk_children(xml, idx, #code {
+        struct_member_node := it;
+        struct_member_idx  := it_index;
+        struct_member: Video.Structure_Member;
+
+        if struct_member_node.text == {
+        case "member";
+            walk_children(xml, it_index, #code {
+                if it.type == .ELEMENT {
+                    if it.text == {
+                    case "type";
+                        struct_member.type = convert_type(inner_text(xml, it_index));
+                    case "name";
+                        struct_member.name = inner_text(xml, it_index);
+                    case "enum";
+                        struct_member.array_prefix = sprint("[%]", inner_text(xml, it_index));
+                    case "comment";
+                        // I am not sure if this work, because comment
+                        // may not be there, the inner_text is then
+                        // points to 0 idx, and returns an empty
+                        // string.
+                        struct_member.comment = inner_text(xml, it_index);
+                    }
+                } else {
+                    s := trim(it.text);
+
+                    if begins_with(s, ":") {
+                        s = remove_left(s, ":");
+                        s = trim(s);
+                        i, ok := string_to_int(s);
+                        assert(ok);
+                        struct_member.bitmask = i;
+                    } else if begins_with(s, "[") && ends_with(s, "]") {
+                        struct_member.array_prefix = s;
+                    } else if begins_with(s, "*") {
+                        struct_member.number_of_pointer = count_pointer(s);
+                    }
+                }
+            });
+        case "comment";
+            struct_member.comment = inner_text(xml, it_index);
+        }
+        array_add(*structure.members, struct_member);
+    });
+
+    array_add(*video.structures, structure);
+}
+
+handle_enums :: (xml: *XML, idx: XML.Node.IDX) {
+    e: Video.Enum;
+    ok: bool;
+    ok, e.name = find_attribute(xml, idx, "name");
+    assert(ok);
+
+    walk_children(xml, idx, #code {
+        enum_member: Video.Enum_Member;
+        if it.text == {
+        case "enum";
+            _, enum_member.name = find_attribute(xml, it_index, "name");
+            _, enum_member.value = find_attribute(xml, it_index, "value");
+            _, enum_member.comment = find_attribute(xml, it_index, "comment");
+            _, enum_member.alias = find_attribute(xml, it_index, "alias");
+        case "comment";
+            enum_member.comment = inner_text(xml, it_index);
+        }
+        array_add(*e.members, enum_member);
+    });
+    array_add(*video.enums, e);
+}
+
+handle_extensions :: (xml: *XML, idx: XML.Node.IDX) {
+    walk_children(xml, idx, #code {
+        if it.text != "extension" continue;
+
+        extension_node := it;
+        extension_node_idx := it_index;
+
+        require_node_idx, require_node := find_element(xml, extension_node_idx, "require");
+        if require_node_idx == 0 continue;
+        walk_children(xml, require_node_idx, #code {
+            if it.text != "enum" continue;
+
+            constant: Video.Constant;
+            ok: bool;
+            ok, constant.name = find_attribute(xml, it_index, "name");
+            assert(ok);
+            ok, constant.value = find_attribute(xml, it_index, "value");
+            assert(ok);
+
+            array_add(*video.constants, constant);
+        });
+    });
 }
 
 output :: () {
@@ -92,135 +218,8 @@ output :: () {
     write_entire_file("video.jai", *sb);
 }
 
-handle_types :: (parent: Node) {
-    for n : parent.children {
-        category := get_attr(n, "category");
-        if category == {
-        case "define";
-            handle_type_define(n);
-        case "struct";
-            handle_struct(n);
-        }
-    }
-}
-
-handle_type_define :: (parent: Node) {
-    requires := get_attr(parent, "requires");
-
-    if requires.count == 0 {
-        return;
-    }
-
-    c : Video_Constant;
-
-    for n : parent.children {
-        if n.type == .NODE {
-            if n.tag_name == "name" {
-                c.name = n.inner_string;
-            }
-        } else {
-            if begins_with(n.raw_string, "(") && ends_with(n.raw_string, ")") {
-                c.value = sprint("#run VK_MAKE_VIDEO_STD_VERSION%", n.raw_string);
-            }
-        }
-    }
-
-    array_add(*video_constants, c);
-}
-
-handle_struct :: (parent: Node) {
-    s : Video_Struct;
-    s.name = get_attr(parent, "name");
-    assert(s.name.count > 0);
-
-    for member_node : parent.children {
-        m : Video_Struct_Member;
-        if member_node.tag_name == {
-        case "member";
-            for member_child : member_node.children {
-                if member_child.type == .NODE {
-                    if member_child.tag_name == {
-                    case "type";
-                        m.type = convert_type(member_child.inner_string);
-                    case "name";
-                        m.name = member_child.inner_string;
-                    case "enum";
-                        m.array_prefix = sprint("[%]", member_child.inner_string);
-                    case "comment";
-                        m.comment = member_child.inner_string;
-                    }
-                } else {
-                    s := trim(member_child.raw_string);
-
-                    if begins_with(s, ":") {
-                        s = remove_left(s, ":");
-                        s = trim(s);
-                        ok := false;
-                        m.bitmask, ok = string_to_int(s);
-                        assert(ok);
-                    } else if begins_with(s, "[") && ends_with(s, "]") {
-                        m.array_prefix = s;
-                    } else if begins_with(s, "*") {
-                        m.number_of_pointer = count_pointer(s);
-                    }
-                }
-            }
-        case "comment";
-            m.comment = member_node.inner_string;
-        }
-        array_add(*s.members, m);
-    }
-
-    array_add(*video_structs, s);
-}
-
-handle_enums :: (parent: Node) {
-    // Seems like video.xml enums only have value, which means no enum_flags.
-    e : Video_Enum;
-    e.name = get_attr(parent, "name");
-    assert(e.name.count > 0);
-
-    for member_node : parent.children {
-        m : Video_Enum_Member;
-        if member_node.tag_name ==  {
-        case "enum";
-            m.name = get_attr(member_node, "name");
-            m.value = get_attr(member_node, "value");
-            m.comment = get_attr(member_node, "comment");
-            m.alias = get_attr(member_node, "alias");
-        case "comment";
-            m.comment = member_node.inner_string;
-        }
-        array_add(*e.members, m);
-    }
-
-
-    array_add(*video_enums, e);
-}
-
-handle_extensions :: (parent: Node) {
-    for extension_node : parent.children {
-        assert(extension_node.tag_name == "extension");
-        for require_node : extension_node.children {
-            assert(require_node.tag_name == "require");
-            for member : require_node.children {
-                if member.tag_name == "enum" {
-                    c : Video_Constant;
-                    c.name = get_attr(member, "name");
-                    assert(c.name.count > 0);
-
-                    c.value = get_attr(member, "value");
-                    assert(c.value.count > 0);
-
-                    array_add(*video_constants, c);
-                }
-            }
-        }
-    }
-}
-
 output_constants :: (sb: *String_Builder) {
-    for c : video_constants {
+    for c : video.constants {
         append(sb, c.name);
         if c.type.count > 0 {
             append(sb, " : ");
@@ -245,7 +244,7 @@ output_constants :: (sb: *String_Builder) {
     }
 }
 
-output_struct_member :: (member: Video_Struct_Member, sb: *String_Builder) {
+output_struct_member :: (member: Video.Structure_Member, sb: *String_Builder) {
     if member.name.count > 0 {
         append(sb, "    ");
         append(sb, member.name);
@@ -274,13 +273,13 @@ output_struct_member :: (member: Video_Struct_Member, sb: *String_Builder) {
 }
 
 output_structs :: (sb: *String_Builder) {
-    for s : video_structs {
+    for s : video.structures {
         append(sb, s.name);
         append(sb, " :: struct {\n");
         bitmask_target  := 0;
         bitmask_type    : string;
         bitmask_current := 0;
-        bitmask_members : [..]Video_Struct_Member;
+        bitmask_members : [..]Video.Structure_Member;
 
         for m : s.members {
             if m.bitmask > 0 {
@@ -333,7 +332,7 @@ output_structs :: (sb: *String_Builder) {
 }
 
 output_enums :: (sb: *String_Builder) {
-    for e : video_enums {
+    for e : video.enums {
         append(sb, e.name);
         append(sb, " :: enum u32 {\n");
         for m : e.members {
@@ -372,9 +371,8 @@ VK_MAKE_VIDEO_STD_VERSION :: (major: u32, minor: u32, patch: u32) -> u32 {
 
 DONE
 
-#import,file "xml_parser.jai";
+#import,dir "XML";
 #import "Basic";
-#import "String";
-#import "Compiler";
 #import "File";
-#load "generate_common.jai";
+#import,file "common.jai";
+#import "String";

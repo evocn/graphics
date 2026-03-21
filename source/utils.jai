@@ -3,6 +3,23 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+get_host_visible_memory_type :: (using memory_properties: VkPhysicalDeviceMemoryProperties) -> index: int
+{ 
+    index := -1;
+    for 0..memoryTypeCount-1 {
+        type := memoryTypes[it];
+        is_host_visible := type.propertyFlags & .HOST_VISIBLE;
+        if is_host_visible {
+            index = it;
+            break;
+        }
+    }
+
+    return index;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 offset_of :: ($T: Type, $member: string) -> u32 {
     for type_info(T).members {
         if it.name == member return cast(u32)it.offset_in_bytes;
@@ -10,6 +27,18 @@ offset_of :: ($T: Type, $member: string) -> u32 {
 
     assert(false, "Type '%' does not have member '%'", T, member);
     return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+log_physical_device_properties :: (using physical_device_properties : VkPhysicalDeviceProperties) {
+    log("================================================");
+    log("Name: %", cast(string, deviceName));
+    //log("Vendor: %", vendorID);
+    //log("Device: %", deviceID);
+    log("Type: %", deviceType);
+    log("API Version: %.%.%", VK_API_VERSION_MAJOR(apiVersion), VK_API_VERSION_MINOR(apiVersion), VK_API_VERSION_PATCH(apiVersion));
+    log("================================================");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,15 +55,4 @@ debug_callback :: (flags: VkDebugReportFlagsEXT, objType: VkDebugReportObjectTyp
     }
     
     return VK_FALSE;
-}
-
-
-print_available_vulkan_extensions :: () {
-    extension_count: u32;
-    vkEnumerateInstanceExtensionProperties(null, *extension_count, null);
-    extension_array := NewArray(extension_count, VkExtensionProperties);
-    defer free(extension_array.data);
-    vkEnumerateInstanceExtensionProperties(null, *extension_count, extension_array.data);
-    print("Instance extensions:\n");
-    for extension_array print("    % (%)\n", to_string(it.extensionName.data), it.specVersion);
 }

@@ -26,6 +26,8 @@ IOSurfaceRef       :: struct {}; // Opaque struct defined by Apple’s CoreGraph
 IDirectFB          :: struct {}; // FB
 IDirectFBSurface   :: struct {}; // FB
 OHNativeWindow     :: struct {};
+OHBufferHandle     :: struct {};
+OH_NativeBuffer    :: struct {};
 MTLBuffer_id       :: *void;
 MTLCommandQueue_id :: *void;
 MTLDevice_id       :: *void;
@@ -37,7 +39,7 @@ NvSciSyncFence     :: *void;
 NvSciBufAttrList   :: *void;
 NvSciBufObj        :: *void;
 
-#if OS ==.WINDOWS {
+#if OS == .WINDOWS {
     #import "Windows";
 }
 
@@ -83,5 +85,7 @@ VkDeviceAddress   :: u64;
 #load "unions.jai";
 #load "function_pointers.jai";
 #load "video.jai";
-#load "dynamic_functions.jai";
-#load "dynamic_loader.jai";
+#load "enumeration_wrapper.jai";
+#load "functions.jai";
+#scope_file
+#import "Basic";

@@ -1,0 +1,3 @@
+[submodule "modules/Vulkan/XML"]
+	path = modules/Vulkan/XML
+	url = https://github.com/drshapeless/xml-parser.git

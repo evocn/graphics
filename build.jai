@@ -243,5 +243,6 @@ plugins: [..] *Metaprogram_Plugin;
 // Local Project Modules
 #import "ctags";
 
+// @TODO: Only compile shaders if the source files have been edited...
 #load "shaders/compile-shaders.jai";
-#run compile_shaders();
+//#run compile_shaders();

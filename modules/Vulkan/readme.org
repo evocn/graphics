@@ -1,8 +1,8 @@
 #+title: readme
 
 This is a Vulkan binding generated from vk.xml. This generator is
-written from scratch, including the xml parser. Tested on Vulkan 1.4
-and jai version beta 0.2.017.
+written from scratch, including the xml parser. Tested on Vulkan
+1.4.335 and jai version beta 0.2.026.
 
 This has no relation to osor_io's Vulkan jai binding, [[https://github.com/osor-io/osor_vulkan][osor_vulkan]].
 
@@ -26,13 +26,18 @@ You can either modify the VK_XML_PATH variable in the top of
 ~generate.jai~ or you copy the ~vk.xml~ to the current directory.
 Same for ~generate_video.jai~.
 
-Run. The execution time should be pretty fast, it is sub 1.2s on M1
-chips, and sub 1.6s on 9950x3d. (Yes, 9950x3d is slower...) The time
-needed for ~video.xml~ is negligible. Most of the time is spent on my
-naive xml parser, I may write a better one in the future.
+Run. This single command will generate both vulkan and vulkan_video
+related bindings.
 #+begin_src shell
   jai generate.jai
-  jai generate_video.jai
+#+end_src
+
+However, if you want a faster generation without waiting that few
+second, you can compile and run using this. Even with a default build,
+the generation takes sub 0.3 for running on both machine. Why? I don't
+know.
+#+begin_src shell
+  jai main.jai +Autorun
 #+end_src
 
 ~video.xml~ is parsed separately because it is unlikely to change like
@@ -57,6 +62,73 @@ I tried to steal the binding from Odin vendor library. That route was
 a lot easier and work perfectly. But generating a binding from scratch
 means that we no longer need to depends on Ginger Bill to update.
 
+* Using dynamic loader
+Using dynamic loader require three steps.
+#+begin_src jai
+  // Or any library that provide the function pointer like GLFW
+  vk_load_global_functions(xx SDL_Vulkan_GetVkGetInstanceProcAddr());
+
+  // create instance
+  vk_load_instance_functions(instance);
+
+  // create device
+  vk_load_device_functions(device);
+#+end_src
+
+If you want to use dynamic function along side with
+Vulkan_Memory_Allocator. (You can find it in the
+jai/examples/VR/modules.)
+#+begin_src jai
+  make_vma :: (instance: VkInstance, physical_device: VkPhysicalDevice, device: VkDevice) -> VkResult, VmaAllocator {
+      vma_vulkan_functions := VmaVulkanFunctions.{
+          vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+          vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+      };
+
+      create_info := VmaAllocatorCreateInfo.{
+          vulkanApiVersion = VK_API_VERSION_1_4,
+          physicalDevice = physical_device,
+          device = device,
+          instance = instance,
+          flags = VMA_BUFFER_DEVICE_ADDRESS,
+          pVulkanFunctions = *vma_vulkan_functions,
+      };
+
+      allocator: VmaAllocator;
+      result := check_vk(vmaCreateAllocator(*create_info, *allocator));
+      return result, allocator;
+  }
+#+end_src
+
+* Enumeration wrapper
+Inspired by the stock Vulkan module, I ported the enumeration wrapper
+into this library. For anything that you normally need three steps to
+get in C, it is now single line.
+
+For example you can write ~vkGetPhysicalDeviceSurfaceFormatsKHR~ like this.
+#+begin_src jai
+  result, formats := vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface,, temp);
+#+end_src
+
+Instead of this.
+#+begin_src jai
+  format_count: u32;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, *format_count, null);
+  formats := NewArray(format_count, VkSurfaceFormatKHR);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, *format_count, formats.data);
+#+end_src
+
+But there is an important difference between my library and the stock
+library. The VkResult, if it is there, is in the first slot of the
+multiple return values, which is the recommended way to write a Jai
+module.
+
+* Enum naming
+For enum value that start with a digit, the generator will prepend an
+'e' in the beginning, making it valid to compile. This is consistant
+with [[https://github.com/KhronosGroup/Vulkan-Hpp][Vulkan-Hpp]]. Maybe I could just put an underscore in front, but
+whatever.
+
 * Roadmap
 I planned to add a switch to strip the vk prefix, but have not
 implemented it yet. Also, stripping vk prefix means that any thing
@@ -75,3 +147,19 @@ Most of the vendor dependent libraries definition is hardcoded by
 hand. I may write a function to generate them instead. But because the
 size of them is still manageable by human. I don't bother to deal with
 it at the moment.
+
+* Fun facts
+My original xml-parser was a bit too primitive and I decided to write
+a proper one with isolated lexer and parser. Guess what, the rewritten
+version perform 2x to 3x slower than the original one.
+
+If you run the generation on a decent machine, it takes a few seconds,
+e.g. 4.2s on 9950x3d and 3s on M1 pro.
+
+But that is properly because I made a lot more allocation calls
+instead of referencing all the string to the original input string.
+
+Mar 6, 2026 update
+
+I rewrote the xml-parser to minimize allocation, now the generation is
+3.5s on 9950x3d.
