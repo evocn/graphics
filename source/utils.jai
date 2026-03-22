@@ -3,22 +3,24 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-get_host_visible_memory_type :: (using memory_properties: VkPhysicalDeviceMemoryProperties) -> index: int
-{ 
-    index := -1;
-    for 0..memoryTypeCount-1 {
-        type := memoryTypes[it];
-        is_host_visible := type.propertyFlags & .HOST_VISIBLE;
-        if is_host_visible {
-            index = it;
-            break;
+select_memory_type :: (memory_properties: VkPhysicalDeviceMemoryProperties, type_bits : u32, requirements_mask : VkMemoryPropertyFlagBits) -> success: bool, memory_type_index: u32
+{
+    max_bit : u32 : 31;
+    for i : 0..max_bit {
+        if type_bits & 1 {
+            if (memory_properties.memoryTypes[i].propertyFlags & requirements_mask) == requirements_mask {
+                return true, i;
+            }
         }
     }
-
-    return index;
+    return false, 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+align_up :: (size : u64, power_of_two_alignment : u64) -> aligned: u64 {
+    return (size + (power_of_two_alignment - 1)) & ~(power_of_two_alignment - 1);
+}
 
 offset_of :: ($T: Type, $member: string) -> u32 {
     for type_info(T).members {

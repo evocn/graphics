@@ -16,6 +16,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             tprint("-entry %", entry_point),
             "-profile glsl_460",
             "-target spirv",
+            "-capability SPV_EXT_descriptor_heap",
         ],
         working_directory = #filepath,
         //capture_and_return_output = false,
@@ -37,7 +38,12 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
     success : bool;
-    success = slangc("debug-fragment", "debug", "fragmentMain");
-    success = slangc("debug-vertex", "debug", "vertexMain");
+
+    //success = slangc("debug-vertex", "debug", "vertex_main");
+    //success = slangc("debug-fragment", "debug", "fragment_main");
+
+    success = slangc("material-vertex", "material", "vertex_main");
+    success = slangc("material-fragment", "material", "fragment_main");
+
     print("Compiled all shaders.\n\n");
 }

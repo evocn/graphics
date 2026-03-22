@@ -1,11 +1,12 @@
 // Graphics
-// Debug Shader
+// Material Shader
 
 ////////////////////////////////////////////////////////////////////////////////
 // Structs
 
 struct Coarse_Vertex {
     float3 color;
+    float2 uv;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,27 +29,37 @@ Vertex_Stage_Output vertex_main(Vertex vertex) {
 
     Vertex_Stage_Output output;
     {
-        output.coarse_vertex.color = color;
+        {
+            output.coarse_vertex.color = color;
+            output.coarse_vertex.uv = float2(0.0, 0.0);
+        }
+
         output.sv_position = float4(position, 1.0);
     }
 
     return output;
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Fragment Shader
 
+uniform StructuredBuffer<DescriptorHandle<Texture2D>> textures;
+uniform StructuredBuffer<DescriptorHandle<Sampler2D>> samplers;
+uniform int sampler_index;
+
 struct Fragment_Stage_Output {
-    float4 color;
+    float3 color;
 }
 
 [shader("fragment")]
 Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
     float3 color = coarse_vertex.color;
+    float4 texture_color = samplers[sampler_index].Sample(coarse_vertex.uv);
 
     Fragment_Stage_Output output;
     {
-        output.color = float4(color, 1.0);
+        output.color = lerp(texture_color.xyz, color, 0.5);
     }
     return output;
 }

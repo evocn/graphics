@@ -1,5 +1,7 @@
+// Graphics
+// Main
 
-DEBUG :: true;
+DEVELOPER_TOOLS :: #run BUILD_TYPE == .DEBUG;
 
 program_state : struct {
     using window_context : struct {
@@ -22,7 +24,23 @@ using vulkan_context : struct {
             compute  : int = -1;
             transfer : int = -1;
         }
+
         memory_properties : VkPhysicalDeviceMemoryProperties;
+
+        using properties : struct {
+            properties2 : VkPhysicalDeviceProperties2;
+            descriptor_heap_properties      : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+        }
+
+        using features : struct {
+            features2           : VkPhysicalDeviceFeatures2;
+            vulkan_1_1_features : VkPhysicalDeviceVulkan11Features;
+            vulkan_1_2_features : VkPhysicalDeviceVulkan12Features;
+            vulkan_1_3_features : VkPhysicalDeviceVulkan13Features;
+            vulkan_1_4_features : VkPhysicalDeviceVulkan14Features;
+            shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
+            unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
+        }
     }
 
     device  : VkDevice;
@@ -41,20 +59,34 @@ using vulkan_context : struct {
     using render_context : struct {
         FRAMES_IN_FLIGHT :: 2;
         frame_index : u64 = 0;
-        command_pool : VkCommandPool;
-        timeline_semaphore : VkSemaphore;
+        timeline_semaphore  : VkSemaphore;
+        command_pool        : VkCommandPool;
         command_buffers             : [FRAMES_IN_FLIGHT] VkCommandBuffer;
         image_available_semaphores  : [FRAMES_IN_FLIGHT] VkSemaphore;
         present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
+
+        using descriptor_heap : struct {
+            image_descriptor_stride     : VkDeviceSize;
+            sampler_descriptor_stride   : VkDeviceSize;
+
+            descriptor_heap_buffer  : VkBuffer;
+            descriptor_heap_memory  : VkDeviceMemory;
+
+            descriptor_heap_cpu_map : *void;
+            resource_heap_cpu_map   : *void;
+            sampler_heap_cpu_map    : *void;
+
+            bind_resource_heap_info : VkBindHeapInfoEXT;
+            bind_sampler_heap_info  : VkBindHeapInfoEXT;
+
+            first_image_id      : u32;
+            first_sampler_id    : u32;
+        }
     }
 
-    using data : struct {
+    using scene_data : struct {
         uniform_buffer          : VkBuffer;
         vertex_buffer           : VkBuffer;
-
-        descriptor_set_layouts  : [1] VkDescriptorSetLayout;
-        pipeline_layout         : VkPipelineLayout;
-        descriptor_sets         : [1] VkDescriptorSet;
 
         shaders                 : [2] VkShaderEXT;
     }
@@ -63,12 +95,13 @@ using vulkan_context : struct {
 Vertex :: struct {
     position    : Vector3;
     color       : Vector3;
+    uv          : Vector2;
 }
 
 vertices := Vertex.[
-    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}},
-    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}},
+    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{.5, .5}},
+    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}, uv = .{0, 0}},
+    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1, 1}},
 ];
 
 main :: () {
@@ -94,6 +127,27 @@ main :: () {
         vkGIPA := GetProcAddress(vulkan_library, "vkGetInstanceProcAddr");
         vk_load_global_functions(vkGIPA);
     }
+
+    // Load Texture Data
+    {
+        log("Loading our textures...");
+        for texture_name : textures_to_load {
+            width, height : s32;
+            desired_channels :: 4;
+            channels : s32;
+
+            full_texture_path := tprint("%/%.png", textures_path, texture_name);
+            data := stbi_load(
+                temp_c_string(full_texture_path),
+                *width, *height,
+                channels_in_file = *channels,
+                desired_channels = desired_channels);
+            assert(desired_channels == channels);
+            log("- Loaded %", texture_name);
+        }
+
+        log("\n");
+    }
   
     init_instance();
     defer deinit_instance();
@@ -115,288 +169,98 @@ main :: () {
         //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.transfer, queueIndex=0, *transfer_queue);
     }
 
+    init_descriptor_heap();
+    defer deinit_descriptor_heap();
+
     init_swapchain();
     defer deinit_swapchain();
 
+    init_render();
+    defer deinit_render();
+
     result : VkResult;
 
-    // Descriptor Sets
+    // Data
     {
-        // Descriptor Set Layouts
+        // Vertex Buffer
         {
-            using descriptor_set_layouts[0];
-            layout := *descriptor_set_layouts[0];
-
-            bindings : [2] VkDescriptorSetLayoutBinding;
             {
-                {
-                    using bindings[0];
-                    binding = 0;
-                    descriptorType = .UNIFORM_BUFFER;
-                    descriptorCount = 1;
-                    stageFlags = .VERTEX;
-                }
+                using create_info : VkBufferCreateInfo;
+                size = size_of(type_of(vertices));
+                usage = .VERTEX_BUFFER;
 
-                {
-                    using bindings[1];
-                    binding = 0;
-                    descriptorType = .UNIFORM_BUFFER;
-                    descriptorCount = 0;
-                    stageFlags = .FRAGMENT;
-                }
-            }
-
-            {
-                using create_info : VkDescriptorSetLayoutCreateInfo;
-                flags = 0;
-                bindingCount = 1;
-                pBindings = bindings.data;
-
-                result = vkCreateDescriptorSetLayout(device, *create_info, null, layout);
-                assert(result == .SUCCESS);
-            }
-        }
-
-        // Pipeline Layout
-        {
-            using create_info : VkPipelineLayoutCreateInfo;
-            setLayoutCount = descriptor_set_layouts.count;
-            pSetLayouts = descriptor_set_layouts.data;
-            pushConstantRangeCount = 0;
-            pPushConstantRanges = null;
-
-            result = vkCreatePipelineLayout(device, *create_info, null, *pipeline_layout);
-            assert(result == .SUCCESS);
-        }
-
-        descriptor_pool : VkDescriptorPool;
-        {
-            pool_sizes : [1] VkDescriptorPoolSize;
-            {
-                {
-                    using pool_sizes[0];
-                    type = .UNIFORM_BUFFER;
-                    descriptorCount = 100;
-                }
-            }
-
-            {
-                using create_info : VkDescriptorPoolCreateInfo;
-                poolSizeCount = pool_sizes.count;
-                pPoolSizes = pool_sizes.data;
-                maxSets = 100;
-
-                vkCreateDescriptorPool(device, *create_info, null, *descriptor_pool);
-            }
-        }
-
-        // Data
-        {
-            // Vertex Buffer
-            {
-                {
-                    using create_info : VkBufferCreateInfo;
-                    size = size_of(type_of(vertices));
-                    usage = .VERTEX_BUFFER;
-
-                    result = vkCreateBuffer(device, *create_info, null, *vertex_buffer);
-                    assert(result == .SUCCESS);
-                }
-
-                memory_requirements : VkMemoryRequirements;
-                vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
-
-                device_memory : VkDeviceMemory;
-                {
-                    // @TODO: A more fully-featured way to specify what memory type you want things out of.
-                    memory_type_index := get_host_visible_memory_type(physical_device_context.memory_properties);
-                    assert(memory_type_index != -1);
-
-                    {
-                        using allocate_info : VkMemoryAllocateInfo;
-                        allocationSize = memory_requirements.size;
-                        memoryTypeIndex = xx memory_type_index;
-
-                        result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
-                        assert(result == .SUCCESS);
-                    }
-                }
-
-                // Map
-                {
-                    data : *void;
-                    result := vkMapMemory(
-                        device,
-                        device_memory,
-                        0,
-                        VK_WHOLE_SIZE,
-                        0,
-                        *data
-                    );
-                    assert(result == .SUCCESS);
-
-                    memcpy(data, *vertices, size_of(type_of(vertices)));
-                }
-
-                result = vkBindBufferMemory(device, vertex_buffer, device_memory, 0);
+                result = vkCreateBuffer(device, *create_info, null, *vertex_buffer);
                 assert(result == .SUCCESS);
             }
 
-            // Uniform Buffer
+            // @TODO: Track and free this memory.
+            memory_requirements : VkMemoryRequirements;
+            vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
+
+            device_memory : VkDeviceMemory;
             {
-                {
-                    using buffer_create_info : VkBufferCreateInfo;
-                    size = 16 * size_of(float);
-                    usage = .UNIFORM_BUFFER;
+                success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .HOST_VISIBLE);
+                assert(success);
+                assert(memory_type_index != -1);
 
-                    vkCreateBuffer(device, *buffer_create_info, null, *uniform_buffer);
-                }
-
-                device_memory : VkDeviceMemory;
                 {
-                    allocate_info : VkMemoryAllocateInfo;
-                    {
-                        using allocate_info;
-                        allocationSize = 16 * size_of(float);
-                        memoryTypeIndex = 0;
-                    }
+                    using allocate_info : VkMemoryAllocateInfo;
+                    allocationSize = memory_requirements.size;
+                    memoryTypeIndex = xx memory_type_index;
 
                     result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
                     assert(result == .SUCCESS);
-
-                    result = vkBindBufferMemory(device, uniform_buffer, device_memory, 0);
-                    assert(result == .SUCCESS);
                 }
             }
+
+            // Map
+            {
+                data : *void;
+                result := vkMapMemory(
+                    device,
+                    device_memory,
+                    0,
+                    VK_WHOLE_SIZE,
+                    0,
+                    *data
+                );
+                assert(result == .SUCCESS);
+
+                memcpy(data, *vertices, size_of(type_of(vertices)));
+            }
+
+            result = vkBindBufferMemory(device, vertex_buffer, device_memory, 0);
+            assert(result == .SUCCESS);
         }
 
-        // Descriptor Sets
+        // Uniform Buffer
         {
             {
-                using descriptor_sets[0];
-                set := *descriptor_sets[0];
+                using buffer_create_info : VkBufferCreateInfo;
+                size = 16 * size_of(float);
+                usage = .UNIFORM_BUFFER;
 
-                // Allocate
+                vkCreateBuffer(device, *buffer_create_info, null, *uniform_buffer);
+            }
+
+            // @TODO: Track and free this memory.
+            device_memory : VkDeviceMemory;
+            {
+                allocate_info : VkMemoryAllocateInfo;
                 {
-                    using allocation_info : VkDescriptorSetAllocateInfo;
-                    descriptorPool = descriptor_pool;
-                    descriptorSetCount = descriptor_set_layouts.count;
-                    pSetLayouts = descriptor_set_layouts.data;
-
-                    result = vkAllocateDescriptorSets(device, *allocation_info, set);
-                    assert(result == .SUCCESS);
+                    using allocate_info;
+                    allocationSize = 16 * size_of(float);
+                    memoryTypeIndex = 0;
                 }
 
-                // Update
-                {
-                    write_descriptor_sets : [1] VkWriteDescriptorSet;
-                    {
-                        {
-                            using write_descriptor_sets[0];
+                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                assert(result == .SUCCESS);
 
-                            descriptor_buffer_info : VkDescriptorBufferInfo;
-                            {
-                                using descriptor_buffer_info;
-                                buffer = uniform_buffer;
-                                offset = 0;
-                                range = VK_WHOLE_SIZE;
-                            }
-
-                            dstSet = set.*;
-                            dstBinding = 0;
-                            dstArrayElement = 0;
-                            descriptorCount = 1;
-                            descriptorType = .UNIFORM_BUFFER;
-                            pBufferInfo = *descriptor_buffer_info;
-                        }
-                    }
-                    vkUpdateDescriptorSets(device, write_descriptor_sets.count, write_descriptor_sets.data, 0, null);
-                }
+                result = vkBindBufferMemory(device, uniform_buffer, device_memory, 0);
+                assert(result == .SUCCESS);
             }
         }
     }
-
-    // Shader Objects
-    {
-        // Read spirv from file
-        spirv : [2] string;
-        {
-            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug-vertex.spv");
-
-            success : bool;
-            spirv[0], success = read_entire_file(shader_file_path);
-            assert(success, "Unable to read shader file %", shader_file_path);
-        }
-
-        {
-            shader_file_path := tprint("%/%", compiled_shaders_directory, "debug-fragment.spv");
-
-            success : bool;
-            spirv[1], success = read_entire_file(shader_file_path);
-            assert(success, "Unable to read shader file %", shader_file_path);
-        }
-
-        // Shader Object Create Infos
-        {
-            shader_create_infos : [2] VkShaderCreateInfoEXT;
-
-            {
-                using shader_create_infos[0];
-                flags = .LINK_STAGE;
-
-                stage       = .VERTEX;
-                nextStage   = .FRAGMENT;
-
-                codeType    = .SPIRV;
-                codeSize    = xx spirv[0].count;
-                pCode       = spirv[0].data;
-
-                pName       = "main";
-
-                setLayoutCount = descriptor_set_layouts.count;
-                pSetLayouts = descriptor_set_layouts.data;
-
-                pushConstantRangeCount = 0;
-                pPushConstantRanges = null;
-                pSpecializationInfo = null;
-            }
-
-            {
-                using shader_create_infos[1];
-                flags = .LINK_STAGE;
-
-                stage       = .FRAGMENT;
-                nextStage   = 0;
-
-                codeType    = .SPIRV;
-                codeSize    = xx spirv[1].count;
-                pCode       = spirv[1].data;
-
-                pName       = "main";
-
-                setLayoutCount = descriptor_set_layouts.count;
-                pSetLayouts = descriptor_set_layouts.data;
-
-                pushConstantRangeCount = 0;
-                pPushConstantRanges = null;
-                pSpecializationInfo = null;
-            }
-
-            result = vkCreateShadersEXT(device,
-                shader_create_infos.count, shader_create_infos.data,
-                null,
-                shaders.data
-            );
-
-            if (result != .SUCCESS)
-            {
-                log("fuck!");
-            }
-        }
-    }
-
-    init_render();
-    defer deinit_render();
 
     // Wait until all GPU initialization work is complete before proceeding.
     vkDeviceWaitIdle(device);
@@ -446,7 +310,7 @@ init_instance :: () {
             #assert(false);
         }
 
-        #if DEBUG {
+        #if DEVELOPER_TOOLS {
             array_add(*instance_extensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME.data);
         }
 
@@ -455,7 +319,7 @@ init_instance :: () {
 
         enabled_layers: [..] *u8;
 
-        #if DEBUG {
+        #if DEVELOPER_TOOLS {
             array_add(*enabled_layers, "VK_LAYER_KHRONOS_validation");
         }
 
@@ -466,7 +330,7 @@ init_instance :: () {
         assert(result == .SUCCESS);
     }
 
-    #if DEBUG {
+    #if DEVELOPER_TOOLS {
         vkCreateDebugReportCallbackEXT  : PFN_vkCreateDebugReportCallbackEXT = xx vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
         vkDestroyDebugReportCallbackEXT : PFN_vkDestroyDebugReportCallbackEXT = xx vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
         vkDebugReportMessageEXT         : PFN_vkDebugReportMessageEXT = xx vkGetInstanceProcAddr(instance, "vkDebugReportMessageEXT");
@@ -489,7 +353,7 @@ init_instance :: () {
 
 
 deinit_instance :: () {
-    #if DEBUG {
+    #if DEVELOPER_TOOLS {
         if vkDestroyDebugReportCallbackEXT && debug_callback_handle {
             vkDestroyDebugReportCallbackEXT(instance, debug_callback_handle, null);
         }
@@ -659,42 +523,50 @@ init_device :: () {
             array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
             array_add(*device_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data);
             array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
+            array_add(*device_extensions, VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data);
             array_add(*device_extensions, VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data);
 
             enabledExtensionCount   = xx device_extensions.count;
             ppEnabledExtensionNames = device_extensions.data;
 
-            // Enabled Features
-            unified_image_layout_features := VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR.{unifiedImageLayouts = VK_TRUE, pNext = null};
-            shader_object_features := VkPhysicalDeviceShaderObjectFeaturesEXT.{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
-
-            vulkan_1_4_features := VkPhysicalDeviceVulkan14Features.{pNext = *shader_object_features};
-
-            vulkan_1_3_features := VkPhysicalDeviceVulkan13Features.{pNext = *vulkan_1_4_features};
+            // Properties
             {
-                using vulkan_1_3_features;
-                dynamicRendering = VK_TRUE;
-                synchronization2 = VK_TRUE;
+                descriptor_heap_properties = .{pNext = null};
+                properties2 = .{pNext = *descriptor_heap_properties};
+                vkGetPhysicalDeviceProperties2(physical_device, *properties2);
             }
 
-            vulkan_1_2_features := VkPhysicalDeviceVulkan12Features.{pNext = *vulkan_1_3_features};
+            // Features
             {
-                using vulkan_1_2_features;
-                timelineSemaphore = VK_TRUE;
+                unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = null};
+                shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
+                vulkan_1_4_features = .{pNext = *shader_object_features};
+                vulkan_1_3_features = .{pNext = *vulkan_1_4_features};
+                {
+                    using vulkan_1_3_features;
+                    dynamicRendering = VK_TRUE;
+                    synchronization2 = VK_TRUE;
+                }
+                vulkan_1_2_features = .{pNext = *vulkan_1_3_features};
+                {
+                    using vulkan_1_2_features;
+                    timelineSemaphore = VK_TRUE;
+                    bufferDeviceAddress = VK_TRUE;
+                    runtimeDescriptorArray = VK_TRUE;
+                }
+                vulkan_1_1_features = .{pNext = *vulkan_1_2_features};
+                {
+                    using vulkan_1_1_features;
+                }
+                vkGetPhysicalDeviceFeatures2(physical_device, *features2);
+                {
+                    using features2.features;
+                    geometryShader = VK_FALSE;
+                    tessellationShader = VK_FALSE;
+                }
             }
 
-            vulkan_1_1_features := VkPhysicalDeviceVulkan11Features.{pNext = *vulkan_1_2_features};
-            {
-                using vulkan_1_1_features;
-            }
-
-            features2 : VkPhysicalDeviceFeatures2;
-            vkGetPhysicalDeviceFeatures2(physical_device, *features2);
             features2.pNext = *vulkan_1_1_features;
-
-            features2.features.geometryShader = VK_FALSE;
-            features2.features.tessellationShader = VK_FALSE;
-
             pNext = *features2;
 
             result = vkCreateDevice(physical_device, *device_create_info, null, *device);
@@ -707,12 +579,109 @@ deinit_device :: () {
     vkDestroyDevice(device, null);
 }
 
+init_descriptor_heap :: () {
+    result : VkResult;
+    using physical_device_context;
+
+    image_descriptor_stride = descriptor_heap_properties.imageDescriptorSize;
+    sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;
+
+    max_image_descriptors   :: 1;
+    max_sampler_descriptors :: 1;
+    resource_heap_size := align_up(
+        align_up(max_image_descriptors * image_descriptor_stride, descriptor_heap_properties.imageDescriptorAlignment) + descriptor_heap_properties.minResourceHeapReservedRange,
+        descriptor_heap_properties.resourceHeapAlignment);
+    sampler_heap_size := align_up(
+        align_up(max_sampler_descriptors * sampler_descriptor_stride, descriptor_heap_properties.samplerDescriptorAlignment) + descriptor_heap_properties.minSamplerHeapReservedRange,
+        descriptor_heap_properties.samplerHeapAlignment);
+    descriptor_heap_size := align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment) + resource_heap_size;
+
+    {
+        using buffer_create_info : VkBufferCreateInfo;
+        size = descriptor_heap_size;
+        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS;
+
+        result = vkCreateBuffer(device, *buffer_create_info, null, *descriptor_heap_buffer);
+        assert(result == .SUCCESS);
+    }
+
+    // Allocate Memory for the buffer.
+    memory_requirements : VkMemoryRequirements;
+    vkGetBufferMemoryRequirements(device, descriptor_heap_buffer, *memory_requirements);
+
+    {
+        success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE);
+        assert(success);
+        assert(memory_type_index != -1);
+
+        {
+            memory_allocate_flags_info : VkMemoryAllocateFlagsInfo;
+            {
+                using memory_allocate_flags_info;
+                flags = .DEVICE_ADDRESS;
+            }
+
+            using memory_allocate_info : VkMemoryAllocateInfo;
+            pNext = *memory_allocate_flags_info;
+            allocationSize = memory_requirements.size;
+            memoryTypeIndex = xx memory_type_index;
+
+            result = vkAllocateMemory(device, *memory_allocate_info, null, *descriptor_heap_memory);
+            assert(result == .SUCCESS);
+        }
+    }
+
+    
+    result = vkBindBufferMemory(device, descriptor_heap_buffer, descriptor_heap_memory, 0);
+    assert(result == .SUCCESS);
+
+    result = vkMapMemory(device, descriptor_heap_memory, 0, VK_WHOLE_SIZE, 0, *descriptor_heap_cpu_map);
+    assert(result == .SUCCESS);
+    assert(descriptor_heap_cpu_map != null);
+
+    device_address_info := VkBufferDeviceAddressInfo.{buffer = descriptor_heap_buffer};
+    device_address := vkGetBufferDeviceAddress(device, *device_address_info);
+
+    // Binding Infos
+    {
+        // Sampler
+        {
+            using bind_sampler_heap_info;
+            heapRange = .{
+                address = device_address,
+                size = sampler_heap_size,
+            };
+            reservedRangeOffset = 0;
+            reservedRangeSize = descriptor_heap_properties.minSamplerHeapReservedRange;
+        }
+        sampler_heap_cpu_map = descriptor_heap_cpu_map + descriptor_heap_properties.minSamplerHeapReservedRange;
+
+        // Resource 
+        {
+            using bind_resource_heap_info;
+            heapRange = .{
+                address = device_address + align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment),
+                size = resource_heap_size,
+            };
+            reservedRangeOffset = 0;
+            reservedRangeSize = descriptor_heap_properties.minResourceHeapReservedRange;
+        }
+        resource_heap_cpu_map = descriptor_heap_cpu_map + align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment) + descriptor_heap_properties.minResourceHeapReservedRange;
+    }
+
+    first_image_id    = cast(u32, (descriptor_heap_properties.minResourceHeapReservedRange + image_descriptor_stride - 1) / image_descriptor_stride);
+    first_sampler_id  = cast(u32, (descriptor_heap_properties.minSamplerHeapReservedRange + sampler_descriptor_stride - 1) / sampler_descriptor_stride);
+}
+
+deinit_descriptor_heap :: () {
+    // @TODO
+}
 
 init_swapchain :: () {
     result : VkResult;
     using physical_device_context;
 
-    // Use first available format
+    // Use first available surface format
     surface_format_count : u32 = ---;
     surface_formats : [..] VkSurfaceFormatKHR;
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, *surface_format_count, null);
@@ -739,7 +708,7 @@ init_swapchain :: () {
     array_resize(*present_modes, present_mode_count, initialize=false);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, *present_mode_count, present_modes.data);
 
-    chosen_present_mode : VkPresentModeKHR = .FIFO;   // always supported.
+    chosen_present_mode : VkPresentModeKHR = .FIFO; // always supported.
     for present_mode : present_modes {
         if present_mode == .MAILBOX {
             chosen_present_mode = .MAILBOX;
@@ -831,28 +800,33 @@ deinit_swapchain :: () {
     vkDestroySwapchainKHR(device, swapchain_context.swapchain, null);
 }
 
-
 init_render :: () {
     result : VkResult;
 
+    // Command Buffers
     {
-        using command_pool_create_info: VkCommandPoolCreateInfo;
-        flags            = .RESET_COMMAND_BUFFER;
-        queueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
-        result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
-        assert(result == .SUCCESS);
+        // Pool
+        {
+            using command_pool_create_info: VkCommandPoolCreateInfo;
+            flags            = .RESET_COMMAND_BUFFER;
+            queueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
+            result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
+            assert(result == .SUCCESS);
+        }
+
+        {
+            using command_buffer_allocate_info: VkCommandBufferAllocateInfo;
+            commandPool        = command_pool;
+            level              = .PRIMARY;
+            commandBufferCount = FRAMES_IN_FLIGHT;
+            result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
+            assert(result == .SUCCESS);
+        }
     }
 
+    // Semaphores
     {
-        using command_buffer_allocate_info: VkCommandBufferAllocateInfo;
-        commandPool        = command_pool;
-        level              = .PRIMARY;
-        commandBufferCount = FRAMES_IN_FLIGHT;
-        result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
-        assert(result == .SUCCESS);
-    }
-
-    {
+        // Render / Present
         {
             using semaphore_create_info: VkSemaphoreCreateInfo;
             for image_index : 0..swapchain_context.image_count-1 {
@@ -863,6 +837,7 @@ init_render :: () {
             }
         }
 
+        // Timeline
         {
             semaphore_type_create_info : VkSemaphoreTypeCreateInfo;
             {
@@ -877,6 +852,73 @@ init_render :: () {
             vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
         }
     }
+
+    // Shaders
+    {
+        // Read spirv from file
+        spirv : [2] string;
+        {
+            read_shader_file :: (name: string) -> spirv: string
+            {
+                shader_file_path := tprint("%/%", compiled_shaders_directory, tprint("%.spv", name));
+
+                spirv, success := read_entire_file(shader_file_path);
+                assert(success, "Unable to read shader file %", shader_file_path);
+
+                return spirv;
+            }
+            spirv[0] = read_shader_file("material-vertex");
+            spirv[1] = read_shader_file("material-fragment");
+        }
+
+        // Shader Object Create Infos
+        {
+            shader_create_infos : [2] VkShaderCreateInfoEXT;
+
+            {
+                using shader_create_infos[0];
+                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
+
+                stage       = .VERTEX;
+                nextStage   = .FRAGMENT;
+
+                codeType    = .SPIRV;
+                codeSize    = xx spirv[0].count;
+                pCode       = spirv[0].data;
+
+                pName       = "main";
+
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            {
+                using shader_create_infos[1];
+                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
+
+                stage       = .FRAGMENT;
+                nextStage   = 0;
+
+                codeType    = .SPIRV;
+                codeSize    = xx spirv[1].count;
+                pCode       = spirv[1].data;
+
+                pName       = "main";
+
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            result = vkCreateShadersEXT(device,
+                shader_create_infos.count, shader_create_infos.data,
+                null,
+                shaders.data
+            );
+            assert(result == .SUCCESS);
+        }
+    }
 }
 
 deinit_render :: () {
@@ -889,34 +931,39 @@ deinit_render :: () {
     vkDestroyCommandPool(device, command_pool, null);
 }
 
-set_draw_state :: (index: u64) {
-    vkCmdSetRasterizerDiscardEnable(command_buffers[index], VK_FALSE);
-    vkCmdSetPrimitiveRestartEnable(command_buffers[index],  VK_FALSE);
+bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
+    vkCmdBindSamplerHeapEXT(command_buffer, *bind_sampler_heap_info);
+    vkCmdBindResourceHeapEXT(command_buffer, *bind_resource_heap_info);
+}
 
-    vkCmdSetPrimitiveTopology(command_buffers[index],       .TRIANGLE_LIST);
+set_draw_state :: (command_buffer: VkCommandBuffer) {
+    vkCmdSetRasterizerDiscardEnable(command_buffer, VK_FALSE);
+    vkCmdSetPrimitiveRestartEnable(command_buffer,  VK_FALSE);
 
-    vkCmdSetDepthTestEnable(command_buffers[index],         VK_FALSE);
-    vkCmdSetDepthWriteEnable(command_buffers[index],        VK_FALSE);
-    vkCmdSetDepthBiasEnable(command_buffers[index],         VK_FALSE);
-    vkCmdSetDepthBoundsTestEnable(command_buffers[index],   VK_FALSE);
-    vkCmdSetDepthClampEnableEXT(command_buffers[index],     VK_FALSE);
+    vkCmdSetPrimitiveTopology(command_buffer,       .TRIANGLE_LIST);
 
-    vkCmdSetStencilTestEnable(command_buffers[index],       VK_FALSE);
+    vkCmdSetDepthTestEnable(command_buffer,         VK_FALSE);
+    vkCmdSetDepthWriteEnable(command_buffer,        VK_FALSE);
+    vkCmdSetDepthBiasEnable(command_buffer,         VK_FALSE);
+    vkCmdSetDepthBoundsTestEnable(command_buffer,   VK_FALSE);
+    vkCmdSetDepthClampEnableEXT(command_buffer,     VK_FALSE);
 
-    vkCmdSetPolygonModeEXT(command_buffers[index],          .FILL);
-    vkCmdSetFrontFace(command_buffers[index],               .CLOCKWISE);
-    vkCmdSetCullMode(command_buffers[index],                .BACK);
+    vkCmdSetStencilTestEnable(command_buffer,       VK_FALSE);
 
-    vkCmdSetAlphaToOneEnableEXT(command_buffers[index],     VK_FALSE);
-    vkCmdSetAlphaToCoverageEnableEXT(command_buffers[index],VK_FALSE);
-    vkCmdSetLogicOpEnableEXT(command_buffers[index],        VK_FALSE);
+    vkCmdSetPolygonModeEXT(command_buffer,          .FILL);
+    vkCmdSetFrontFace(command_buffer,               .CLOCKWISE);
+    vkCmdSetCullMode(command_buffer,                .BACK);
+
+    vkCmdSetAlphaToOneEnableEXT(command_buffer,     VK_FALSE);
+    vkCmdSetAlphaToCoverageEnableEXT(command_buffer,VK_FALSE);
+    vkCmdSetLogicOpEnableEXT(command_buffer,        VK_FALSE);
 
     color_blend_enables : [1] VkBool32;
     {
         color_blend_enables[0] = VK_FALSE;
     }
 
-    vkCmdSetColorBlendEnableEXT(command_buffers[index],
+    vkCmdSetColorBlendEnableEXT(command_buffer,
         firstAttachment = 0,
         attachmentCount = color_blend_enables.count,
         pColorBlendEnables = color_blend_enables.data,
@@ -926,15 +973,15 @@ set_draw_state :: (index: u64) {
     {
         color_write_masks[0] = .R | .G | .B | .A;
     }
-    vkCmdSetColorWriteMaskEXT(command_buffers[index],
+    vkCmdSetColorWriteMaskEXT(command_buffer,
         firstAttachment = 0,
         attachmentCount = color_write_masks.count,
         pColorWriteMasks = color_write_masks.data
     );
 
-    vkCmdSetRasterizationSamplesEXT(command_buffers[index], .e1);
+    vkCmdSetRasterizationSamplesEXT(command_buffer, .e1);
     sample_mask : VkSampleMask = 1;
-    vkCmdSetSampleMaskEXT(command_buffers[index], .e1, *sample_mask);
+    vkCmdSetSampleMaskEXT(command_buffer, .e1, *sample_mask);
 
 
     {
@@ -950,7 +997,7 @@ set_draw_state :: (index: u64) {
                 maxDepth = 1;
             }
         }
-        vkCmdSetViewportWithCount(command_buffers[index], viewports.count, viewports.data);
+        vkCmdSetViewportWithCount(command_buffer, viewports.count, viewports.data);
     }
 
     {
@@ -962,7 +1009,7 @@ set_draw_state :: (index: u64) {
                 extent = swapchain_context.extent;
             }
         }
-        vkCmdSetScissorWithCount(command_buffers[index], scissors.count, scissors.data);
+        vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
     }
 
     // Vertex Input
@@ -978,29 +1025,14 @@ set_draw_state :: (index: u64) {
             }
         }
 
-        vertex_input_attribute_descriptions : [2] VkVertexInputAttributeDescription2EXT;
-        {
-            // Position
-            {
-                using vertex_input_attribute_descriptions[0];
-                location    = 0;
-                binding     = 0;
-                format      = .R32G32B32_SFLOAT;
-                offset      = offset_of(Vertex, "position");
-            }
-
-            // Color
-            {
-                using vertex_input_attribute_descriptions[1];
-                location    = 1;
-                binding     = 0;
-                format      = .R32G32B32_SFLOAT;
-                offset      = offset_of(Vertex, "color");
-            }
-        }
+        vertex_input_attribute_descriptions := VkVertexInputAttributeDescription2EXT.[
+            .{ location = 0, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "position") },
+            .{ location = 1, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "color") },
+            .{ location = 2, binding = 0, format = .R32G32_SFLOAT,    offset = offset_of(Vertex, "uv") },
+        ];
 
         vkCmdSetVertexInputEXT(
-            command_buffers[index],
+            command_buffer,
             vertex_input_binding_descriptions.count,
             vertex_input_binding_descriptions.data,
             vertex_input_attribute_descriptions.count,
@@ -1009,7 +1041,7 @@ set_draw_state :: (index: u64) {
     }
 }
 
-u64_low, u64_high :: #run get_integer_range(u64);
+u64_min, u64_max :: #run get_integer_range(u64);
 
 draw_frame :: () {
     result : VkResult;
@@ -1025,14 +1057,14 @@ draw_frame :: () {
         // @TODO: First two frames?
         pValues = u64.[ifx frame_index > 2 then cast(u64, frame_index - 2) else 0].data;
 
-        result = vkWaitSemaphores(device, *semaphore_wait_info, u64_high);
+        result = vkWaitSemaphores(device, *semaphore_wait_info, u64_max);
         assert(result == .SUCCESS);
     }
     // @TODO: Wait for the frame from FRAMES_IN_FLIGHT ago to be finished.
     // This means wait for the timeline semaphore to hit frame_index - 2.
 
     image_index: u32;
-    result = vkAcquireNextImageKHR(device, swapchain_context.swapchain, u64_high, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
+    result = vkAcquireNextImageKHR(device, swapchain_context.swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
     assert(result == .SUCCESS);
 
     {
@@ -1097,7 +1129,8 @@ draw_frame :: () {
         }
 
         // Set up my dynamic state
-        set_draw_state(index);
+        bind_descriptor_heaps(command_buffers[index]);
+        set_draw_state(command_buffers[index]);
 
         // Clear frame
         {
@@ -1142,24 +1175,6 @@ draw_frame :: () {
             );
         }
 
-        // Bind Descriptor Sets
-        {
-            dynamic_offsets : [0] u32;
-            {
-            }
-
-            vkCmdBindDescriptorSets(
-                command_buffers[index],
-                pipelineBindPoint = .GRAPHICS,
-                layout = pipeline_layout,
-                firstSet = 0,
-                descriptorSetCount = descriptor_sets.count,
-                pDescriptorSets = descriptor_sets.data,
-                dynamicOffsetCount = dynamic_offsets.count,
-                pDynamicOffsets = dynamic_offsets.data
-            );
-        }
-
         // Bind Shaders
         {
             stages := VkShaderStageFlagBits.[
@@ -1171,6 +1186,21 @@ draw_frame :: () {
                 command_buffers[index],
                 stages.count, stages.data, shaders.data
             );
+        }
+
+        // Push Descriptor Data
+        {
+            // For combined image/samplers, the 12 MSB contain the sampler id, while the remaining contain the image id.
+            data : u32 = (first_image_id & 0xFFFFF) | (first_sampler_id << 20);
+            push_data_info : VkPushDataInfoEXT;
+            {
+                using push_data_info;
+                offset = 0;
+                data = .{
+                    address = *data,
+                    size = size_of(u32),
+                };
+            }
         }
 
         // Bind Data
@@ -1294,6 +1324,7 @@ draw_frame :: () {
 #import "Input";
 
 #import "Vulkan";
+#import "stb_image";
 
 #import "System";
 #if OS == .WINDOWS {
@@ -1303,3 +1334,15 @@ draw_frame :: () {
 ////////////////////////////////////////////////////////////////////////////////
 
 #load "utils.jai";
+
+////////////////////////////////////////////////////////////////////////////////
+
+textures_path   :: "assets/textures";
+models_path     :: "assets/models";
+
+textures_to_load :: string.[
+    "croc"
+];
+
+models_to_load :: string.[
+];
