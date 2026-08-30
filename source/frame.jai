@@ -1,0 +1,565 @@
+// Graphics
+// Frame
+
+init_render :: () {
+    result : VkResult;
+
+    // Command Buffers
+    {
+        // Pool
+        {
+            using command_pool_create_info: VkCommandPoolCreateInfo;
+            flags = .RESET_COMMAND_BUFFER;
+            queueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
+            result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
+            assert(result == .SUCCESS);
+        }
+
+        {
+            using command_buffer_allocate_info: VkCommandBufferAllocateInfo;
+            commandPool        = command_pool;
+            level              = .PRIMARY;
+            commandBufferCount = FRAMES_IN_FLIGHT;
+            result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
+            assert(result == .SUCCESS);
+        }
+    }
+
+    // Semaphores
+    {
+        // Render / Present
+        {
+            using semaphore_create_info: VkSemaphoreCreateInfo;
+            for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
+                vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[image_index]);
+            }
+            for index : 0..FRAMES_IN_FLIGHT-1 {
+                vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[index]);
+            }
+        }
+
+        // Timeline
+        {
+            semaphore_type_create_info : VkSemaphoreTypeCreateInfo;
+            {
+                using semaphore_type_create_info;
+                semaphoreType = .TIMELINE;
+                initialValue = 0;
+            }
+
+            using timeline_semaphore_create_info: VkSemaphoreCreateInfo;
+            pNext = *semaphore_type_create_info;
+
+            vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
+        }
+    }
+
+    // Shaders
+    {
+        // Read spirv from file
+        spirv : [2] string;
+        {
+            read_shader_file :: (name: string) -> spirv: string
+            {
+                shader_file_path := tprint("%/%", compiled_shaders_directory, tprint("%.spv", name));
+
+                spirv, success := read_entire_file(shader_file_path);
+                assert(success, "Unable to read shader file %", shader_file_path);
+
+                return spirv;
+            }
+            spirv[0] = read_shader_file("material-vertex");
+            spirv[1] = read_shader_file("material-fragment");
+        }
+
+        // Shader Object Create Infos
+        {
+            shader_create_infos : [2] VkShaderCreateInfoEXT;
+
+            {
+                using shader_create_infos[0];
+                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
+
+                stage       = .VERTEX;
+                nextStage   = .FRAGMENT;
+
+                codeType    = .SPIRV;
+                codeSize    = xx spirv[0].count;
+                pCode       = spirv[0].data;
+
+                pName       = "main";
+
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            {
+                using shader_create_infos[1];
+                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
+
+                stage       = .FRAGMENT;
+                nextStage   = 0;
+
+                codeType    = .SPIRV;
+                codeSize    = xx spirv[1].count;
+                pCode       = spirv[1].data;
+
+                pName       = "main";
+
+                pushConstantRangeCount = 0;
+                pPushConstantRanges = null;
+                pSpecializationInfo = null;
+            }
+
+            result = vkCreateShadersEXT(device,
+                shader_create_infos.count, shader_create_infos.data,
+                null,
+                shaders.data
+            );
+            assert(result == .SUCCESS);
+        }
+    }
+}
+
+deinit_render :: () {
+    for shader : shaders {
+        vkDestroyShaderEXT(device, shader, null);
+    }
+    for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
+        vkDestroySemaphore(device, present_ready_semaphores[image_index], null);
+    }
+    for index : 0..FRAMES_IN_FLIGHT-1 {
+        vkDestroySemaphore(device, image_available_semaphores[index], null);
+    }
+    vkDestroySemaphore(device, timeline_semaphore, null);
+    vkDestroyCommandPool(device, command_pool, null);
+}
+
+bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
+    vkCmdBindSamplerHeapEXT(command_buffer, *bind_sampler_heap_info);
+    vkCmdBindResourceHeapEXT(command_buffer, *bind_resource_heap_info);
+}
+
+set_draw_state :: (command_buffer: VkCommandBuffer) {
+    vkCmdSetRasterizerDiscardEnable(command_buffer, VK_FALSE);
+    vkCmdSetPrimitiveRestartEnable(command_buffer,  VK_FALSE);
+
+    vkCmdSetPrimitiveTopology(command_buffer,       .TRIANGLE_LIST);
+
+    vkCmdSetDepthTestEnable(command_buffer,         VK_FALSE);
+    vkCmdSetDepthWriteEnable(command_buffer,        VK_FALSE);
+    vkCmdSetDepthBiasEnable(command_buffer,         VK_FALSE);
+    vkCmdSetDepthBoundsTestEnable(command_buffer,   VK_FALSE);
+    vkCmdSetDepthClampEnableEXT(command_buffer,     VK_FALSE);
+
+    vkCmdSetStencilTestEnable(command_buffer,       VK_FALSE);
+
+    vkCmdSetPolygonModeEXT(command_buffer,          .FILL);
+    vkCmdSetFrontFace(command_buffer,               .CLOCKWISE);
+    vkCmdSetCullMode(command_buffer,                .BACK);
+
+    vkCmdSetAlphaToOneEnableEXT(command_buffer,     VK_FALSE);
+    vkCmdSetAlphaToCoverageEnableEXT(command_buffer,VK_FALSE);
+    vkCmdSetLogicOpEnableEXT(command_buffer,        VK_FALSE);
+
+    color_blend_enables : [1] VkBool32;
+    {
+        color_blend_enables[0] = VK_FALSE;
+    }
+
+    vkCmdSetColorBlendEnableEXT(command_buffer,
+        firstAttachment = 0,
+        attachmentCount = color_blend_enables.count,
+        pColorBlendEnables = color_blend_enables.data,
+    );
+
+    color_write_masks : [1] VkColorComponentFlags;
+    {
+        color_write_masks[0] = .R | .G | .B | .A;
+    }
+    vkCmdSetColorWriteMaskEXT(command_buffer,
+        firstAttachment = 0,
+        attachmentCount = color_write_masks.count,
+        pColorWriteMasks = color_write_masks.data
+    );
+
+    vkCmdSetRasterizationSamplesEXT(command_buffer, .e1);
+    sample_mask : VkSampleMask = 1;
+    vkCmdSetSampleMaskEXT(command_buffer, .e1, *sample_mask);
+
+
+    {
+        viewports : [1] VkViewport;
+        {
+            {
+                using viewports[0];
+                x = 0;                    
+                y = 0;
+                width       = xx swapchain_context.extent.width;
+                height      = xx swapchain_context.extent.height;
+                minDepth = 0;
+                maxDepth = 1;
+            }
+        }
+        vkCmdSetViewportWithCount(command_buffer, viewports.count, viewports.data);
+    }
+
+    {
+        scissors : [1] VkRect2D;
+        {
+            {
+                using scissors[0];
+                offset = .{0, 0};
+                extent = swapchain_context.extent;
+            }
+        }
+        vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
+    }
+
+    // Vertex Input
+    {
+        vertex_input_binding_descriptions : [1] VkVertexInputBindingDescription2EXT;
+        {
+            {
+                using vertex_input_binding_descriptions[0];
+                binding     = 0;
+                stride      = size_of(Vertex);
+                inputRate   = .VERTEX;
+                divisor     = 1;
+            }
+        }
+
+        vertex_input_attribute_descriptions := VkVertexInputAttributeDescription2EXT.[
+            .{ location = 0, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "position") },
+            .{ location = 1, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "color") },
+            .{ location = 2, binding = 0, format = .R32G32_SFLOAT,    offset = offset_of(Vertex, "uv") },
+        ];
+
+        vkCmdSetVertexInputEXT(
+            command_buffer,
+            vertex_input_binding_descriptions.count,
+            vertex_input_binding_descriptions.data,
+            vertex_input_attribute_descriptions.count,
+            vertex_input_attribute_descriptions.data,
+        );
+    }
+}
+
+u64_min, u64_max :: #run get_integer_range(u64);
+
+draw_frame :: () {
+    result : VkResult;
+
+    frame_index += 1;
+    index := frame_index % FRAMES_IN_FLIGHT;
+
+    wait_value : u64 = ifx frame_index > FRAMES_IN_FLIGHT then frame_index - FRAMES_IN_FLIGHT else 0;
+    {
+        using semaphore_wait_info : VkSemaphoreWaitInfo;
+
+        semaphoreCount = 1;
+        pSemaphores = *timeline_semaphore;
+        pValues = *wait_value;
+
+        result = vkWaitSemaphores(device, *semaphore_wait_info, u64_max);
+        assert(result == .SUCCESS);
+    }
+
+    image_index: u32;
+    result = vkAcquireNextImageKHR(device, swapchain_context.swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
+    if result == .ERROR_OUT_OF_DATE_KHR {
+        frame_index -= 1;
+        swapchain_context.needs_recreation = true;
+        return;
+    }
+    if result == .SUBOPTIMAL_KHR {
+        swapchain_context.needs_recreation = true;
+    }
+    else {
+        assert(result == .SUCCESS, "vkAcquireNextImageKHR failed: %", result);
+    }
+
+    {
+        using begin_info: VkCommandBufferBeginInfo;
+        flags = .ONE_TIME_SUBMIT;
+        result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
+        assert(result == .SUCCESS);
+    }
+
+    {
+        swapchain_image_subresource_range : VkImageSubresourceRange;
+        {
+            using swapchain_image_subresource_range;
+            aspectMask     = .COLOR;
+            baseMipLevel   = 0;
+            levelCount     = VK_REMAINING_MIP_LEVELS;
+            baseArrayLayer = 0;
+            layerCount     = VK_REMAINING_ARRAY_LAYERS;
+        }
+
+        {
+            image_memory_barrier : VkImageMemoryBarrier2;
+            {
+                using image_memory_barrier;
+                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
+                srcAccessMask       = .NONE;
+                dstStageMask        = .COLOR_ATTACHMENT_OUTPUT;
+                dstAccessMask       = .COLOR_ATTACHMENT_WRITE;
+                oldLayout           = .UNDEFINED;
+                newLayout           = .GENERAL;
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                image               = swapchain_context.images[image_index];
+                subresourceRange    = swapchain_image_subresource_range;
+            }
+
+            dependency_info : VkDependencyInfo;
+            {
+                using dependency_info;
+                imageMemoryBarrierCount = 1;
+                pImageMemoryBarriers    = *image_memory_barrier;
+            }
+
+            vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
+        }
+
+        color_attachment : VkRenderingAttachmentInfoKHR;
+        {
+            using color_attachment;
+            imageView = swapchain_context.views[image_index];
+            imageLayout = .GENERAL;
+            loadOp = .CLEAR;
+            storeOp = .STORE;
+        }
+
+        {
+            using rendering_info : VkRenderingInfo;
+            renderArea = VkRect2D.{
+                offset = .{0, 0},
+                extent = swapchain_context.extent,
+            };
+            layerCount = 1;
+            viewMask = 0;
+            colorAttachmentCount = 1;
+            pColorAttachments = *color_attachment;
+            pDepthAttachment = null;
+            pStencilAttachment = null;
+
+            vkCmdBeginRendering(command_buffers[index], *rendering_info);
+        }
+
+        // Set up my dynamic state
+        bind_descriptor_heaps(command_buffers[index]);
+        set_draw_state(command_buffers[index]);
+
+        // Clear frame
+        {
+            clear_color : VkClearColorValue;
+            {
+                color1 := Vector4.{1,  1, 0, 1};
+                color2 := Vector4.{.5, 0, 1, 1};
+
+                now := seconds_since_init();
+                t := cos(cast(float) now) * .5 + .5;
+                Clamp(*t, 0, 1);
+                color := lerp(color1, color2, t);
+                clear_color.float32_ = color.component;
+            }
+
+            clear_attachments : [1] VkClearAttachment;
+            {
+                {
+                    using clear_attachments[0];
+                    aspectMask = .COLOR;
+                    colorAttachment = 0;
+                    clearValue.color = clear_color;
+                }
+            }
+
+            clear_rects : [1] VkClearRect;
+            {
+                {
+                    using clear_rects[0];
+                    rect = .{
+                        offset = .{0, 0},
+                        extent = swapchain_context.extent,
+                    };
+                    baseArrayLayer = 0;
+                    layerCount = 1;
+                }
+            }
+
+            vkCmdClearAttachments(command_buffers[index],
+                clear_attachments.count, clear_attachments.data,
+                clear_rects.count, clear_rects.data
+            );
+        }
+
+        // Bind Shaders
+        {
+            stages := VkShaderStageFlagBits.[
+                .VERTEX,
+                .FRAGMENT,
+            ];
+
+            vkCmdBindShadersEXT(
+                command_buffers[index],
+                stages.count, stages.data, shaders.data
+            );
+        }
+
+        // Push Descriptor Data
+        {
+            Push_Data :: struct {
+                texture : [2] u32;
+                sampler : [2] u32;
+            }
+
+            push_data := Push_Data.{
+                texture = .[first_image_id,   0],
+                sampler = .[first_sampler_id, 0],
+            };
+
+            push_data_info : VkPushDataInfoEXT;
+            {
+                using push_data_info;
+                offset = 0;
+                data = .{
+                    address = *push_data,
+                    size    = size_of(Push_Data),
+                };
+            }
+
+            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
+        }
+
+        // Bind Data
+        {
+            bind_infos : [1] VkBindVertexBuffer3InfoKHR;
+            {
+                using bind_infos[0];
+                setStride = VK_FALSE;
+                addressRange = .{
+                    address = arena_address(vertex_offset),
+                    size    = vertex_size,
+                };
+                addressFlags = .STORAGE_BUFFER_USAGE;
+            }
+
+            vkCmdBindVertexBuffers3KHR(
+                command_buffers[index],
+                firstBinding = 0,
+                bindingCount = bind_infos.count,
+                pBindingInfos = bind_infos.data,
+            );
+        }
+
+        vkCmdDraw(
+            command_buffers[index],
+            vertexCount = 3,
+            instanceCount = 1,
+            firstVertex = 0,
+            firstInstance = 0
+        );
+
+        vkCmdEndRendering(command_buffers[index]);
+
+        {
+            image_memory_barrier : VkImageMemoryBarrier2;
+            {
+                using image_memory_barrier;
+                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
+                srcAccessMask       = .COLOR_ATTACHMENT_WRITE;
+                dstStageMask        = .NONE;
+                dstAccessMask       = .NONE;
+                oldLayout           = .GENERAL;
+                newLayout           = .PRESENT_SRC_KHR;
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                image               = swapchain_context.images[image_index];
+                subresourceRange    = swapchain_image_subresource_range;
+            }
+
+            dependency_info : VkDependencyInfo;
+            {
+                using dependency_info;
+                imageMemoryBarrierCount = 1;
+                pImageMemoryBarriers    = *image_memory_barrier;
+            }
+
+            vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
+        }
+    }
+
+    result = vkEndCommandBuffer(command_buffers[index]);
+    assert(result == .SUCCESS);
+
+    {
+        // Wait at the Color Attachment Output stage so the GPU can do vertex work before the image is fully acquired.
+        wait_image_info : VkSemaphoreSubmitInfo;
+        {
+            using wait_image_info;
+            semaphore = image_available_semaphores[index];
+            value = 0; // binary.
+            stageMask = .COLOR_ATTACHMENT_OUTPUT;
+        }
+
+        // Signal this when the Color Attachment Output stage finishes.
+        signal_present_info : VkSemaphoreSubmitInfo;
+        {
+            using signal_present_info;
+            semaphore = present_ready_semaphores[image_index];
+            value = 0; // binary.
+            stageMask = .COLOR_ATTACHMENT_OUTPUT;
+        }
+
+        // Signal the timeline when all commands have finished.
+        signal_timeline_info : VkSemaphoreSubmitInfo;
+        {
+            using signal_timeline_info;
+            semaphore = timeline_semaphore;
+            value = frame_index;
+            stageMask = .ALL_COMMANDS;
+        };
+
+        signal_infos := VkSemaphoreSubmitInfo.[signal_present_info, signal_timeline_info];
+
+        command_buffer_info : VkCommandBufferSubmitInfo;
+        {
+            using command_buffer_info;
+            commandBuffer = command_buffers[index];
+        }
+
+        submit_info_2: VkSubmitInfo2;
+        {
+            using submit_info_2;
+            waitSemaphoreInfoCount = 1;
+            pWaitSemaphoreInfos = *wait_image_info;
+            commandBufferInfoCount = 1;
+            pCommandBufferInfos = *command_buffer_info;
+            signalSemaphoreInfoCount = 2;
+            pSignalSemaphoreInfos = signal_infos.data;
+        }
+
+        result = vkQueueSubmit2(queue, 1, *submit_info_2, VK_NULL_HANDLE);
+        assert(result == .SUCCESS);
+    }
+
+    {
+        using present_info: VkPresentInfoKHR;
+        waitSemaphoreCount = 1;
+        pWaitSemaphores    = *present_ready_semaphores[image_index];
+        swapchainCount     = 1;
+        pSwapchains        = *swapchain_context.swapchain;
+        pImageIndices      = *image_index;
+
+        result = vkQueuePresentKHR(queue, *present_info);
+        if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {
+            swapchain_context.needs_recreation = true;
+        }
+        else {
+            assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
+        }
+    }
+}
