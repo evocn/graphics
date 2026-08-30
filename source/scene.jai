@@ -18,9 +18,28 @@ init_data :: () {
 
     texture_width  := cast(u32) program_state.texture_datas[0].width;
     texture_height := cast(u32) program_state.texture_datas[0].height;
+    texture_format : VkFormat = .R8G8B8A8_UNORM;
+
+    use_host_image_copy := false;
+    {
+        using physical_device_context;
+
+        if vulkan_1_4_features.hostImageCopy {
+            format_properties_3 : VkFormatProperties3;
+            format_properties_2 := VkFormatProperties2.{pNext = *format_properties_3};
+            vkGetPhysicalDeviceFormatProperties2(physical_device, texture_format, *format_properties_2);
+            format_supports_host_copy := (format_properties_3.optimalTilingFeatures & .HOST_IMAGE_TRANSFER) != 0;
+
+            has_dedicated_transfer_family := queue_family_indices.transfer != queue_family_indices.graphics;
+
+            use_host_image_copy = format_supports_host_copy && !has_dedicated_transfer_family;
+        }
+    }
+
+    log("Uploading textures via %.\n", ifx use_host_image_copy then "host image copy" else "device copy");
 
     // Staging data for the texture upload.
-    {
+    if !use_host_image_copy {
         using program_state;
 
         staging_size   = cast(u64, size_of(u32) * texture_datas[0].width * texture_datas[0].height);
@@ -33,19 +52,6 @@ init_data :: () {
     {
         // Image
         {
-            texture_format : VkFormat = .R8G8B8A8_UNORM;
-
-            /*
-            // Host Image Copy
-            // Query format properties
-            {
-                format_properties_3 := VkFormatProperties3.{};
-                format_properties_2 := VkFormatProperties2.{pNext = *format_properties_3};
-                vkGetPhysicalDeviceFormatProperties2(physical_device_context.physical_device, texture_format, *format_properties_2);
-                assert((format_properties_3.optimalTilingFeatures & .HOST_IMAGE_TRANSFER) == 1);
-            }
-            */
-
             image_create_info : VkImageCreateInfo;
             {
                 using image_create_info;
@@ -57,6 +63,7 @@ init_data :: () {
                 samples = .e1;
                 tiling = .OPTIMAL;
                 usage = .SAMPLED | .TRANSFER_DST;
+                if use_host_image_copy then usage = .SAMPLED | .HOST_TRANSFER;
                 sharingMode = .EXCLUSIVE;
                 initialLayout = .UNDEFINED;
             }
@@ -93,105 +100,105 @@ init_data :: () {
                 }
             }
 
-            {
-                subresource_range : VkImageSubresourceRange;
+            if use_host_image_copy {
                 {
-                    using subresource_range;
-                    aspectMask     = .COLOR;
-                    levelCount     = VK_REMAINING_MIP_LEVELS;
-                    layerCount     = VK_REMAINING_ARRAY_LAYERS;
-                }
-
-                image_memory_barrier : VkImageMemoryBarrier2;
-                {
-                    using image_memory_barrier;
-                    srcStageMask        = .NONE;
-                    srcAccessMask       = .NONE;
-                    dstStageMask        = .COPY;
-                    dstAccessMask       = .TRANSFER_WRITE;
-                    oldLayout           = .UNDEFINED;
-                    newLayout           = .GENERAL;
-                    srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    image               = texture.image;
-                    subresourceRange    = subresource_range;
-                }
-
-                dependency_info : VkDependencyInfo;
-                {
-                    using dependency_info;
-                    imageMemoryBarrierCount = 1;
-                    pImageMemoryBarriers    = *image_memory_barrier;
-                }
-
-                vkCmdPipelineBarrier2(command_buffers[0], *dependency_info);
-            }
-
-            // Copy from the arena's staging region, addressed directly.
-            {
-                region : VkDeviceMemoryImageCopyKHR;
-                {
-                    using region;
-                    addressRange = .{
-                        address = arena_address(staging_offset),
-                        size    = staging_size,
-                    };
-                    addressFlags = .STORAGE_BUFFER_USAGE;
-                    imageSubresource = .{
+                    using host_image_layout_transition_info : VkHostImageLayoutTransitionInfo;
+                    image = texture.image;
+                    oldLayout = .UNDEFINED;
+                    newLayout = .GENERAL;
+                    subresourceRange = .{
                         aspectMask = .COLOR,
+                        levelCount = VK_REMAINING_MIP_LEVELS,
                         layerCount = VK_REMAINING_ARRAY_LAYERS,
                     };
-                    imageLayout = .GENERAL;
-                    imageExtent = .{texture_width, texture_height, 1};
+
+                    result = vkTransitionImageLayout(device, 1, *host_image_layout_transition_info);
+                    assert(result == .SUCCESS);
                 }
 
-                using copy_info : VkCopyDeviceMemoryImageInfoKHR;
-                image = texture.image;
-                regionCount = 1;
-                pRegions = *region;
-
-                vkCmdCopyMemoryToImageKHR(command_buffers[0], *copy_info);
-            }
-
-            /*
-            // Host Image Copy
-            // Transition Image Layout
-            {
-                using host_image_layout_transition_info : VkHostImageLayoutTransitionInfo;
-                image = texture.image;
-                oldLayout = .UNDEFINED;
-                newLayout = .GENERAL;
-                subresourceRange = .{
-                    aspectMask = .COLOR,
-                    levelCount = VK_REMAINING_MIP_LEVELS,
-                    layerCount = VK_REMAINING_ARRAY_LAYERS,
-                };
-                vkTransitionImageLayout(device, 1, *host_image_layout_transition_info);
-            }
-
-            // Transfer Data
-            {
-                region : VkMemoryToImageCopy;
                 {
-                    using region;
-                    pHostPointer = program_state.texture_datas[0].bytes;
-                    imageSubresource = .{
-                        aspectMask = .COLOR,
-                        layerCount = VK_REMAINING_ARRAY_LAYERS,
-                    };
-                    imageExtent = .{texture_width, texture_height, 1};
+                    region : VkMemoryToImageCopy;
+                    {
+                        using region;
+                        pHostPointer = program_state.texture_datas[0].bytes;
+                        imageSubresource = .{
+                            aspectMask = .COLOR,
+                            layerCount = VK_REMAINING_ARRAY_LAYERS,
+                        };
+                        imageExtent = .{texture_width, texture_height, 1};
+                    }
+
+                    using copy_memory_to_image_info : VkCopyMemoryToImageInfo;
+                    dstImage = texture.image;
+                    dstImageLayout = .GENERAL;
+                    regionCount = 1;
+                    pRegions = *region;
+
+                    result = vkCopyMemoryToImage(device, *copy_memory_to_image_info);
+                    assert(result == .SUCCESS);
+                }
+            }
+            else {
+                {
+                    subresource_range : VkImageSubresourceRange;
+                    {
+                        using subresource_range;
+                        aspectMask     = .COLOR;
+                        levelCount     = VK_REMAINING_MIP_LEVELS;
+                        layerCount     = VK_REMAINING_ARRAY_LAYERS;
+                    }
+
+                    image_memory_barrier : VkImageMemoryBarrier2;
+                    {
+                        using image_memory_barrier;
+                        srcStageMask        = .NONE;
+                        srcAccessMask       = .NONE;
+                        dstStageMask        = .COPY;
+                        dstAccessMask       = .TRANSFER_WRITE;
+                        oldLayout           = .UNDEFINED;
+                        newLayout           = .GENERAL;
+                        srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        image               = texture.image;
+                        subresourceRange    = subresource_range;
+                    }
+
+                    dependency_info : VkDependencyInfo;
+                    {
+                        using dependency_info;
+                        imageMemoryBarrierCount = 1;
+                        pImageMemoryBarriers    = *image_memory_barrier;
+                    }
+
+                    vkCmdPipelineBarrier2(command_buffers[0], *dependency_info);
                 }
 
-                using copy_memory_to_image_info : VkCopyMemoryToImageInfo;
-                dstImage = texture.image;
-                dstImageLayout = .GENERAL;
-                regionCount = 1;
-                pRegions = *region;
+                // Copy from the arena's staging region, addressed directly.
+                {
+                    region : VkDeviceMemoryImageCopyKHR;
+                    {
+                        using region;
+                        addressRange = .{
+                            address = arena_address(staging_offset),
+                            size    = staging_size,
+                        };
+                        addressFlags = .STORAGE_BUFFER_USAGE;
+                        imageSubresource = .{
+                            aspectMask = .COLOR,
+                            layerCount = VK_REMAINING_ARRAY_LAYERS,
+                        };
+                        imageLayout = .GENERAL;
+                        imageExtent = .{texture_width, texture_height, 1};
+                    }
 
-                result = vkCopyMemoryToImage(device, *copy_memory_to_image_info);
-                assert(result == .SUCCESS);
+                    using copy_info : VkCopyDeviceMemoryImageInfoKHR;
+                    image = texture.image;
+                    regionCount = 1;
+                    pRegions = *region;
+
+                    vkCmdCopyMemoryToImageKHR(command_buffers[0], *copy_info);
+                }
             }
-            */
         }
 
         {

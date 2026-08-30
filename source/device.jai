@@ -291,6 +291,33 @@ init_device :: () {
 
             // Features
             {
+                supported : type_of(features);
+                {
+                    supported.untyped_pointers_features.pNext     = *supported.address_commands_features;
+                    supported.descriptor_heap_features.pNext      = *supported.untyped_pointers_features;
+                    supported.unified_image_layout_features.pNext = *supported.descriptor_heap_features;
+                    supported.shader_object_features.pNext        = *supported.unified_image_layout_features;
+                    supported.vulkan_1_4_features.pNext           = *supported.shader_object_features;
+                    supported.vulkan_1_3_features.pNext           = *supported.vulkan_1_4_features;
+                    supported.vulkan_1_2_features.pNext           = *supported.vulkan_1_3_features;
+                    supported.vulkan_1_1_features.pNext           = *supported.vulkan_1_2_features;
+                    supported.features2.pNext                     = *supported.vulkan_1_1_features;
+
+                    vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
+                }
+
+                assert(supported.vulkan_1_2_features.timelineSemaphore             == VK_TRUE, "This GPU does not support timelineSemaphore.");
+                assert(supported.vulkan_1_2_features.bufferDeviceAddress           == VK_TRUE, "This GPU does not support bufferDeviceAddress.");
+                assert(supported.vulkan_1_2_features.runtimeDescriptorArray        == VK_TRUE, "This GPU does not support runtimeDescriptorArray.");
+                assert(supported.vulkan_1_3_features.dynamicRendering              == VK_TRUE, "This GPU does not support dynamicRendering.");
+                assert(supported.vulkan_1_3_features.synchronization2              == VK_TRUE, "This GPU does not support synchronization2.");
+                assert(supported.vulkan_1_4_features.maintenance5                  == VK_TRUE, "This GPU does not support maintenance5.");
+                assert(supported.shader_object_features.shaderObject               == VK_TRUE, "This GPU does not support shaderObject.");
+                assert(supported.unified_image_layout_features.unifiedImageLayouts == VK_TRUE, "This GPU does not support unifiedImageLayouts.");
+                assert(supported.descriptor_heap_features.descriptorHeap           == VK_TRUE, "This GPU does not support descriptorHeap.");
+                assert(supported.untyped_pointers_features.shaderUntypedPointers   == VK_TRUE, "This GPU does not support shaderUntypedPointers.");
+                assert(supported.address_commands_features.deviceAddressCommands   == VK_TRUE, "This GPU does not support deviceAddressCommands.");
+
                 address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = null};
                 untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = *address_commands_features};
                 descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
@@ -299,8 +326,9 @@ init_device :: () {
                 vulkan_1_4_features = .{pNext = *shader_object_features};
                 {
                     using vulkan_1_4_features;
-                    //hostImageCopy = VK_TRUE;
                     maintenance5 = VK_TRUE;
+
+                    hostImageCopy = supported.vulkan_1_4_features.hostImageCopy;
                 }
                 vulkan_1_3_features = .{pNext = *vulkan_1_4_features};
                 {
@@ -316,18 +344,9 @@ init_device :: () {
                     runtimeDescriptorArray = VK_TRUE;
                 }
                 vulkan_1_1_features = .{pNext = *vulkan_1_2_features};
-                {
-                    using vulkan_1_1_features;
-                }
-                vkGetPhysicalDeviceFeatures2(physical_device, *features2);
-                {
-                    using features2.features;
-                    geometryShader = VK_FALSE;
-                    tessellationShader = VK_FALSE;
-                }
+                features2 = .{pNext = *vulkan_1_1_features};
             }
 
-            features2.pNext = *vulkan_1_1_features;
             pNext = *features2;
 
             result = vkCreateDevice(physical_device, *device_create_info, null, *device);
