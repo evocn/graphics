@@ -8,10 +8,20 @@ Vertex :: struct {
 }
 
 vertices := Vertex.[
-    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.5, 0.0}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}, uv = .{1.0, 1.0}},
-    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{0.0, 1.0}},
+    .{position = .{-0.5, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.0, 0.0}},
+    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1.0, 1.0}},
+    .{position = .{-0.5,  0.5,  0.0}, color = .{1, 1, 0}, uv = .{0.0, 1.0}},
+
+    .{position = .{-0.5, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.0, 0.0}},
+    .{position = .{ 0.5, -0.5,  0.0}, color = .{0, 1, 0}, uv = .{1.0, 0.0}},
+    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1.0, 1.0}},
 ];
+
+Draw_Data :: struct {
+    vertices : VkDeviceAddress;
+    texture  : [2] u32;
+    sampler  : [2] u32;
+}
 
 init_data :: () {
     result : VkResult;
@@ -270,6 +280,15 @@ init_data :: () {
         vertex_offset = arena_suballocate(vertex_size, 256);
 
         memcpy(arena_pointer(vertex_offset), *vertices, xx vertex_size);
+    }
+
+    {
+        draw_data_offset = arena_suballocate(size_of(Draw_Data), 256);
+
+        draw_data := cast(*Draw_Data) arena_pointer(draw_data_offset);
+        draw_data.vertices = arena_address(vertex_offset);
+        draw_data.texture  = .[first_image_id,   0];
+        draw_data.sampler  = .[first_sampler_id, 0];
     }
 }
 

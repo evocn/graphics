@@ -1,8 +1,18 @@
 // Graphics
 // Frame
 
+Frame_Constants :: struct {
+    view_projection : Matrix4;
+    time            : float;
+}
+
+FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
+#assert(size_of(Frame_Constants) <= FRAME_CONSTANTS_STRIDE);
+
 init_render :: () {
     result : VkResult;
+
+    frame_constants_offset = arena_suballocate(FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
 
     // Command Buffers
     {
@@ -411,16 +421,24 @@ draw_frame :: () {
 
         // Push Descriptor Data
         {
+            frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
+
+            aspect := cast(float) swapchain_context.extent.width / cast(float) swapchain_context.extent.height;
+
+            frame_constants := cast(*Frame_Constants) arena_pointer(frame_constants_slot);
+            frame_constants.view_projection = camera_view_projection(aspect);
+            frame_constants.time            = cast(float) seconds_since_init();
+
             Push_Data :: struct {
-                texture  : [2] u32;
-                sampler  : [2] u32;
-                vertices : VkDeviceAddress;
+                frame      : VkDeviceAddress;
+                draws      : VkDeviceAddress;
+                draw_index : u32;
             }
 
             push_data := Push_Data.{
-                texture  = .[first_image_id,   0],
-                sampler  = .[first_sampler_id, 0],
-                vertices = arena_address(vertex_offset),
+                frame      = arena_address(frame_constants_slot),
+                draws      = arena_address(draw_data_offset),
+                draw_index = 0,
             };
 
             push_data_info : VkPushDataInfoEXT;
@@ -439,7 +457,7 @@ draw_frame :: () {
 
         vkCmdDraw(
             command_buffers[index],
-            vertexCount = 3,
+            vertexCount = xx vertices.count,
             instanceCount = 1,
             firstVertex = 0,
             firstInstance = 0

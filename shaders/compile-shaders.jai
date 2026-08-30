@@ -25,6 +25,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             tprint("-entry %", entry_point),
             "-profile spirv_1_6",
             "-target spirv",
+            "-matrix-layout-row-major",
             "-capability spvDescriptorHeapEXT",
         ],
         working_directory = #filepath,

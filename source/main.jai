@@ -83,6 +83,8 @@ using vulkan_context : struct {
         present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
         present_fences              : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkFence;
 
+        frame_constants_offset      : VkDeviceSize;
+
         using descriptor_heap : struct {
             image_descriptor_stride     : VkDeviceSize;
             sampler_descriptor_stride   : VkDeviceSize;
@@ -115,6 +117,8 @@ using vulkan_context : struct {
             image   : VkImage;
             memory  : VkDeviceMemory;
         }
+
+        draw_data_offset : VkDeviceSize;
 
         staging_offset  : VkDeviceSize;
         staging_size    : VkDeviceSize;
@@ -229,6 +233,7 @@ main :: () {
     vkDeviceWaitIdle(device);
 
     running := true;
+    last_time := seconds_since_init();
     while running {
         update_window_events();
 
@@ -242,9 +247,14 @@ main :: () {
                         }
                     }
 
+                    if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT {
+                        set_mouse_look(true);
+                    }
+
                     // Debug inputs
                     if it.key_pressed && it.key_code == .ESCAPE {
-                        running = false;
+                        if camera.mouse_look_active  set_mouse_look(false);
+                        else                         running = false;
                     }
             }
 
@@ -267,6 +277,13 @@ main :: () {
                 continue;
             }
         }
+
+        now := seconds_since_init();
+        dt := cast(float) (now - last_time);
+        last_time = now;
+        Clamp(*dt, 0, 0.1);
+
+        update_camera(dt);
 
         draw_frame();
     }
@@ -296,6 +313,7 @@ main :: () {
 ////////////////////////////////////////////////////////////////////////////////
 
 #load "utils.jai";
+#load "camera.jai";
 #load "device.jai";
 #load "memory.jai";
 #load "swapchain.jai";
