@@ -6,6 +6,7 @@ bin/packages/
 *.ini
 *.tweaks
 *.exe
+*.dll
 *.pdb
 *.rdbg
 *.build

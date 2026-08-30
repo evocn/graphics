@@ -183,6 +183,23 @@ build :: () {
         executable_path := sprint("%/%.exe", options.output_path, options.output_executable_name);
         defer free(executable_path);
 
+        // The ImGui module links against a prebuilt DLL, which must sit next to the executable.
+        #if OS == .WINDOWS {
+            dll_destination := tprint("%/ImGui.dll", options.output_path);
+            if !file_exists(dll_destination) {
+                for import_root : options.import_path {
+                    dll_source := tprint("%/ImGui/windows/ImGui.dll", import_root);
+                    if file_exists(dll_source) {
+                        success := copy_file(dll_source, dll_destination);
+                        assert(success, "Unable to copy % to %", dll_source, dll_destination);
+                        log(" + % -> %", dll_source, dll_destination);
+                        break;
+                    }
+                }
+                assert(file_exists(dll_destination), "Could not find ImGui/windows/ImGui.dll in any import path.");
+            }
+        }
+
         icon_path :: "assets/publishing/icon.png";
 
         #if OS == .WINDOWS {
@@ -233,6 +250,7 @@ create_and_apply_manifest_and_icon_files :: (executable_path : string, icon_path
 #import "Compiler";
 #import "String";
 #import "File";
+#import "File_Utilities";
 
 // Plugins
 #import "Metaprogram_Plugins";

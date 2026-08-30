@@ -51,5 +51,8 @@ compile_shaders :: () {
     assert(slangc("material-vertex",   "material", "vertex_main"));
     assert(slangc("material-fragment", "material", "fragment_main"));
 
+    assert(slangc("imgui-vertex",   "imgui", "vertex_main"));
+    assert(slangc("imgui-fragment", "imgui", "fragment_main"));
+
     print("Compiled all shaders.\n\n");
 }

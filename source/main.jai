@@ -216,6 +216,9 @@ main :: () {
     init_data();
     defer deinit_data();
 
+    init_imgui();
+    defer deinit_imgui();
+
     // Submit any GPU initialization work accumulated so far.
     {
         result = vkEndCommandBuffer(command_buffers[0]);
@@ -238,6 +241,8 @@ main :: () {
         update_window_events();
 
         for events_this_frame {
+            imgui_process_event(it);
+
             if it.type == {
                 case .KEYBOARD;
                     // Alt binds
@@ -247,7 +252,8 @@ main :: () {
                         }
                     }
 
-                    if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT {
+                    if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT
+                       && !ImGui.GetIO().WantCaptureMouse {
                         set_mouse_look(true);
                     }
 
@@ -285,6 +291,10 @@ main :: () {
 
         update_camera(dt);
 
+        imgui_new_frame();
+        imgui_debug_ui();
+        ImGui.Render();
+
         draw_frame();
     }
 
@@ -305,6 +315,9 @@ main :: () {
 #import "Vulkan";
 #import "stb_image";
 
+ImGui     :: #import "ImGui";
+Clipboard :: #import "Clipboard";
+
 #import "System";
 #if OS == .WINDOWS {
     #import "Windows";
@@ -319,6 +332,7 @@ main :: () {
 #load "swapchain.jai";
 #load "scene.jai";
 #load "frame.jai";
+#load "imgui.jai";
 
 ////////////////////////////////////////////////////////////////////////////////
 

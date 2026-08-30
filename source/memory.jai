@@ -22,7 +22,7 @@ init_arena :: () {
     {
         using buffer_create_info : VkBufferCreateInfo;
         size  = arena.SIZE;
-        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .VERTEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER;
+        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .VERTEX_BUFFER | .INDEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER;
 
         result = vkCreateBuffer(device, *buffer_create_info, null, *arena.buffer);
         assert(result == .SUCCESS);
@@ -77,8 +77,8 @@ init_descriptor_heap :: () {
     image_descriptor_stride   = descriptor_heap_properties.imageDescriptorSize;
     sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;
 
-    max_image_descriptors   :: 1;
-    max_sampler_descriptors :: 1;
+    max_image_descriptors   :: 2; // Scene texture + the ImGui font atlas.
+    max_sampler_descriptors :: 2; // Scene sampler + ImGui's linear-clamp sampler.
 
     resource_heap_size := align_up(
         align_up(max_image_descriptors * image_descriptor_stride, descriptor_heap_properties.imageDescriptorAlignment) + descriptor_heap_properties.minResourceHeapReservedRange,

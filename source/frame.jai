@@ -463,6 +463,8 @@ draw_frame :: () {
             firstInstance = 0
         );
 
+        render_imgui(command_buffers[index], index);
+
         vkCmdEndRendering(command_buffers[index]);
 
         {
