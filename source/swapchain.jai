@@ -120,6 +120,9 @@ init_swapchain :: () {
 
             result = vkCreateImageView(device, *image_view_create_info, null, *swapchain_context.views[it]);
             assert(result == .SUCCESS);
+
+            set_debug_name(.IMAGE,      swapchain_context.images[it], tprint("swapchain image %", it));
+            set_debug_name(.IMAGE_VIEW, swapchain_context.views[it],  tprint("swapchain view %", it));
         }
     }
 }

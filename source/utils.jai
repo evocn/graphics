@@ -51,10 +51,23 @@ error_callback :: (error: s32, description: *u8) #c_call {
     }
 }
 
-debug_callback :: (flags: VkDebugReportFlagsEXT, objType: VkDebugReportObjectTypeEXT, obj: u64, location: u64, code: s32, layerPrefix: *u8, msg: *u8, userData: *void) -> VkBool32 #c_call {
+debug_utils_callback :: (severity: VkDebugUtilsMessageSeverityFlagBitsEXT, types: VkDebugUtilsMessageTypeFlagsEXT, callback_data: *VkDebugUtilsMessengerCallbackDataEXT, user_data: *void) -> VkBool32 #c_call {
     push_context {
-        print("VULKAN VALIDATION: %\n\n", to_string(msg));
+        print("VULKAN %: %\n\n", severity, to_string(callback_data.pMessage));
     }
-    
+
     return VK_FALSE;
+}
+
+set_debug_name :: (object_type: VkObjectType, handle: *void, name: string) {
+    #if DEVELOPER_TOOLS {
+        if handle == null return;
+
+        name_info : VkDebugUtilsObjectNameInfoEXT;
+        name_info.objectType   = object_type;
+        name_info.objectHandle = cast(u64) handle;
+        name_info.pObjectName  = temp_c_string(name);
+
+        vkSetDebugUtilsObjectNameEXT(device, *name_info);
+    }
 }

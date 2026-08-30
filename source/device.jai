@@ -18,7 +18,7 @@ init_instance :: () {
         }
 
         #if DEVELOPER_TOOLS {
-            array_add(*instance_extensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME.data);
+            array_add(*instance_extensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME.data);
         }
 
         enabledExtensionCount   = xx instance_extensions.count;
@@ -33,27 +33,43 @@ init_instance :: () {
         enabledLayerCount = xx enabled_layers.count;
         ppEnabledLayerNames = enabled_layers.data;
 
+        #if DEVELOPER_TOOLS {
+            validate_sync : VkBool32 = VK_TRUE;
+            layer_settings := VkLayerSettingEXT.[
+                .{
+                    pLayerName   = "VK_LAYER_KHRONOS_validation",
+                    pSettingName = "validate_sync",
+                    type         = .BOOL32,
+                    valueCount   = 1,
+                    pValues      = *validate_sync,
+                },
+            ];
+
+            layer_settings_create_info : VkLayerSettingsCreateInfoEXT;
+            layer_settings_create_info.settingCount = xx layer_settings.count;
+            layer_settings_create_info.pSettings    = layer_settings.data;
+
+            pNext = *layer_settings_create_info;
+        }
+
         result = vkCreateInstance(*instance_create_info, null, *instance);
         assert(result == .SUCCESS);
     }
 
     #if DEVELOPER_TOOLS {
-        vkCreateDebugReportCallbackEXT  : PFN_vkCreateDebugReportCallbackEXT = xx vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
-        vkDestroyDebugReportCallbackEXT : PFN_vkDestroyDebugReportCallbackEXT = xx vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
-        vkDebugReportMessageEXT         : PFN_vkDebugReportMessageEXT = xx vkGetInstanceProcAddr(instance, "vkDebugReportMessageEXT");
+        vkCreateDebugUtilsMessengerEXT : PFN_vkCreateDebugUtilsMessengerEXT = xx vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 
-        if vkCreateDebugReportCallbackEXT {
-            debug_callback_create_info: VkDebugReportCallbackCreateInfoEXT;
-            debug_callback_create_info.flags |= .ERROR;
-            debug_callback_create_info.flags |= .WARNING;
-            debug_callback_create_info.pfnCallback = debug_callback;
-            debug_callback_create_info.pUserData = xx *context;
+        if vkCreateDebugUtilsMessengerEXT {
+            messenger_create_info : VkDebugUtilsMessengerCreateInfoEXT;
+            messenger_create_info.messageSeverity = .WARNING | .ERROR;
+            messenger_create_info.messageType     = .GENERAL | .VALIDATION | .PERFORMANCE;
+            messenger_create_info.pfnUserCallback = debug_utils_callback;
 
-            result = vkCreateDebugReportCallbackEXT(instance, *debug_callback_create_info, null, *debug_callback_handle);
+            result = vkCreateDebugUtilsMessengerEXT(instance, *messenger_create_info, null, *debug_messenger);
             assert(result == .SUCCESS);
         }
         else {
-            log_error("Unable to load the debug callback!");
+            log_error("Unable to load the debug messenger!");
         }
     }
 }
@@ -61,8 +77,8 @@ init_instance :: () {
 
 deinit_instance :: () {
     #if DEVELOPER_TOOLS {
-        if vkDestroyDebugReportCallbackEXT && debug_callback_handle {
-            vkDestroyDebugReportCallbackEXT(instance, debug_callback_handle, null);
+        if debug_messenger {
+            vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
         }
     }
     vkDestroyInstance(instance, null);

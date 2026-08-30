@@ -61,6 +61,9 @@ init_arena :: () {
     result = vkMapMemory(device, arena.memory, 0, VK_WHOLE_SIZE, 0, *arena.cpu_map);
     assert(result == .SUCCESS);
     assert(arena.cpu_map != null);
+
+    set_debug_name(.BUFFER,        arena.buffer, "arena");
+    set_debug_name(.DEVICE_MEMORY, arena.memory, "arena memory");
 }
 
 deinit_arena :: () {

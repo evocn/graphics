@@ -22,6 +22,10 @@ init_render :: () {
             commandBufferCount = FRAMES_IN_FLIGHT;
             result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
             assert(result == .SUCCESS);
+
+            for index : 0..FRAMES_IN_FLIGHT-1 {
+                set_debug_name(.COMMAND_BUFFER, command_buffers[index], tprint("frame command buffer %", index));
+            }
         }
     }
 
@@ -32,9 +36,11 @@ init_render :: () {
             using semaphore_create_info: VkSemaphoreCreateInfo;
             for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
                 vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[image_index]);
+                set_debug_name(.SEMAPHORE, present_ready_semaphores[image_index], tprint("present ready semaphore %", image_index));
             }
             for index : 0..FRAMES_IN_FLIGHT-1 {
                 vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[index]);
+                set_debug_name(.SEMAPHORE, image_available_semaphores[index], tprint("image available semaphore %", index));
             }
         }
 
@@ -51,6 +57,7 @@ init_render :: () {
             pNext = *semaphore_type_create_info;
 
             vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
+            set_debug_name(.SEMAPHORE, timeline_semaphore, "frame timeline semaphore");
         }
     }
 
@@ -118,6 +125,9 @@ init_render :: () {
                 shaders.data
             );
             assert(result == .SUCCESS);
+
+            set_debug_name(.SHADER_EXT, shaders[0], "material vertex");
+            set_debug_name(.SHADER_EXT, shaders[1], "material fragment");
         }
     }
 }
@@ -505,13 +515,13 @@ draw_frame :: () {
             stageMask = .COLOR_ATTACHMENT_OUTPUT;
         }
 
-        // Signal this when the Color Attachment Output stage finishes.
+        // Signal this when all commands, including the layout transition to PRESENT_SRC, finish.
         signal_present_info : VkSemaphoreSubmitInfo;
         {
             using signal_present_info;
             semaphore = present_ready_semaphores[image_index];
             value = 0; // binary.
-            stageMask = .COLOR_ATTACHMENT_OUTPUT;
+            stageMask = .ALL_COMMANDS;
         }
 
         // Signal the timeline when all commands have finished.

@@ -22,7 +22,7 @@ program_state : struct {
 using vulkan_context : struct {
     instance                : VkInstance;
     surface                 : VkSurfaceKHR;
-    debug_callback_handle   : VkDebugReportCallbackEXT;
+    debug_messenger         : VkDebugUtilsMessengerEXT;
 
     physical_device_context : struct {
         physical_device : VkPhysicalDevice;

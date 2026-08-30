@@ -87,6 +87,9 @@ init_data :: () {
                     }
                     result = vkBindImageMemory(device, texture.image, texture.memory, 0);
                     assert(result == .SUCCESS);
+
+                    set_debug_name(.IMAGE,         texture.image,  "texture");
+                    set_debug_name(.DEVICE_MEMORY, texture.memory, "texture memory");
                 }
             }
 
