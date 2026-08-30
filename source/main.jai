@@ -52,6 +52,7 @@ using vulkan_context : struct {
             shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
             unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
             descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
+            untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
         }
     }
 
@@ -101,12 +102,16 @@ using vulkan_context : struct {
     using scene_data : struct {
         texture : struct {
             image   : VkImage;
+            memory  : VkDeviceMemory;
             sampler : VkSampler;
         }
 
         staging_buffer          : VkBuffer;
+        staging_memory          : VkDeviceMemory;
         vertex_buffer           : VkBuffer;
+        vertex_memory           : VkDeviceMemory;
         uniform_buffer          : VkBuffer;
+        uniform_memory          : VkDeviceMemory;
     }
 }
 
@@ -117,9 +122,9 @@ Vertex :: struct {
 }
 
 vertices := Vertex.[
-    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{.5, .5}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}, uv = .{0, 0}},
-    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1, 1}},
+    .{position = .{ 0.0, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.5, 0.0}},
+    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 1, 0}, uv = .{1.0, 1.0}},
+    .{position = .{-0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{0.0, 1.0}},
 ];
 
 main :: () {
@@ -247,6 +252,8 @@ main :: () {
 
             if it.type == .QUIT then running = false;
         }
+
+        if !running break;
 
         draw_frame();
     }
@@ -485,6 +492,7 @@ init_device :: () {
             array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
             array_add(*device_extensions, VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data);
             array_add(*device_extensions, VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data);
+            array_add(*device_extensions, VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data);
 
             enabledExtensionCount   = xx device_extensions.count;
             ppEnabledExtensionNames = device_extensions.data;
@@ -503,7 +511,8 @@ init_device :: () {
 
             // Features
             {
-                descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = null};
+                untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = null};
+                descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
                 unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = *descriptor_heap_features};
                 shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
                 vulkan_1_4_features = .{pNext = *shader_object_features};
@@ -645,7 +654,9 @@ init_descriptor_heap :: () {
 }
 
 deinit_descriptor_heap :: () {
-    // @TODO
+    vkUnmapMemory(device, descriptor_heap_memory);
+    vkDestroyBuffer(device, descriptor_heap_buffer, null);
+    vkFreeMemory(device, descriptor_heap_memory, null);
 }
 
 init_swapchain :: () {
@@ -720,7 +731,7 @@ init_swapchain :: () {
         imageColorSpace             = swapchain_context.surface_format.colorSpace;
         imageExtent                 = swapchain_context.extent;
         imageArrayLayers            = 1;
-        imageUsage                  = .COLOR_ATTACHMENT | .TRANSFER_DST;
+        imageUsage                  = .COLOR_ATTACHMENT;
         imageSharingMode            = .EXCLUSIVE;
         preTransform                = surface_capabilities.currentTransform;
         compositeAlpha              = .OPAQUE;
@@ -766,7 +777,9 @@ init_swapchain :: () {
 }
 
 deinit_swapchain :: () {
-    // @TODO: Destroy image views too.
+    for image_index : 0..swapchain_context.image_count-1 {
+        vkDestroyImageView(device, swapchain_context.views[image_index], null);
+    }
     vkDestroySwapchainKHR(device, swapchain_context.swapchain, null);
 }
 
@@ -892,12 +905,16 @@ init_render :: () {
 }
 
 deinit_render :: () {
+    for shader : shaders {
+        vkDestroyShaderEXT(device, shader, null);
+    }
     for image_index : 0..swapchain_context.image_count-1 {
         vkDestroySemaphore(device, present_ready_semaphores[image_index], null);
     }
     for index : 0..FRAMES_IN_FLIGHT-1 {
         vkDestroySemaphore(device, image_available_semaphores[index], null);
     }
+    vkDestroySemaphore(device, timeline_semaphore, null);
     vkDestroyCommandPool(device, command_pool, null);
 }
 
@@ -922,7 +939,6 @@ init_data :: () {
         memory_requirements : VkMemoryRequirements;
         vkGetBufferMemoryRequirements(device, staging_buffer, *memory_requirements);
 
-        device_memory : VkDeviceMemory;
         {
             success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE);
             assert(success);
@@ -933,7 +949,7 @@ init_data :: () {
                 allocationSize = memory_requirements.size;
                 memoryTypeIndex = xx memory_type_index;
 
-                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                result = vkAllocateMemory(device, *allocate_info, null, *staging_memory);
                 assert(result == .SUCCESS);
             }
         }
@@ -943,7 +959,7 @@ init_data :: () {
             data : *void;
             result := vkMapMemory(
                 device,
-                device_memory,
+                staging_memory,
                 0,
                 VK_WHOLE_SIZE,
                 0,
@@ -952,10 +968,10 @@ init_data :: () {
             assert(result == .SUCCESS);
             assert(data != null);
 
-            memcpy(data, *texture_datas[0].bytes, xx image_size);
+            memcpy(data, texture_datas[0].bytes, xx image_size);
         }
 
-        result = vkBindBufferMemory(device, staging_buffer, device_memory, 0);
+        result = vkBindBufferMemory(device, staging_buffer, staging_memory, 0);
         assert(result == .SUCCESS);
     }
 
@@ -1003,7 +1019,6 @@ init_data :: () {
                 memory_requirements : VkMemoryRequirements;
                 vkGetImageMemoryRequirements(device, texture.image, *memory_requirements);
 
-                device_memory : VkDeviceMemory;
                 {
                     success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL);
                     assert(success);
@@ -1014,10 +1029,10 @@ init_data :: () {
                         allocationSize = memory_requirements.size;
                         memoryTypeIndex = xx memory_type_index;
 
-                        result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                        result = vkAllocateMemory(device, *allocate_info, null, *texture.memory);
                         assert(result == .SUCCESS);
                     }
-                    result = vkBindImageMemory(device, texture.image, device_memory, 0);
+                    result = vkBindImageMemory(device, texture.image, texture.memory, 0);
                     assert(result == .SUCCESS);
                 }
             }
@@ -1112,9 +1127,66 @@ init_data :: () {
             */
         }
 
-        // Sampler
         {
+            {
+                view_create_info : VkImageViewCreateInfo;
+                {
+                    using view_create_info;
+                    image    = texture.image;
+                    viewType = .e2D;
+                    format   = .R8G8B8A8_UNORM;
+                    subresourceRange = .{
+                        aspectMask = .COLOR,
+                        levelCount = VK_REMAINING_MIP_LEVELS,
+                        layerCount = VK_REMAINING_ARRAY_LAYERS,
+                    };
+                }
 
+                image_descriptor_info : VkImageDescriptorInfoEXT;
+                {
+                    using image_descriptor_info;
+                    pView  = *view_create_info;
+                    layout = .GENERAL;
+                }
+
+                resource_descriptor_info : VkResourceDescriptorInfoEXT;
+                {
+                    using resource_descriptor_info;
+                    type = .SAMPLED_IMAGE;
+                    data.pImage = *image_descriptor_info;
+                }
+
+                destination := VkHostAddressRangeEXT.{
+                    address = resource_heap_cpu_map,
+                    size    = image_descriptor_stride,
+                };
+
+                result = vkWriteResourceDescriptorsEXT(device, 1, *resource_descriptor_info, *destination);
+                assert(result == .SUCCESS);
+            }
+
+            {
+                sampler_create_info : VkSamplerCreateInfo;
+                {
+                    using sampler_create_info;
+                    magFilter    = .NEAREST;
+                    minFilter    = .NEAREST;
+                    mipmapMode   = .NEAREST;
+                    addressModeU = .REPEAT;
+                    addressModeV = .REPEAT;
+                    addressModeW = .REPEAT;
+                    maxLod       = VK_LOD_CLAMP_NONE;
+                    borderColor  = .INT_OPAQUE_BLACK;
+                }
+
+                destination := VkHostAddressRangeEXT.{
+                    address = sampler_heap_cpu_map,
+                    size    = sampler_descriptor_stride,
+                };
+
+                result = vkWriteSamplerDescriptorsEXT(device, 1, *sampler_create_info, *destination);
+                assert(result == .SUCCESS);
+            }
         }
     }
 
@@ -1133,7 +1205,6 @@ init_data :: () {
         memory_requirements : VkMemoryRequirements;
         vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
 
-        device_memory : VkDeviceMemory;
         {
             success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .HOST_VISIBLE);
             assert(success);
@@ -1144,7 +1215,7 @@ init_data :: () {
                 allocationSize = memory_requirements.size;
                 memoryTypeIndex = xx memory_type_index;
 
-                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                result = vkAllocateMemory(device, *allocate_info, null, *vertex_memory);
                 assert(result == .SUCCESS);
             }
         }
@@ -1154,7 +1225,7 @@ init_data :: () {
             data : *void;
             result := vkMapMemory(
                 device,
-                device_memory,
+                vertex_memory,
                 0,
                 VK_WHOLE_SIZE,
                 0,
@@ -1166,7 +1237,7 @@ init_data :: () {
             memcpy(data, *vertices, size_of(type_of(vertices)));
         }
 
-        result = vkBindBufferMemory(device, vertex_buffer, device_memory, 0);
+        result = vkBindBufferMemory(device, vertex_buffer, vertex_memory, 0);
         assert(result == .SUCCESS);
     }
 
@@ -1181,7 +1252,6 @@ init_data :: () {
         }
 
         // @TODO: Track and free this memory.
-        device_memory : VkDeviceMemory;
         {
             allocate_info : VkMemoryAllocateInfo;
             {
@@ -1190,17 +1260,27 @@ init_data :: () {
                 memoryTypeIndex = 0;
             }
 
-            result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+            result = vkAllocateMemory(device, *allocate_info, null, *uniform_memory);
             assert(result == .SUCCESS);
 
-            result = vkBindBufferMemory(device, uniform_buffer, device_memory, 0);
+            result = vkBindBufferMemory(device, uniform_buffer, uniform_memory, 0);
             assert(result == .SUCCESS);
         }
     }
 }
 
 deinit_data :: () {
-    // @TODO
+    vkDestroyBuffer(device, staging_buffer, null);
+    vkFreeMemory(device, staging_memory, null);
+
+    vkDestroyImage(device, texture.image, null);
+    vkFreeMemory(device, texture.memory, null);
+
+    vkDestroyBuffer(device, vertex_buffer, null);
+    vkFreeMemory(device, vertex_memory, null);
+
+    vkDestroyBuffer(device, uniform_buffer, null);
+    vkFreeMemory(device, uniform_memory, null);
 }
 
 bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
@@ -1462,17 +1542,27 @@ draw_frame :: () {
 
         // Push Descriptor Data
         {
-            // For combined image/samplers, the 12 MSB contain the sampler id, while the remaining contain the image id.
-            data : u32 = (first_image_id & 0xFFFFF) | (first_sampler_id << 20);
+            Push_Data :: struct {
+                texture : [2] u32;
+                sampler : [2] u32;
+            }
+
+            push_data := Push_Data.{
+                texture = .[first_image_id,   0],
+                sampler = .[first_sampler_id, 0],
+            };
+
             push_data_info : VkPushDataInfoEXT;
             {
                 using push_data_info;
                 offset = 0;
                 data = .{
-                    address = *data,
-                    size = size_of(u32),
+                    address = *push_data,
+                    size    = size_of(Push_Data),
                 };
             }
+
+            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
         }
 
         // Bind Data

@@ -1,6 +1,12 @@
 // Graphics
 // Material Shader
 
+struct Push_Data {
+    DescriptorHandle<Texture2D>     texture;
+    DescriptorHandle<SamplerState>  sampler;
+}
+[[vk::push_constant]] Push_Data push_data;
+
 ////////////////////////////////////////////////////////////////////////////////
 // Structs
 
@@ -15,6 +21,7 @@ struct Coarse_Vertex {
 struct Vertex {
     float3 position : POSITION;
     float3 color    : COLOR;
+    float2 uv       : TEXCOORD;
 }
 
 struct Vertex_Stage_Output {
@@ -31,7 +38,7 @@ Vertex_Stage_Output vertex_main(Vertex vertex) {
     {
         {
             output.coarse_vertex.color = color;
-            output.coarse_vertex.uv = float2(0.0, 0.0);
+            output.coarse_vertex.uv = vertex.uv;
         }
 
         output.sv_position = float4(position, 1.0);
@@ -44,10 +51,6 @@ Vertex_Stage_Output vertex_main(Vertex vertex) {
 ////////////////////////////////////////////////////////////////////////////////
 // Fragment Shader
 
-uniform StructuredBuffer<DescriptorHandle<Texture2D>> textures;
-uniform StructuredBuffer<DescriptorHandle<Sampler2D>> samplers;
-uniform int sampler_index;
-
 struct Fragment_Stage_Output {
     float3 color;
 }
@@ -55,11 +58,11 @@ struct Fragment_Stage_Output {
 [shader("fragment")]
 Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
     float3 color = coarse_vertex.color;
-    float4 texture_color = samplers[sampler_index].Sample(coarse_vertex.uv);
+    float4 texture_color = push_data.texture.Sample(push_data.sampler, coarse_vertex.uv);
 
     Fragment_Stage_Output output;
     {
-        output.color = lerp(texture_color.xyz, color, 0.5);
+        output.color = lerp(texture_color.xyz, color, texture_color.a);
     }
     return output;
 }

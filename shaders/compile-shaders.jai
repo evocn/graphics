@@ -3,6 +3,15 @@
 // Alex Hartford
 
 #import "Process";
+#if OS == .WINDOWS {
+    #import "Windows";
+}
+
+vulkan_sdk_path :: () -> string {
+    path := to_string(getenv("VULKAN_SDK"));
+    assert(path.count > 0, "VULKAN_SDK is not set. Install the Vulkan SDK, or start your shell from one that defines it.");
+    return path;
+}
 
 slangc :: (output_filename: string, filename: string, entry_point: string) -> success : bool {
     input_file  := tprint("%.slang", filename);
@@ -10,13 +19,13 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 
     process_result := run_command(
         args = ...[
-            "slangc.exe",
+            tprint("%/Bin/slangc.exe", vulkan_sdk_path()),
             input_file,
             tprint("-o %", output_file),
             tprint("-entry %", entry_point),
-            "-profile glsl_460",
+            "-profile spirv_1_6",
             "-target spirv",
-            "-capability SPV_EXT_descriptor_heap",
+            "-capability spvDescriptorHeapEXT",
         ],
         working_directory = #filepath,
         //capture_and_return_output = false,
@@ -37,13 +46,9 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
-    success : bool;
 
-    //success = slangc("debug-vertex", "debug", "vertex_main");
-    //success = slangc("debug-fragment", "debug", "fragment_main");
-
-    success = slangc("material-vertex", "material", "vertex_main");
-    success = slangc("material-fragment", "material", "fragment_main");
+    assert(slangc("material-vertex",   "material", "vertex_main"));
+    assert(slangc("material-fragment", "material", "fragment_main"));
 
     print("Compiled all shaders.\n\n");
 }
