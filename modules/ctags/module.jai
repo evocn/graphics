@@ -76,7 +76,7 @@ process_message :: (using ctags: *CTags, message: *Message) {
         }
 
 	} else if message.kind == .COMPLETE {
-		print("Generating ctags file '%' (% symbols)\n", output_filename, symbols.count);
+		log("Generating ctags file '%' (% symbols)", output_filename, symbols.count);
 
 		intro_sort(symbols, (a: *CTags.Symbol, b: *CTags.Symbol) -> int {
 			return compare(a.name, b.name);
@@ -186,7 +186,7 @@ add_declaration :: (using ctags: *CTags, decl: *Code_Declaration) {
 
     if !decl.name {
         // @ToDo: What are declarations with no name?
-        print("Found declaration wihout a name: %\n", <<decl);
+        print("Found declaration wihout a name: %\n", decl.*);
         return;
     }
 

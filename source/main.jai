@@ -10,6 +10,13 @@ program_state : struct {
 
         window          : Window_Type;
     }
+
+    Texture_Data :: struct {
+        bytes : *void;
+        width : s32;
+        height: s32;
+    }
+    texture_datas : [..] Texture_Data;
 }
 
 using vulkan_context : struct {
@@ -29,6 +36,10 @@ using vulkan_context : struct {
 
         using properties : struct {
             properties2 : VkPhysicalDeviceProperties2;
+            vulkan_1_1_properties   : VkPhysicalDeviceVulkan11Properties;
+            vulkan_1_2_properties   : VkPhysicalDeviceVulkan12Properties;
+            vulkan_1_3_properties   : VkPhysicalDeviceVulkan13Properties;
+            vulkan_1_4_properties   : VkPhysicalDeviceVulkan14Properties;
             descriptor_heap_properties      : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
         }
 
@@ -82,13 +93,19 @@ using vulkan_context : struct {
             first_image_id      : u32;
             first_sampler_id    : u32;
         }
+
+        shaders                 : [2] VkShaderEXT;
     }
 
     using scene_data : struct {
-        uniform_buffer          : VkBuffer;
-        vertex_buffer           : VkBuffer;
+        texture : struct {
+            image   : VkImage;
+            sampler : VkSampler;
+        }
 
-        shaders                 : [2] VkShaderEXT;
+        staging_buffer          : VkBuffer;
+        vertex_buffer           : VkBuffer;
+        uniform_buffer          : VkBuffer;
     }
 }
 
@@ -132,18 +149,19 @@ main :: () {
     {
         log("Loading our textures...");
         for texture_name : textures_to_load {
-            width, height : s32;
+            new_texture_data := array_add(*program_state.texture_datas);
+
             desired_channels :: 4;
             channels : s32;
 
             full_texture_path := tprint("%/%.png", textures_path, texture_name);
-            data := stbi_load(
+            new_texture_data.bytes = stbi_load(
                 temp_c_string(full_texture_path),
-                *width, *height,
+                *new_texture_data.width, *new_texture_data.height,
                 channels_in_file = *channels,
                 desired_channels = desired_channels);
             assert(desired_channels == channels);
-            log("- Loaded %", texture_name);
+            log("- Loaded % (%x%, % channels)", texture_name, new_texture_data.width, new_texture_data.height, channels);
         }
 
         log("\n");
@@ -169,6 +187,8 @@ main :: () {
         //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.transfer, queueIndex=0, *transfer_queue);
     }
 
+    result : VkResult;
+
     init_descriptor_heap();
     defer deinit_descriptor_heap();
 
@@ -178,88 +198,27 @@ main :: () {
     init_render();
     defer deinit_render();
 
-    result : VkResult;
-
-    // Data
     {
-        // Vertex Buffer
-        {
-            {
-                using create_info : VkBufferCreateInfo;
-                size = size_of(type_of(vertices));
-                usage = .VERTEX_BUFFER;
+        using begin_info: VkCommandBufferBeginInfo;
+        flags = .ONE_TIME_SUBMIT;
+        result = vkBeginCommandBuffer(command_buffers[0], *begin_info);
+        assert(result == .SUCCESS);
+    }
 
-                result = vkCreateBuffer(device, *create_info, null, *vertex_buffer);
-                assert(result == .SUCCESS);
-            }
+    init_data();
+    defer deinit_data();
 
-            // @TODO: Track and free this memory.
-            memory_requirements : VkMemoryRequirements;
-            vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
+    // Submit any GPU initialization work accumulated so far.
+    {
+        result = vkEndCommandBuffer(command_buffers[0]);
+        assert(result == .SUCCESS);
 
-            device_memory : VkDeviceMemory;
-            {
-                success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .HOST_VISIBLE);
-                assert(success);
-                assert(memory_type_index != -1);
+        using submit_info : VkSubmitInfo;
+        commandBufferCount = 1;
+        pCommandBuffers = *command_buffers[0];
 
-                {
-                    using allocate_info : VkMemoryAllocateInfo;
-                    allocationSize = memory_requirements.size;
-                    memoryTypeIndex = xx memory_type_index;
-
-                    result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
-                    assert(result == .SUCCESS);
-                }
-            }
-
-            // Map
-            {
-                data : *void;
-                result := vkMapMemory(
-                    device,
-                    device_memory,
-                    0,
-                    VK_WHOLE_SIZE,
-                    0,
-                    *data
-                );
-                assert(result == .SUCCESS);
-
-                memcpy(data, *vertices, size_of(type_of(vertices)));
-            }
-
-            result = vkBindBufferMemory(device, vertex_buffer, device_memory, 0);
-            assert(result == .SUCCESS);
-        }
-
-        // Uniform Buffer
-        {
-            {
-                using buffer_create_info : VkBufferCreateInfo;
-                size = 16 * size_of(float);
-                usage = .UNIFORM_BUFFER;
-
-                vkCreateBuffer(device, *buffer_create_info, null, *uniform_buffer);
-            }
-
-            // @TODO: Track and free this memory.
-            device_memory : VkDeviceMemory;
-            {
-                allocate_info : VkMemoryAllocateInfo;
-                {
-                    using allocate_info;
-                    allocationSize = 16 * size_of(float);
-                    memoryTypeIndex = 0;
-                }
-
-                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
-                assert(result == .SUCCESS);
-
-                result = vkBindBufferMemory(device, uniform_buffer, device_memory, 0);
-                assert(result == .SUCCESS);
-            }
-        }
+        result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
+        assert(result == .SUCCESS);
     }
 
     // Wait until all GPU initialization work is complete before proceeding.
@@ -532,7 +491,12 @@ init_device :: () {
             // Properties
             {
                 descriptor_heap_properties = .{pNext = null};
-                properties2 = .{pNext = *descriptor_heap_properties};
+                vulkan_1_4_properties = .{pNext = *descriptor_heap_properties};
+                vulkan_1_3_properties = .{pNext = *vulkan_1_4_properties};
+                vulkan_1_2_properties = .{pNext = *vulkan_1_3_properties};
+                vulkan_1_1_properties = .{pNext = *vulkan_1_2_properties};
+
+                properties2 = .{pNext = *vulkan_1_1_properties};
                 vkGetPhysicalDeviceProperties2(physical_device, *properties2);
             }
 
@@ -541,6 +505,11 @@ init_device :: () {
                 unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = null};
                 shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
                 vulkan_1_4_features = .{pNext = *shader_object_features};
+                {
+                    using vulkan_1_4_features;
+                    //hostImageCopy = VK_TRUE;
+                    maintenance5 = VK_TRUE;
+                }
                 vulkan_1_3_features = .{pNext = *vulkan_1_4_features};
                 {
                     using vulkan_1_3_features;
@@ -631,16 +600,16 @@ init_descriptor_heap :: () {
         }
     }
 
-    
     result = vkBindBufferMemory(device, descriptor_heap_buffer, descriptor_heap_memory, 0);
     assert(result == .SUCCESS);
+
+    device_address_info := VkBufferDeviceAddressInfo.{buffer = descriptor_heap_buffer};
+    device_address := vkGetBufferDeviceAddress(device, *device_address_info);
+    assert(device_address != 0);
 
     result = vkMapMemory(device, descriptor_heap_memory, 0, VK_WHOLE_SIZE, 0, *descriptor_heap_cpu_map);
     assert(result == .SUCCESS);
     assert(descriptor_heap_cpu_map != null);
-
-    device_address_info := VkBufferDeviceAddressInfo.{buffer = descriptor_heap_buffer};
-    device_address := vkGetBufferDeviceAddress(device, *device_address_info);
 
     // Binding Infos
     {
@@ -749,8 +718,7 @@ init_swapchain :: () {
         imageColorSpace             = swapchain_context.surface_format.colorSpace;
         imageExtent                 = swapchain_context.extent;
         imageArrayLayers            = 1;
-        imageUsage                  |= .COLOR_ATTACHMENT;
-        imageUsage                  |=  .TRANSFER_DST;
+        imageUsage                  = .COLOR_ATTACHMENT | .TRANSFER_DST;
         imageSharingMode            = .EXCLUSIVE;
         preTransform                = surface_capabilities.currentTransform;
         compositeAlpha              = .OPAQUE;
@@ -808,7 +776,7 @@ init_render :: () {
         // Pool
         {
             using command_pool_create_info: VkCommandPoolCreateInfo;
-            flags            = .RESET_COMMAND_BUFFER;
+            flags = .RESET_COMMAND_BUFFER;
             queueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
             result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
             assert(result == .SUCCESS);
@@ -929,6 +897,308 @@ deinit_render :: () {
         vkDestroySemaphore(device, image_available_semaphores[index], null);
     }
     vkDestroyCommandPool(device, command_pool, null);
+}
+
+init_data :: () {
+    result : VkResult;
+
+    // Staging Buffer
+    {
+        using program_state;
+
+        image_size : u64 = cast(u64, size_of(u32) * texture_datas[0].width * texture_datas[0].height);
+        {
+            using buffer_create_info : VkBufferCreateInfo;
+            size = image_size;
+            usage = .TRANSFER_SRC;
+
+            result = vkCreateBuffer(device, *buffer_create_info, null, *staging_buffer);
+            assert(result == .SUCCESS);
+        }
+
+        // @TODO: Track and free this memory.
+        memory_requirements : VkMemoryRequirements;
+        vkGetBufferMemoryRequirements(device, staging_buffer, *memory_requirements);
+
+        device_memory : VkDeviceMemory;
+        {
+            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE);
+            assert(success);
+            assert(memory_type_index != -1);
+
+            {
+                using allocate_info : VkMemoryAllocateInfo;
+                allocationSize = memory_requirements.size;
+                memoryTypeIndex = xx memory_type_index;
+
+                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                assert(result == .SUCCESS);
+            }
+        }
+
+        // Map
+        {
+            data : *void;
+            result := vkMapMemory(
+                device,
+                device_memory,
+                0,
+                VK_WHOLE_SIZE,
+                0,
+                *data
+            );
+            assert(result == .SUCCESS);
+            assert(data != null);
+
+            memcpy(data, *texture_datas[0].bytes, xx image_size);
+        }
+
+        result = vkBindBufferMemory(device, staging_buffer, device_memory, 0);
+        assert(result == .SUCCESS);
+    }
+
+    // Texture
+    {
+        // Image
+        {
+            texture_format : VkFormat = .R8G8B8A8_UNORM;
+
+            /*
+            // Host Image Copy
+            // Query format properties
+            {
+                format_properties_3 := VkFormatProperties3.{};
+                format_properties_2 := VkFormatProperties2.{pNext = *format_properties_3};
+                vkGetPhysicalDeviceFormatProperties2(physical_device_context.physical_device, texture_format, *format_properties_2);
+                assert((format_properties_3.optimalTilingFeatures & .HOST_IMAGE_TRANSFER) == 1);
+            }
+            */
+
+            image_create_info : VkImageCreateInfo;
+            {
+                using image_create_info;
+                imageType = .e2D;
+                format = texture_format;
+                extent = .{width = 16, height = 16, depth = 1};
+                mipLevels = 1;
+                arrayLayers = 1;
+                samples = .e1;
+                tiling = .OPTIMAL;
+                usage = .SAMPLED | .TRANSFER_DST;
+                sharingMode = .EXCLUSIVE;
+                initialLayout = .UNDEFINED;
+            }
+
+            // Create
+            {
+                result = vkCreateImage(device, *image_create_info, null, *texture.image);
+                assert(result == .SUCCESS);
+            }
+
+            // Bind Memory
+            {
+                // @TODO: Track and free this memory.
+                memory_requirements : VkMemoryRequirements;
+                vkGetImageMemoryRequirements(device, texture.image, *memory_requirements);
+
+                device_memory : VkDeviceMemory;
+                {
+                    success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL);
+                    assert(success);
+                    assert(memory_type_index != -1);
+
+                    {
+                        using allocate_info : VkMemoryAllocateInfo;
+                        allocationSize = memory_requirements.size;
+                        memoryTypeIndex = xx memory_type_index;
+
+                        result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                        assert(result == .SUCCESS);
+                    }
+                    result = vkBindImageMemory(device, texture.image, device_memory, 0);
+                    assert(result == .SUCCESS);
+                }
+            }
+
+            {
+                subresource_range : VkImageSubresourceRange;
+                {
+                    using subresource_range;
+                    aspectMask     = .COLOR;
+                    levelCount     = VK_REMAINING_MIP_LEVELS;
+                    layerCount     = VK_REMAINING_ARRAY_LAYERS;
+                }
+
+                image_memory_barrier : VkImageMemoryBarrier;
+                {
+                    using image_memory_barrier;
+                    srcAccessMask       = 0;
+                    dstAccessMask       = .TRANSFER_WRITE;
+                    oldLayout           = .UNDEFINED;
+                    newLayout           = .GENERAL;
+                    srcQueueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
+                    dstQueueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
+                    image               = texture.image;
+                    subresourceRange    = subresource_range;
+                }
+
+                vkCmdPipelineBarrier(command_buffers[0], .TRANSFER, .TRANSFER, 
+                                     0, 0, null, 0, null, 1, *image_memory_barrier);
+            }
+
+            // Copy from the staging buffer
+            {
+                region : VkBufferImageCopy2;
+                {
+                    using region;
+                    bufferOffset = 0;
+                    imageSubresource = .{
+                        aspectMask = .COLOR,
+                        layerCount = VK_REMAINING_ARRAY_LAYERS,
+                    };
+                    imageExtent = .{16, 16, 1};
+                }
+
+                using copy_buffer_to_image_info_2 : VkCopyBufferToImageInfo2;
+                srcBuffer = staging_buffer;
+                dstImage = texture.image;
+                dstImageLayout = .GENERAL;
+                regionCount = 1;
+                pRegions = *region;
+
+                vkCmdCopyBufferToImage2(command_buffers[0], *copy_buffer_to_image_info_2);
+            }
+
+            /*
+            // Host Image Copy
+            // Transition Image Layout
+            {
+                using host_image_layout_transition_info : VkHostImageLayoutTransitionInfo;
+                image = texture.image;
+                oldLayout = .UNDEFINED;
+                newLayout = .GENERAL;
+                subresourceRange = .{
+                    aspectMask = .COLOR,
+                    levelCount = VK_REMAINING_MIP_LEVELS,
+                    layerCount = VK_REMAINING_ARRAY_LAYERS,
+                };
+                vkTransitionImageLayout(device, 1, *host_image_layout_transition_info);
+            }
+
+            // Transfer Data
+            {
+                region : VkMemoryToImageCopy;
+                {
+                    using region;
+                    pHostPointer = program_state.texture_datas[0].bytes;
+                    imageSubresource = .{
+                        aspectMask = .COLOR,
+                        layerCount = VK_REMAINING_ARRAY_LAYERS,
+                    };
+                    imageExtent = .{16, 16, 1};
+                }
+
+                using copy_memory_to_image_info : VkCopyMemoryToImageInfo;
+                dstImage = texture.image;
+                dstImageLayout = .GENERAL;
+                regionCount = 1;
+                pRegions = *region;
+
+                result = vkCopyMemoryToImage(device, *copy_memory_to_image_info);
+                assert(result == .SUCCESS);
+            }
+            */
+        }
+
+        // Sampler
+        {
+
+        }
+    }
+
+    // Vertex Buffer
+    {
+        {
+            using create_info : VkBufferCreateInfo;
+            size = size_of(type_of(vertices));
+            usage = .VERTEX_BUFFER;
+
+            result = vkCreateBuffer(device, *create_info, null, *vertex_buffer);
+            assert(result == .SUCCESS);
+        }
+
+        // @TODO: Track and free this memory.
+        memory_requirements : VkMemoryRequirements;
+        vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
+
+        device_memory : VkDeviceMemory;
+        {
+            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .HOST_VISIBLE);
+            assert(success);
+            assert(memory_type_index != -1);
+
+            {
+                using allocate_info : VkMemoryAllocateInfo;
+                allocationSize = memory_requirements.size;
+                memoryTypeIndex = xx memory_type_index;
+
+                result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+                assert(result == .SUCCESS);
+            }
+        }
+
+        // Map
+        {
+            data : *void;
+            result := vkMapMemory(
+                device,
+                device_memory,
+                0,
+                VK_WHOLE_SIZE,
+                0,
+                *data
+            );
+            assert(result == .SUCCESS);
+            assert(data != null);
+
+            memcpy(data, *vertices, size_of(type_of(vertices)));
+        }
+
+        result = vkBindBufferMemory(device, vertex_buffer, device_memory, 0);
+        assert(result == .SUCCESS);
+    }
+
+    // Uniform Buffer
+    {
+        {
+            using buffer_create_info : VkBufferCreateInfo;
+            size = 16 * size_of(float);
+            usage = .UNIFORM_BUFFER;
+
+            vkCreateBuffer(device, *buffer_create_info, null, *uniform_buffer);
+        }
+
+        // @TODO: Track and free this memory.
+        device_memory : VkDeviceMemory;
+        {
+            allocate_info : VkMemoryAllocateInfo;
+            {
+                using allocate_info;
+                allocationSize = 16 * size_of(float);
+                memoryTypeIndex = 0;
+            }
+
+            result = vkAllocateMemory(device, *allocate_info, null, *device_memory);
+            assert(result == .SUCCESS);
+
+            result = vkBindBufferMemory(device, uniform_buffer, device_memory, 0);
+            assert(result == .SUCCESS);
+        }
+    }
+}
+
+deinit_data :: () {
+    // @TODO
 }
 
 bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
@@ -1068,9 +1338,9 @@ draw_frame :: () {
     assert(result == .SUCCESS);
 
     {
-        using beginInfo: VkCommandBufferBeginInfo;
+        using begin_info: VkCommandBufferBeginInfo;
         flags = .ONE_TIME_SUBMIT;
-        result = vkBeginCommandBuffer(command_buffers[index], *beginInfo);
+        result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
         assert(result == .SUCCESS);
     }
 

@@ -6,7 +6,7 @@
 
 // While Jai is in beta, we are going to work off of specific versions of the compiler.
 // The program should not build unless your compiler is this version:
-MANDATORY_COMPILER_VERSION :: Version_Info.{0, 2, 17};
+MANDATORY_COMPILER_VERSION :: Version_Info.{0, 2, 30};
 
 // Shared between the build program and the target program.
 shared_data :: #string DONE
