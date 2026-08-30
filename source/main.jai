@@ -53,6 +53,7 @@ using vulkan_context : struct {
             unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
             descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
             untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
+            address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
         }
     }
 
@@ -82,12 +83,8 @@ using vulkan_context : struct {
             image_descriptor_stride     : VkDeviceSize;
             sampler_descriptor_stride   : VkDeviceSize;
 
-            descriptor_heap_buffer  : VkBuffer;
-            descriptor_heap_memory  : VkDeviceMemory;
-
-            descriptor_heap_cpu_map : *void;
-            resource_heap_cpu_map   : *void;
-            sampler_heap_cpu_map    : *void;
+            resource_heap_offset    : VkDeviceSize;
+            sampler_heap_offset     : VkDeviceSize;
 
             bind_resource_heap_info : VkBindHeapInfoEXT;
             bind_sampler_heap_info  : VkBindHeapInfoEXT;
@@ -99,20 +96,42 @@ using vulkan_context : struct {
         shaders                 : [2] VkShaderEXT;
     }
 
+    arena : struct {
+        SIZE :: 16 * 1024 * 1024;
+
+        buffer  : VkBuffer;
+        memory  : VkDeviceMemory;
+        address : VkDeviceAddress;
+        cpu_map : *void;
+        used    : VkDeviceSize;
+    }
+
     using scene_data : struct {
         texture : struct {
             image   : VkImage;
             memory  : VkDeviceMemory;
-            sampler : VkSampler;
         }
 
-        staging_buffer          : VkBuffer;
-        staging_memory          : VkDeviceMemory;
-        vertex_buffer           : VkBuffer;
-        vertex_memory           : VkDeviceMemory;
-        uniform_buffer          : VkBuffer;
-        uniform_memory          : VkDeviceMemory;
+        staging_offset  : VkDeviceSize;
+        staging_size    : VkDeviceSize;
+        vertex_offset   : VkDeviceSize;
+        vertex_size     : VkDeviceSize;
     }
+}
+
+arena_suballocate :: (size: VkDeviceSize, alignment: VkDeviceSize) -> offset: VkDeviceSize {
+    offset := align_up(arena.used, alignment);
+    assert(offset + size <= arena.SIZE, "Arena is out of space.");
+    arena.used = offset + size;
+    return offset;
+}
+
+arena_address :: (offset: VkDeviceSize) -> VkDeviceAddress {
+    return arena.address + offset;
+}
+
+arena_pointer :: (offset: VkDeviceSize) -> *void {
+    return arena.cpu_map + offset;
 }
 
 Vertex :: struct {
@@ -195,8 +214,10 @@ main :: () {
 
     result : VkResult;
 
+    init_arena();
+    defer deinit_arena();
+
     init_descriptor_heap();
-    defer deinit_descriptor_heap();
 
     init_swapchain();
     defer deinit_swapchain();
@@ -486,13 +507,15 @@ init_device :: () {
             pQueueCreateInfos       = queue_create_infos.data;
 
             // Device Extensions
-            device_extensions: [..] *u8;
-            array_add(*device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data);
-            array_add(*device_extensions, VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data);
+            device_extensions :: *u8.[
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME.data,
+                VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data,
+                VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data,
+                VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data,
+                VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data,
+                VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data,
+                VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME.data,
+            ];
 
             enabledExtensionCount   = xx device_extensions.count;
             ppEnabledExtensionNames = device_extensions.data;
@@ -511,7 +534,8 @@ init_device :: () {
 
             // Features
             {
-                untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = null};
+                address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = null};
+                untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = *address_commands_features};
                 descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
                 unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = *descriptor_heap_features};
                 shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
@@ -559,104 +583,99 @@ deinit_device :: () {
     vkDestroyDevice(device, null);
 }
 
-init_descriptor_heap :: () {
+init_arena :: () {
     result : VkResult;
-    using physical_device_context;
-
-    image_descriptor_stride = descriptor_heap_properties.imageDescriptorSize;
-    sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;
-
-    max_image_descriptors   :: 1;
-    max_sampler_descriptors :: 1;
-    resource_heap_size := align_up(
-        align_up(max_image_descriptors * image_descriptor_stride, descriptor_heap_properties.imageDescriptorAlignment) + descriptor_heap_properties.minResourceHeapReservedRange,
-        descriptor_heap_properties.resourceHeapAlignment);
-    sampler_heap_size := align_up(
-        align_up(max_sampler_descriptors * sampler_descriptor_stride, descriptor_heap_properties.samplerDescriptorAlignment) + descriptor_heap_properties.minSamplerHeapReservedRange,
-        descriptor_heap_properties.samplerHeapAlignment);
-    descriptor_heap_size := align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment) + resource_heap_size;
 
     {
         using buffer_create_info : VkBufferCreateInfo;
-        size = descriptor_heap_size;
-        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS;
+        size  = arena.SIZE;
+        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .VERTEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER;
 
-        result = vkCreateBuffer(device, *buffer_create_info, null, *descriptor_heap_buffer);
+        result = vkCreateBuffer(device, *buffer_create_info, null, *arena.buffer);
         assert(result == .SUCCESS);
     }
 
-    // Allocate Memory for the buffer.
     memory_requirements : VkMemoryRequirements;
-    vkGetBufferMemoryRequirements(device, descriptor_heap_buffer, *memory_requirements);
+    vkGetBufferMemoryRequirements(device, arena.buffer, *memory_requirements);
 
     {
         success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE);
         assert(success);
         assert(memory_type_index != -1);
 
+        memory_allocate_flags_info : VkMemoryAllocateFlagsInfo;
         {
-            memory_allocate_flags_info : VkMemoryAllocateFlagsInfo;
-            {
-                using memory_allocate_flags_info;
-                flags = .DEVICE_ADDRESS;
-            }
-
-            using memory_allocate_info : VkMemoryAllocateInfo;
-            pNext = *memory_allocate_flags_info;
-            allocationSize = memory_requirements.size;
-            memoryTypeIndex = xx memory_type_index;
-
-            result = vkAllocateMemory(device, *memory_allocate_info, null, *descriptor_heap_memory);
-            assert(result == .SUCCESS);
+            using memory_allocate_flags_info;
+            flags = .DEVICE_ADDRESS;
         }
+
+        using memory_allocate_info : VkMemoryAllocateInfo;
+        pNext = *memory_allocate_flags_info;
+        allocationSize = memory_requirements.size;
+        memoryTypeIndex = xx memory_type_index;
+
+        result = vkAllocateMemory(device, *memory_allocate_info, null, *arena.memory);
+        assert(result == .SUCCESS);
     }
 
-    result = vkBindBufferMemory(device, descriptor_heap_buffer, descriptor_heap_memory, 0);
+    result = vkBindBufferMemory(device, arena.buffer, arena.memory, 0);
     assert(result == .SUCCESS);
 
-    device_address_info := VkBufferDeviceAddressInfo.{buffer = descriptor_heap_buffer};
-    device_address := vkGetBufferDeviceAddress(device, *device_address_info);
-    assert(device_address != 0);
+    device_address_info := VkBufferDeviceAddressInfo.{buffer = arena.buffer};
+    arena.address = vkGetBufferDeviceAddress(device, *device_address_info);
+    assert(arena.address != 0);
 
-    result = vkMapMemory(device, descriptor_heap_memory, 0, VK_WHOLE_SIZE, 0, *descriptor_heap_cpu_map);
+    result = vkMapMemory(device, arena.memory, 0, VK_WHOLE_SIZE, 0, *arena.cpu_map);
     assert(result == .SUCCESS);
-    assert(descriptor_heap_cpu_map != null);
+    assert(arena.cpu_map != null);
+}
 
-    // Binding Infos
+deinit_arena :: () {
+    vkDestroyBuffer(device, arena.buffer, null);
+    vkFreeMemory(device, arena.memory, null);
+}
+
+init_descriptor_heap :: () {
+    using physical_device_context;
+
+    image_descriptor_stride   = descriptor_heap_properties.imageDescriptorSize;
+    sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;
+
+    max_image_descriptors   :: 1;
+    max_sampler_descriptors :: 1;
+
+    resource_heap_size := align_up(
+        align_up(max_image_descriptors * image_descriptor_stride, descriptor_heap_properties.imageDescriptorAlignment) + descriptor_heap_properties.minResourceHeapReservedRange,
+        descriptor_heap_properties.resourceHeapAlignment);
+    sampler_heap_size := align_up(
+        align_up(max_sampler_descriptors * sampler_descriptor_stride, descriptor_heap_properties.samplerDescriptorAlignment) + descriptor_heap_properties.minSamplerHeapReservedRange,
+        descriptor_heap_properties.samplerHeapAlignment);
+
+    sampler_heap_offset  = arena_suballocate(sampler_heap_size,  descriptor_heap_properties.samplerHeapAlignment);
+    resource_heap_offset = arena_suballocate(resource_heap_size, descriptor_heap_properties.resourceHeapAlignment);
+
     {
-        // Sampler
-        {
-            using bind_sampler_heap_info;
-            heapRange = .{
-                address = device_address,
-                size = sampler_heap_size,
-            };
-            reservedRangeOffset = 0;
-            reservedRangeSize = descriptor_heap_properties.minSamplerHeapReservedRange;
-        }
-        sampler_heap_cpu_map = descriptor_heap_cpu_map + descriptor_heap_properties.minSamplerHeapReservedRange;
+        using bind_sampler_heap_info;
+        heapRange = .{
+            address = arena_address(sampler_heap_offset),
+            size = sampler_heap_size,
+        };
+        reservedRangeOffset = 0;
+        reservedRangeSize = descriptor_heap_properties.minSamplerHeapReservedRange;
+    }
 
-        // Resource 
-        {
-            using bind_resource_heap_info;
-            heapRange = .{
-                address = device_address + align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment),
-                size = resource_heap_size,
-            };
-            reservedRangeOffset = 0;
-            reservedRangeSize = descriptor_heap_properties.minResourceHeapReservedRange;
-        }
-        resource_heap_cpu_map = descriptor_heap_cpu_map + align_up(sampler_heap_size, descriptor_heap_properties.resourceHeapAlignment) + descriptor_heap_properties.minResourceHeapReservedRange;
+    {
+        using bind_resource_heap_info;
+        heapRange = .{
+            address = arena_address(resource_heap_offset),
+            size = resource_heap_size,
+        };
+        reservedRangeOffset = 0;
+        reservedRangeSize = descriptor_heap_properties.minResourceHeapReservedRange;
     }
 
     first_image_id    = cast(u32, (descriptor_heap_properties.minResourceHeapReservedRange + image_descriptor_stride - 1) / image_descriptor_stride);
     first_sampler_id  = cast(u32, (descriptor_heap_properties.minSamplerHeapReservedRange + sampler_descriptor_stride - 1) / sampler_descriptor_stride);
-}
-
-deinit_descriptor_heap :: () {
-    vkUnmapMemory(device, descriptor_heap_memory);
-    vkDestroyBuffer(device, descriptor_heap_buffer, null);
-    vkFreeMemory(device, descriptor_heap_memory, null);
 }
 
 init_swapchain :: () {
@@ -921,58 +940,14 @@ deinit_render :: () {
 init_data :: () {
     result : VkResult;
 
-    // Staging Buffer
+    // Staging data for the texture upload.
     {
         using program_state;
 
-        image_size : u64 = cast(u64, size_of(u32) * texture_datas[0].width * texture_datas[0].height);
-        {
-            using buffer_create_info : VkBufferCreateInfo;
-            size = image_size;
-            usage = .TRANSFER_SRC;
+        staging_size   = cast(u64, size_of(u32) * texture_datas[0].width * texture_datas[0].height);
+        staging_offset = arena_suballocate(staging_size, 256);
 
-            result = vkCreateBuffer(device, *buffer_create_info, null, *staging_buffer);
-            assert(result == .SUCCESS);
-        }
-
-        // @TODO: Track and free this memory.
-        memory_requirements : VkMemoryRequirements;
-        vkGetBufferMemoryRequirements(device, staging_buffer, *memory_requirements);
-
-        {
-            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE);
-            assert(success);
-            assert(memory_type_index != -1);
-
-            {
-                using allocate_info : VkMemoryAllocateInfo;
-                allocationSize = memory_requirements.size;
-                memoryTypeIndex = xx memory_type_index;
-
-                result = vkAllocateMemory(device, *allocate_info, null, *staging_memory);
-                assert(result == .SUCCESS);
-            }
-        }
-
-        // Map
-        {
-            data : *void;
-            result := vkMapMemory(
-                device,
-                staging_memory,
-                0,
-                VK_WHOLE_SIZE,
-                0,
-                *data
-            );
-            assert(result == .SUCCESS);
-            assert(data != null);
-
-            memcpy(data, texture_datas[0].bytes, xx image_size);
-        }
-
-        result = vkBindBufferMemory(device, staging_buffer, staging_memory, 0);
-        assert(result == .SUCCESS);
+        memcpy(arena_pointer(staging_offset), texture_datas[0].bytes, xx staging_size);
     }
 
     // Texture
@@ -1063,27 +1038,30 @@ init_data :: () {
                                      0, 0, null, 0, null, 1, *image_memory_barrier);
             }
 
-            // Copy from the staging buffer
+            // Copy from the arena's staging region, addressed directly.
             {
-                region : VkBufferImageCopy2;
+                region : VkDeviceMemoryImageCopyKHR;
                 {
                     using region;
-                    bufferOffset = 0;
+                    addressRange = .{
+                        address = arena_address(staging_offset),
+                        size    = staging_size,
+                    };
+                    addressFlags = .STORAGE_BUFFER_USAGE;
                     imageSubresource = .{
                         aspectMask = .COLOR,
                         layerCount = VK_REMAINING_ARRAY_LAYERS,
                     };
+                    imageLayout = .GENERAL;
                     imageExtent = .{16, 16, 1};
                 }
 
-                using copy_buffer_to_image_info_2 : VkCopyBufferToImageInfo2;
-                srcBuffer = staging_buffer;
-                dstImage = texture.image;
-                dstImageLayout = .GENERAL;
+                using copy_info : VkCopyDeviceMemoryImageInfoKHR;
+                image = texture.image;
                 regionCount = 1;
                 pRegions = *region;
 
-                vkCmdCopyBufferToImage2(command_buffers[0], *copy_buffer_to_image_info_2);
+                vkCmdCopyMemoryToImageKHR(command_buffers[0], *copy_info);
             }
 
             /*
@@ -1157,7 +1135,7 @@ init_data :: () {
                 }
 
                 destination := VkHostAddressRangeEXT.{
-                    address = resource_heap_cpu_map,
+                    address = arena_pointer(resource_heap_offset + first_image_id * image_descriptor_stride),
                     size    = image_descriptor_stride,
                 };
 
@@ -1180,7 +1158,7 @@ init_data :: () {
                 }
 
                 destination := VkHostAddressRangeEXT.{
-                    address = sampler_heap_cpu_map,
+                    address = arena_pointer(sampler_heap_offset + first_sampler_id * sampler_descriptor_stride),
                     size    = sampler_descriptor_stride,
                 };
 
@@ -1190,97 +1168,18 @@ init_data :: () {
         }
     }
 
-    // Vertex Buffer
+    // Vertex data lives in the arena and is bound by address.
     {
-        {
-            using create_info : VkBufferCreateInfo;
-            size = size_of(type_of(vertices));
-            usage = .VERTEX_BUFFER;
+        vertex_size   = size_of(type_of(vertices));
+        vertex_offset = arena_suballocate(vertex_size, 256);
 
-            result = vkCreateBuffer(device, *create_info, null, *vertex_buffer);
-            assert(result == .SUCCESS);
-        }
-
-        // @TODO: Track and free this memory.
-        memory_requirements : VkMemoryRequirements;
-        vkGetBufferMemoryRequirements(device, vertex_buffer, *memory_requirements);
-
-        {
-            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .HOST_VISIBLE);
-            assert(success);
-            assert(memory_type_index != -1);
-
-            {
-                using allocate_info : VkMemoryAllocateInfo;
-                allocationSize = memory_requirements.size;
-                memoryTypeIndex = xx memory_type_index;
-
-                result = vkAllocateMemory(device, *allocate_info, null, *vertex_memory);
-                assert(result == .SUCCESS);
-            }
-        }
-
-        // Map
-        {
-            data : *void;
-            result := vkMapMemory(
-                device,
-                vertex_memory,
-                0,
-                VK_WHOLE_SIZE,
-                0,
-                *data
-            );
-            assert(result == .SUCCESS);
-            assert(data != null);
-
-            memcpy(data, *vertices, size_of(type_of(vertices)));
-        }
-
-        result = vkBindBufferMemory(device, vertex_buffer, vertex_memory, 0);
-        assert(result == .SUCCESS);
-    }
-
-    // Uniform Buffer
-    {
-        {
-            using buffer_create_info : VkBufferCreateInfo;
-            size = 16 * size_of(float);
-            usage = .UNIFORM_BUFFER;
-
-            vkCreateBuffer(device, *buffer_create_info, null, *uniform_buffer);
-        }
-
-        // @TODO: Track and free this memory.
-        {
-            allocate_info : VkMemoryAllocateInfo;
-            {
-                using allocate_info;
-                allocationSize = 16 * size_of(float);
-                memoryTypeIndex = 0;
-            }
-
-            result = vkAllocateMemory(device, *allocate_info, null, *uniform_memory);
-            assert(result == .SUCCESS);
-
-            result = vkBindBufferMemory(device, uniform_buffer, uniform_memory, 0);
-            assert(result == .SUCCESS);
-        }
+        memcpy(arena_pointer(vertex_offset), *vertices, xx vertex_size);
     }
 }
 
 deinit_data :: () {
-    vkDestroyBuffer(device, staging_buffer, null);
-    vkFreeMemory(device, staging_memory, null);
-
     vkDestroyImage(device, texture.image, null);
     vkFreeMemory(device, texture.memory, null);
-
-    vkDestroyBuffer(device, vertex_buffer, null);
-    vkFreeMemory(device, vertex_memory, null);
-
-    vkDestroyBuffer(device, uniform_buffer, null);
-    vkFreeMemory(device, uniform_memory, null);
 }
 
 bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
@@ -1567,17 +1466,22 @@ draw_frame :: () {
 
         // Bind Data
         {
-            offsets : [1] VkDeviceSize;
+            bind_infos : [1] VkBindVertexBuffer3InfoKHR;
             {
-                offsets[0] = 0;
+                using bind_infos[0];
+                setStride = VK_FALSE;
+                addressRange = .{
+                    address = arena_address(vertex_offset),
+                    size    = vertex_size,
+                };
+                addressFlags = .STORAGE_BUFFER_USAGE;
             }
 
-            vkCmdBindVertexBuffers(
+            vkCmdBindVertexBuffers3KHR(
                 command_buffers[index],
-                0,
-                1,
-                *vertex_buffer,
-                offsets.data,
+                firstBinding = 0,
+                bindingCount = bind_infos.count,
+                pBindingInfos = bind_infos.data,
             );
         }
 
