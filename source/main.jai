@@ -51,6 +51,7 @@ using vulkan_context : struct {
             vulkan_1_4_features : VkPhysicalDeviceVulkan14Features;
             shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
             unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
+            descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
         }
     }
 
@@ -258,7 +259,7 @@ init_instance :: () {
 
     {
         using instance_create_info : VkInstanceCreateInfo;
-        application_info := VkApplicationInfo.{apiVersion = VK_MAKE_API_VERSION(1, 4, 0, 0)};
+        application_info := VkApplicationInfo.{apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 0)};
         pApplicationInfo = *application_info;
 
         instance_extensions : [..] *u8;
@@ -502,7 +503,8 @@ init_device :: () {
 
             // Features
             {
-                unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = null};
+                descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = null};
+                unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = *descriptor_heap_features};
                 shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
                 vulkan_1_4_features = .{pNext = *shader_object_features};
                 {
