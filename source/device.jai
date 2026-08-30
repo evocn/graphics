@@ -310,9 +310,11 @@ init_device :: () {
                     vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
                 }
 
+                assert(supported.vulkan_1_1_features.shaderDrawParameters          == VK_TRUE, "This GPU does not support shaderDrawParameters.");
                 assert(supported.vulkan_1_2_features.timelineSemaphore             == VK_TRUE, "This GPU does not support timelineSemaphore.");
                 assert(supported.vulkan_1_2_features.bufferDeviceAddress           == VK_TRUE, "This GPU does not support bufferDeviceAddress.");
                 assert(supported.vulkan_1_2_features.runtimeDescriptorArray        == VK_TRUE, "This GPU does not support runtimeDescriptorArray.");
+                assert(supported.vulkan_1_2_features.scalarBlockLayout             == VK_TRUE, "This GPU does not support scalarBlockLayout.");
                 assert(supported.vulkan_1_3_features.dynamicRendering              == VK_TRUE, "This GPU does not support dynamicRendering.");
                 assert(supported.vulkan_1_3_features.synchronization2              == VK_TRUE, "This GPU does not support synchronization2.");
                 assert(supported.vulkan_1_4_features.maintenance5                  == VK_TRUE, "This GPU does not support maintenance5.");
@@ -348,8 +350,13 @@ init_device :: () {
                     timelineSemaphore = VK_TRUE;
                     bufferDeviceAddress = VK_TRUE;
                     runtimeDescriptorArray = VK_TRUE;
+                    scalarBlockLayout = VK_TRUE;
                 }
                 vulkan_1_1_features = .{pNext = *vulkan_1_2_features};
+                {
+                    using vulkan_1_1_features;
+                    shaderDrawParameters = VK_TRUE;
+                }
                 features2 = .{pNext = *vulkan_1_1_features};
             }
 

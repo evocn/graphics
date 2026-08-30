@@ -1,14 +1,21 @@
 // Graphics
 // Material Shader
 
+////////////////////////////////////////////////////////////////////////////////
+// Structs
+
+struct Vertex {
+    float3 position;
+    float3 color;
+    float2 uv;
+}
+
 struct Push_Data {
     DescriptorHandle<Texture2D>     texture;
     DescriptorHandle<SamplerState>  sampler;
+    Vertex*                         vertices;
 }
 [[vk::push_constant]] Push_Data push_data;
-
-////////////////////////////////////////////////////////////////////////////////
-// Structs
 
 struct Coarse_Vertex {
     float3 color;
@@ -18,19 +25,15 @@ struct Coarse_Vertex {
 ////////////////////////////////////////////////////////////////////////////////
 // Vertex Shader
 
-struct Vertex {
-    float3 position : POSITION;
-    float3 color    : COLOR;
-    float2 uv       : TEXCOORD;
-}
-
 struct Vertex_Stage_Output {
     Coarse_Vertex   coarse_vertex   : CoarseVertex;
     float4          sv_position     : SV_Position;
 }
 
 [shader("vertex")]
-Vertex_Stage_Output vertex_main(Vertex vertex) {
+Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
+    Vertex vertex = push_data.vertices[vertex_id];
+
     float3 position = vertex.position;
     float3 color    = vertex.color;
 

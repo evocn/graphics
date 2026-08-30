@@ -238,33 +238,7 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
         vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
     }
 
-    // Vertex Input
-    {
-        vertex_input_binding_descriptions : [1] VkVertexInputBindingDescription2EXT;
-        {
-            {
-                using vertex_input_binding_descriptions[0];
-                binding     = 0;
-                stride      = size_of(Vertex);
-                inputRate   = .VERTEX;
-                divisor     = 1;
-            }
-        }
-
-        vertex_input_attribute_descriptions := VkVertexInputAttributeDescription2EXT.[
-            .{ location = 0, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "position") },
-            .{ location = 1, binding = 0, format = .R32G32B32_SFLOAT, offset = offset_of(Vertex, "color") },
-            .{ location = 2, binding = 0, format = .R32G32_SFLOAT,    offset = offset_of(Vertex, "uv") },
-        ];
-
-        vkCmdSetVertexInputEXT(
-            command_buffer,
-            vertex_input_binding_descriptions.count,
-            vertex_input_binding_descriptions.data,
-            vertex_input_attribute_descriptions.count,
-            vertex_input_attribute_descriptions.data,
-        );
-    }
+    vkCmdSetVertexInputEXT(command_buffer, 0, null, 0, null);
 }
 
 u64_min, u64_max :: #run get_integer_range(u64);
@@ -438,13 +412,15 @@ draw_frame :: () {
         // Push Descriptor Data
         {
             Push_Data :: struct {
-                texture : [2] u32;
-                sampler : [2] u32;
+                texture  : [2] u32;
+                sampler  : [2] u32;
+                vertices : VkDeviceAddress;
             }
 
             push_data := Push_Data.{
-                texture = .[first_image_id,   0],
-                sampler = .[first_sampler_id, 0],
+                texture  = .[first_image_id,   0],
+                sampler  = .[first_sampler_id, 0],
+                vertices = arena_address(vertex_offset),
             };
 
             push_data_info : VkPushDataInfoEXT;
@@ -460,26 +436,6 @@ draw_frame :: () {
             vkCmdPushDataEXT(command_buffers[index], *push_data_info);
         }
 
-        // Bind Data
-        {
-            bind_infos : [1] VkBindVertexBuffer3InfoKHR;
-            {
-                using bind_infos[0];
-                setStride = VK_FALSE;
-                addressRange = .{
-                    address = arena_address(vertex_offset),
-                    size    = vertex_size,
-                };
-                addressFlags = .STORAGE_BUFFER_USAGE;
-            }
-
-            vkCmdBindVertexBuffers3KHR(
-                command_buffers[index],
-                firstBinding = 0,
-                bindingCount = bind_infos.count,
-                pBindingInfos = bind_infos.data,
-            );
-        }
 
         vkCmdDraw(
             command_buffers[index],
