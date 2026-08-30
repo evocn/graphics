@@ -16,6 +16,9 @@ wl_surface         :: struct {}; // Opaque struct defined by Wayland
 wl_display         :: struct {}; // Opaque struct defined by Wayland
 xcb_connection_t   :: struct {}; // Opaque struct defined by xcb
 
+ubm_device         :: struct {}; // Samsung UBM
+ubm_surface        :: struct {}; // Samsung UBM
+
 _screen_window     :: struct {}; // QNX
 _screen_context    :: struct {}; // QNX
 _screen_buffer     :: struct {}; // QNX

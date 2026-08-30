@@ -103,6 +103,7 @@ PFN_vkBeginCommandBuffer :: #type (commandBuffer: VkCommandBuffer, pBeginInfo: *
 PFN_vkEndCommandBuffer :: #type (commandBuffer: VkCommandBuffer) -> VkResult #c_call;
 PFN_vkResetCommandBuffer :: #type (commandBuffer: VkCommandBuffer, flags: VkCommandBufferResetFlags) -> VkResult #c_call;
 PFN_vkCmdBindPipeline :: #type (commandBuffer: VkCommandBuffer, pipelineBindPoint: VkPipelineBindPoint, pipeline: VkPipeline) -> void #c_call;
+PFN_vkCmdSetPrimitiveRestartIndexEXT :: #type (commandBuffer: VkCommandBuffer, primitiveRestartIndex: u32) -> void #c_call;
 PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT :: #type (commandBuffer: VkCommandBuffer, aspectMask: VkImageAspectFlags) -> void #c_call;
 PFN_vkCmdSetViewport :: #type (commandBuffer: VkCommandBuffer, firstViewport: u32, viewportCount: u32, pViewports: *VkViewport) -> void #c_call;
 PFN_vkCmdSetScissor :: #type (commandBuffer: VkCommandBuffer, firstScissor: u32, scissorCount: u32, pScissors: *VkRect2D) -> void #c_call;
@@ -183,6 +184,8 @@ PFN_vkQueuePresentKHR :: #type (queue: VkQueue, pPresentInfo: *VkPresentInfoKHR)
 PFN_vkCreateViSurfaceNN :: #type (instance: VkInstance, pCreateInfo: *VkViSurfaceCreateInfoNN, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call;
 PFN_vkCreateWaylandSurfaceKHR :: #type (instance: VkInstance, pCreateInfo: *VkWaylandSurfaceCreateInfoKHR, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call;
 PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, display: *wl_display) -> VkBool32 #c_call;
+PFN_vkCreateUbmSurfaceSEC :: #type (instance: VkInstance, pCreateInfo: *VkUbmSurfaceCreateInfoSEC, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call;
+PFN_vkGetPhysicalDeviceUbmPresentationSupportSEC :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, device: *ubm_device) -> VkBool32 #c_call;
 PFN_vkCreateWin32SurfaceKHR :: #type (instance: VkInstance, pCreateInfo: *VkWin32SurfaceCreateInfoKHR, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call;
 PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32) -> VkBool32 #c_call;
 PFN_vkCreateXlibSurfaceKHR :: #type (instance: VkInstance, pCreateInfo: *VkXlibSurfaceCreateInfoKHR, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call;
@@ -418,7 +421,7 @@ PFN_vkCreateAccelerationStructureNV :: #type (device: VkDevice, pCreateInfo: *Vk
 PFN_vkCmdBindInvocationMaskHUAWEI :: #type (commandBuffer: VkCommandBuffer, imageView: VkImageView, imageLayout: VkImageLayout) -> void #c_call;
 PFN_vkDestroyAccelerationStructureKHR :: #type (device: VkDevice, accelerationStructure: VkAccelerationStructureKHR, pAllocator: *VkAllocationCallbacks) -> void #c_call;
 PFN_vkDestroyAccelerationStructureNV :: #type (device: VkDevice, accelerationStructure: VkAccelerationStructureNV, pAllocator: *VkAllocationCallbacks) -> void #c_call;
-PFN_vkGetAccelerationStructureMemoryRequirementsNV :: #type (device: VkDevice, pInfo: *VkAccelerationStructureMemoryRequirementsInfoNV, pMemoryRequirements: *VkMemoryRequirements2KHR) -> void #c_call;
+PFN_vkGetAccelerationStructureMemoryRequirementsNV :: #type (device: VkDevice, pInfo: *VkAccelerationStructureMemoryRequirementsInfoNV, pMemoryRequirements: *VkMemoryRequirements2) -> void #c_call;
 PFN_vkBindAccelerationStructureMemoryNV :: #type (device: VkDevice, bindInfoCount: u32, pBindInfos: *VkBindAccelerationStructureMemoryInfoNV) -> VkResult #c_call;
 PFN_vkCmdCopyAccelerationStructureNV :: #type (commandBuffer: VkCommandBuffer, dst: VkAccelerationStructureNV, src: VkAccelerationStructureNV, mode: VkCopyAccelerationStructureModeKHR) -> void #c_call;
 PFN_vkCmdCopyAccelerationStructureKHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkCopyAccelerationStructureInfoKHR) -> void #c_call;
@@ -697,7 +700,7 @@ PFN_vkGetShaderModuleCreateInfoIdentifierEXT :: #type (device: VkDevice, pCreate
 PFN_vkGetImageSubresourceLayout2 :: #type (device: VkDevice, image: VkImage, pSubresource: *VkImageSubresource2, pLayout: *VkSubresourceLayout2) -> void #c_call;
 PFN_vkGetImageSubresourceLayout2KHR :: PFN_vkGetImageSubresourceLayout2;
 PFN_vkGetImageSubresourceLayout2EXT :: PFN_vkGetImageSubresourceLayout2;
-PFN_vkGetPipelinePropertiesEXT :: #type (device: VkDevice, pPipelineInfo: *VkPipelineInfoEXT, pPipelineProperties: *VkBaseOutStructure) -> VkResult #c_call;
+PFN_vkGetPipelinePropertiesEXT :: #type (device: VkDevice, pPipelineInfo: *VkPipelineInfoKHR, pPipelineProperties: *VkBaseOutStructure) -> VkResult #c_call;
 PFN_vkExportMetalObjectsEXT :: #type (device: VkDevice, pMetalObjectsInfo: *VkExportMetalObjectsInfoEXT) -> void #c_call;
 PFN_vkCmdBindTileMemoryQCOM :: #type (commandBuffer: VkCommandBuffer, pTileMemoryBindInfo: *VkTileMemoryBindInfoQCOM) -> void #c_call;
 PFN_vkGetFramebufferTilePropertiesQCOM :: #type (device: VkDevice, framebuffer: VkFramebuffer, pPropertiesCount: *u32, pProperties: *VkTilePropertiesQCOM) -> VkResult #c_call;
@@ -708,6 +711,8 @@ PFN_vkDestroyOpticalFlowSessionNV :: #type (device: VkDevice, session: VkOptical
 PFN_vkBindOpticalFlowSessionImageNV :: #type (device: VkDevice, session: VkOpticalFlowSessionNV, bindingPoint: VkOpticalFlowSessionBindingPointNV, view: VkImageView, layout: VkImageLayout) -> VkResult #c_call;
 PFN_vkCmdOpticalFlowExecuteNV :: #type (commandBuffer: VkCommandBuffer, session: VkOpticalFlowSessionNV, pExecuteInfo: *VkOpticalFlowExecuteInfoNV) -> void #c_call;
 PFN_vkGetDeviceFaultInfoEXT :: #type (device: VkDevice, pFaultCounts: *VkDeviceFaultCountsEXT, pFaultInfo: *VkDeviceFaultInfoEXT) -> VkResult #c_call;
+PFN_vkGetDeviceFaultReportsKHR :: #type (device: VkDevice, timeout: u64, pFaultCounts: *u32, pFaultInfo: *VkDeviceFaultInfoKHR) -> VkResult #c_call;
+PFN_vkGetDeviceFaultDebugInfoKHR :: #type (device: VkDevice, pDebugInfo: *VkDeviceFaultDebugInfoKHR) -> VkResult #c_call;
 PFN_vkCmdSetDepthBias2EXT :: #type (commandBuffer: VkCommandBuffer, pDepthBiasInfo: *VkDepthBiasInfoEXT) -> void #c_call;
 PFN_vkReleaseSwapchainImagesKHR :: #type (device: VkDevice, pReleaseInfo: *VkReleaseSwapchainImagesInfoKHR) -> VkResult #c_call;
 PFN_vkReleaseSwapchainImagesEXT :: PFN_vkReleaseSwapchainImagesKHR;
@@ -734,6 +739,18 @@ PFN_vkCmdInitializeGraphScratchMemoryAMDX :: #type (commandBuffer: VkCommandBuff
 PFN_vkCmdDispatchGraphAMDX :: #type (commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, scratchSize: VkDeviceSize, pCountInfo: *VkDispatchGraphCountInfoAMDX) -> void #c_call;
 PFN_vkCmdDispatchGraphIndirectAMDX :: #type (commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, scratchSize: VkDeviceSize, pCountInfo: *VkDispatchGraphCountInfoAMDX) -> void #c_call;
 PFN_vkCmdDispatchGraphIndirectCountAMDX :: #type (commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, scratchSize: VkDeviceSize, countInfo: VkDeviceAddress) -> void #c_call;
+PFN_vkCreateGpaSessionAMD :: #type (device: VkDevice, pCreateInfo: *VkGpaSessionCreateInfoAMD, pAllocator: *VkAllocationCallbacks, pGpaSession: *VkGpaSessionAMD) -> VkResult #c_call;
+PFN_vkDestroyGpaSessionAMD :: #type (device: VkDevice, gpaSession: VkGpaSessionAMD, pAllocator: *VkAllocationCallbacks) -> void #c_call;
+PFN_vkSetGpaDeviceClockModeAMD :: #type (device: VkDevice, pInfo: *VkGpaDeviceClockModeInfoAMD) -> VkResult #c_call;
+PFN_vkGetGpaDeviceClockInfoAMD :: #type (device: VkDevice, pInfo: *VkGpaDeviceGetClockInfoAMD) -> VkResult #c_call;
+PFN_vkCmdBeginGpaSessionAMD :: #type (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> VkResult #c_call;
+PFN_vkCmdEndGpaSessionAMD :: #type (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> VkResult #c_call;
+PFN_vkCmdBeginGpaSampleAMD :: #type (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD, pGpaSampleBeginInfo: *VkGpaSampleBeginInfoAMD, pSampleID: *u32) -> VkResult #c_call;
+PFN_vkCmdEndGpaSampleAMD :: #type (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD, sampleID: u32) -> void #c_call;
+PFN_vkGetGpaSessionStatusAMD :: #type (device: VkDevice, gpaSession: VkGpaSessionAMD) -> VkResult #c_call;
+PFN_vkGetGpaSessionResultsAMD :: #type (device: VkDevice, gpaSession: VkGpaSessionAMD, sampleID: u32, pSizeInBytes: *u64, pData: *void) -> VkResult #c_call;
+PFN_vkResetGpaSessionAMD :: #type (device: VkDevice, gpaSession: VkGpaSessionAMD) -> VkResult #c_call;
+PFN_vkCmdCopyGpaSessionResultsAMD :: #type (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> void #c_call;
 PFN_vkCmdBindDescriptorSets2 :: #type (commandBuffer: VkCommandBuffer, pBindDescriptorSetsInfo: *VkBindDescriptorSetsInfo) -> void #c_call;
 PFN_vkCmdBindDescriptorSets2KHR :: PFN_vkCmdBindDescriptorSets2;
 PFN_vkCmdPushConstants2 :: #type (commandBuffer: VkCommandBuffer, pPushConstantsInfo: *VkPushConstantsInfo) -> void #c_call;
@@ -749,6 +766,13 @@ PFN_vkLatencySleepNV :: #type (device: VkDevice, swapchain: VkSwapchainKHR, pSle
 PFN_vkSetLatencyMarkerNV :: #type (device: VkDevice, swapchain: VkSwapchainKHR, pLatencyMarkerInfo: *VkSetLatencyMarkerInfoNV) -> void #c_call;
 PFN_vkGetLatencyTimingsNV :: #type (device: VkDevice, swapchain: VkSwapchainKHR, pLatencyMarkerInfo: *VkGetLatencyMarkerInfoNV) -> void #c_call;
 PFN_vkQueueNotifyOutOfBandNV :: #type (queue: VkQueue, pQueueTypeInfo: *VkOutOfBandQueueTypeInfoNV) -> void #c_call;
+PFN_vkSetLatencySleepModeLegacyNV :: #type (device: VkDevice, lowLatencyMode: VkBool32, lowLatencyBoost: VkBool32, minimumIntervalUs: u32) -> void #c_call;
+PFN_vkLatencySleepLegacyNV :: #type (device: VkDevice, signalSemaphore: VkSemaphore, value: u64) -> void #c_call;
+PFN_vkSetLatencyMarkerLegacyNV :: #type (device: VkDevice, frameID: u64, marker: u32) -> void #c_call;
+PFN_vkGetLatencyTimingsLegacyNV :: #type (device: VkDevice, pTimings: *void) -> void #c_call;
+PFN_vkQueueNotifyOutOfBandLegacyNV :: #type (queue: VkQueue, queueType: u32) -> void #c_call;
+PFN_vkGetSleepStatusLegacyNV :: #type (device: VkDevice, pLowLatencyMode: *VkBool32) -> void #c_call;
+PFN_vkShutdownLatencyDeviceLegacyNV :: #type (device: VkDevice) -> void #c_call;
 PFN_vkCmdSetRenderingAttachmentLocations :: #type (commandBuffer: VkCommandBuffer, pLocationInfo: *VkRenderingAttachmentLocationInfo) -> void #c_call;
 PFN_vkCmdSetRenderingAttachmentLocationsKHR :: PFN_vkCmdSetRenderingAttachmentLocations;
 PFN_vkCmdSetRenderingInputAttachmentIndices :: #type (commandBuffer: VkCommandBuffer, pInputAttachmentIndexInfo: *VkRenderingInputAttachmentIndexInfo) -> void #c_call;
@@ -766,6 +790,13 @@ PFN_vkCmdEndPerTileExecutionQCOM :: #type (commandBuffer: VkCommandBuffer, pPerT
 PFN_vkCreateExternalComputeQueueNV :: #type (device: VkDevice, pCreateInfo: *VkExternalComputeQueueCreateInfoNV, pAllocator: *VkAllocationCallbacks, pExternalQueue: *VkExternalComputeQueueNV) -> VkResult #c_call;
 PFN_vkDestroyExternalComputeQueueNV :: #type (device: VkDevice, externalQueue: VkExternalComputeQueueNV, pAllocator: *VkAllocationCallbacks) -> void #c_call;
 PFN_vkGetExternalComputeQueueDataNV :: #type (externalQueue: VkExternalComputeQueueNV, params: *VkExternalComputeQueueDataParamsNV, pData: *void) -> void #c_call;
+PFN_vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM :: #type (physicalDevice: VkPhysicalDevice, pDescriptionCount: *u32, pDescriptions: *VkShaderInstrumentationMetricDescriptionARM) -> VkResult #c_call;
+PFN_vkCreateShaderInstrumentationARM :: #type (device: VkDevice, pCreateInfo: *VkShaderInstrumentationCreateInfoARM, pAllocator: *VkAllocationCallbacks, pInstrumentation: *VkShaderInstrumentationARM) -> VkResult #c_call;
+PFN_vkDestroyShaderInstrumentationARM :: #type (device: VkDevice, instrumentation: VkShaderInstrumentationARM, pAllocator: *VkAllocationCallbacks) -> void #c_call;
+PFN_vkCmdBeginShaderInstrumentationARM :: #type (commandBuffer: VkCommandBuffer, instrumentation: VkShaderInstrumentationARM) -> void #c_call;
+PFN_vkCmdEndShaderInstrumentationARM :: #type (commandBuffer: VkCommandBuffer) -> void #c_call;
+PFN_vkGetShaderInstrumentationValuesARM :: #type (device: VkDevice, instrumentation: VkShaderInstrumentationARM, pMetricBlockCount: *u32, pMetricValues: *void, flags: VkShaderInstrumentationValuesFlagsARM) -> VkResult #c_call;
+PFN_vkClearShaderInstrumentationMetricsARM :: #type (device: VkDevice, instrumentation: VkShaderInstrumentationARM) -> void #c_call;
 PFN_vkCreateTensorARM :: #type (device: VkDevice, pCreateInfo: *VkTensorCreateInfoARM, pAllocator: *VkAllocationCallbacks, pTensor: *VkTensorARM) -> VkResult #c_call;
 PFN_vkDestroyTensorARM :: #type (device: VkDevice, tensor: VkTensorARM, pAllocator: *VkAllocationCallbacks) -> void #c_call;
 PFN_vkCreateTensorViewARM :: #type (device: VkDevice, pCreateInfo: *VkTensorViewCreateInfoARM, pAllocator: *VkAllocationCallbacks, pView: *VkTensorViewARM) -> VkResult #c_call;
@@ -793,6 +824,7 @@ PFN_vkGetMemoryNativeBufferOHOS :: #type (device: VkDevice, pInfo: *VkMemoryGetN
 PFN_vkGetSwapchainGrallocUsageOHOS :: #type (device: VkDevice, format: VkFormat, imageUsage: VkImageUsageFlags, grallocUsage: *u64) -> VkResult #c_call;
 PFN_vkAcquireImageOHOS :: #type (device: VkDevice, image: VkImage, nativeFenceFd: s32, semaphore: VkSemaphore, fence: VkFence) -> VkResult #c_call;
 PFN_vkQueueSignalReleaseImageOHOS :: #type (queue: VkQueue, waitSemaphoreCount: u32, pWaitSemaphores: *VkSemaphore, image: VkImage, pNativeFenceFd: *s32) -> VkResult #c_call;
+PFN_vkQueueSetPerfHintQCOM :: #type (queue: VkQueue, pPerfHintInfo: *VkPerfHintInfoQCOM) -> VkResult #c_call;
 PFN_vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pCounterCount: *u32, pCounters: *VkPerformanceCounterARM, pCounterDescriptions: *VkPerformanceCounterDescriptionARM) -> VkResult #c_call;
 PFN_vkCmdSetComputeOccupancyPriorityNV :: #type (commandBuffer: VkCommandBuffer, pParameters: *VkComputeOccupancyPriorityParametersNV) -> void #c_call;
 PFN_vkWriteSamplerDescriptorsEXT :: #type (device: VkDevice, samplerCount: u32, pSamplers: *VkSamplerCreateInfo, pDescriptors: *VkHostAddressRangeEXT) -> VkResult #c_call;
@@ -805,6 +837,31 @@ PFN_vkUnregisterCustomBorderColorEXT :: #type (device: VkDevice, index: u32) -> 
 PFN_vkGetImageOpaqueCaptureDataEXT :: #type (device: VkDevice, imageCount: u32, pImages: *VkImage, pDatas: *VkHostAddressRangeEXT) -> VkResult #c_call;
 PFN_vkGetPhysicalDeviceDescriptorSizeEXT :: #type (physicalDevice: VkPhysicalDevice, descriptorType: VkDescriptorType) -> VkDeviceSize #c_call;
 PFN_vkGetTensorOpaqueCaptureDataARM :: #type (device: VkDevice, tensorCount: u32, pTensors: *VkTensorARM, pDatas: *VkHostAddressRangeEXT) -> VkResult #c_call;
+PFN_vkCmdCopyMemoryKHR :: #type (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryInfoKHR) -> void #c_call;
+PFN_vkCmdCopyMemoryToImageKHR :: #type (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryImageInfoKHR) -> void #c_call;
+PFN_vkCmdCopyImageToMemoryKHR :: #type (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryImageInfoKHR) -> void #c_call;
+PFN_vkCmdUpdateMemoryKHR :: #type (commandBuffer: VkCommandBuffer, pDstRange: *VkDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, dataSize: VkDeviceSize, pData: *void) -> void #c_call;
+PFN_vkCmdFillMemoryKHR :: #type (commandBuffer: VkCommandBuffer, pDstRange: *VkDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, data: u32) -> void #c_call;
+PFN_vkCmdCopyQueryPoolResultsToMemoryKHR :: #type (commandBuffer: VkCommandBuffer, queryPool: VkQueryPool, firstQuery: u32, queryCount: u32, pDstRange: *VkStridedDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, queryResultFlags: VkQueryResultFlags) -> void #c_call;
+PFN_vkCmdBeginConditionalRendering2EXT :: #type (commandBuffer: VkCommandBuffer, pConditionalRenderingBegin: *VkConditionalRenderingBeginInfo2EXT) -> void #c_call;
+PFN_vkCmdBindTransformFeedbackBuffers2EXT :: #type (commandBuffer: VkCommandBuffer, firstBinding: u32, bindingCount: u32, pBindingInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call;
+PFN_vkCmdBeginTransformFeedback2EXT :: #type (commandBuffer: VkCommandBuffer, firstCounterRange: u32, counterRangeCount: u32, pCounterInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call;
+PFN_vkCmdEndTransformFeedback2EXT :: #type (commandBuffer: VkCommandBuffer, firstCounterRange: u32, counterRangeCount: u32, pCounterInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call;
+PFN_vkCmdDrawIndirectByteCount2EXT :: #type (commandBuffer: VkCommandBuffer, instanceCount: u32, firstInstance: u32, pCounterInfo: *VkBindTransformFeedbackBuffer2InfoEXT, counterOffset: u32, vertexStride: u32) -> void #c_call;
+PFN_vkCmdWriteMarkerToMemoryAMD :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkMemoryMarkerInfoAMD) -> void #c_call;
+PFN_vkCmdBindIndexBuffer3KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkBindIndexBuffer3InfoKHR) -> void #c_call;
+PFN_vkCmdBindVertexBuffers3KHR :: #type (commandBuffer: VkCommandBuffer, firstBinding: u32, bindingCount: u32, pBindingInfos: *VkBindVertexBuffer3InfoKHR) -> void #c_call;
+PFN_vkCmdDrawIndirect2KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call;
+PFN_vkCmdDrawIndexedIndirect2KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call;
+PFN_vkCmdDrawIndirectCount2KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call;
+PFN_vkCmdDrawIndexedIndirectCount2KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call;
+PFN_vkCmdDrawMeshTasksIndirect2EXT :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call;
+PFN_vkCmdDrawMeshTasksIndirectCount2EXT :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call;
+PFN_vkCmdDispatchIndirect2KHR :: #type (commandBuffer: VkCommandBuffer, pInfo: *VkDispatchIndirect2InfoKHR) -> void #c_call;
+PFN_vkCreateAccelerationStructure2KHR :: #type (device: VkDevice, pCreateInfo: *VkAccelerationStructureCreateInfo2KHR, pAllocator: *VkAllocationCallbacks, pAccelerationStructure: *VkAccelerationStructureKHR) -> VkResult #c_call;
+PFN_vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pQueueFamilyDataGraphProperties: *VkQueueFamilyDataGraphPropertiesARM, pProperties: *VkBaseOutStructure) -> VkResult #c_call;
+PFN_vkCmdSetDispatchParametersARM :: #type (commandBuffer: VkCommandBuffer, pDispatchParameters: *VkDispatchParametersARM) -> void #c_call;
+PFN_vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM :: #type (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pQueueFamilyDataGraphProperties: *VkQueueFamilyDataGraphPropertiesARM, pOpticalFlowImageFormatInfo: *VkDataGraphOpticalFlowImageFormatInfoARM, pFormatCount: *u32, pImageFormatProperties: *VkDataGraphOpticalFlowImageFormatPropertiesARM) -> VkResult #c_call;
 #scope_file
 vkCreateInstance_dynamic : PFN_vkCreateInstance;
 vkDestroyInstance_dynamic : PFN_vkDestroyInstance;
@@ -911,6 +968,7 @@ vkBeginCommandBuffer_dynamic : PFN_vkBeginCommandBuffer;
 vkEndCommandBuffer_dynamic : PFN_vkEndCommandBuffer;
 vkResetCommandBuffer_dynamic : PFN_vkResetCommandBuffer;
 vkCmdBindPipeline_dynamic : PFN_vkCmdBindPipeline;
+vkCmdSetPrimitiveRestartIndexEXT_dynamic : PFN_vkCmdSetPrimitiveRestartIndexEXT;
 vkCmdSetAttachmentFeedbackLoopEnableEXT_dynamic : PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT;
 vkCmdSetViewport_dynamic : PFN_vkCmdSetViewport;
 vkCmdSetScissor_dynamic : PFN_vkCmdSetScissor;
@@ -991,6 +1049,8 @@ vkQueuePresentKHR_dynamic : PFN_vkQueuePresentKHR;
 vkCreateViSurfaceNN_dynamic : PFN_vkCreateViSurfaceNN;
 vkCreateWaylandSurfaceKHR_dynamic : PFN_vkCreateWaylandSurfaceKHR;
 vkGetPhysicalDeviceWaylandPresentationSupportKHR_dynamic : PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR;
+vkCreateUbmSurfaceSEC_dynamic : PFN_vkCreateUbmSurfaceSEC;
+vkGetPhysicalDeviceUbmPresentationSupportSEC_dynamic : PFN_vkGetPhysicalDeviceUbmPresentationSupportSEC;
 vkCreateWin32SurfaceKHR_dynamic : PFN_vkCreateWin32SurfaceKHR;
 vkGetPhysicalDeviceWin32PresentationSupportKHR_dynamic : PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR;
 vkCreateXlibSurfaceKHR_dynamic : PFN_vkCreateXlibSurfaceKHR;
@@ -1516,6 +1576,8 @@ vkDestroyOpticalFlowSessionNV_dynamic : PFN_vkDestroyOpticalFlowSessionNV;
 vkBindOpticalFlowSessionImageNV_dynamic : PFN_vkBindOpticalFlowSessionImageNV;
 vkCmdOpticalFlowExecuteNV_dynamic : PFN_vkCmdOpticalFlowExecuteNV;
 vkGetDeviceFaultInfoEXT_dynamic : PFN_vkGetDeviceFaultInfoEXT;
+vkGetDeviceFaultReportsKHR_dynamic : PFN_vkGetDeviceFaultReportsKHR;
+vkGetDeviceFaultDebugInfoKHR_dynamic : PFN_vkGetDeviceFaultDebugInfoKHR;
 vkCmdSetDepthBias2EXT_dynamic : PFN_vkCmdSetDepthBias2EXT;
 vkReleaseSwapchainImagesKHR_dynamic : PFN_vkReleaseSwapchainImagesKHR;
 vkReleaseSwapchainImagesEXT_dynamic : PFN_vkReleaseSwapchainImagesEXT;
@@ -1542,6 +1604,18 @@ vkCmdInitializeGraphScratchMemoryAMDX_dynamic : PFN_vkCmdInitializeGraphScratchM
 vkCmdDispatchGraphAMDX_dynamic : PFN_vkCmdDispatchGraphAMDX;
 vkCmdDispatchGraphIndirectAMDX_dynamic : PFN_vkCmdDispatchGraphIndirectAMDX;
 vkCmdDispatchGraphIndirectCountAMDX_dynamic : PFN_vkCmdDispatchGraphIndirectCountAMDX;
+vkCreateGpaSessionAMD_dynamic : PFN_vkCreateGpaSessionAMD;
+vkDestroyGpaSessionAMD_dynamic : PFN_vkDestroyGpaSessionAMD;
+vkSetGpaDeviceClockModeAMD_dynamic : PFN_vkSetGpaDeviceClockModeAMD;
+vkGetGpaDeviceClockInfoAMD_dynamic : PFN_vkGetGpaDeviceClockInfoAMD;
+vkCmdBeginGpaSessionAMD_dynamic : PFN_vkCmdBeginGpaSessionAMD;
+vkCmdEndGpaSessionAMD_dynamic : PFN_vkCmdEndGpaSessionAMD;
+vkCmdBeginGpaSampleAMD_dynamic : PFN_vkCmdBeginGpaSampleAMD;
+vkCmdEndGpaSampleAMD_dynamic : PFN_vkCmdEndGpaSampleAMD;
+vkGetGpaSessionStatusAMD_dynamic : PFN_vkGetGpaSessionStatusAMD;
+vkGetGpaSessionResultsAMD_dynamic : PFN_vkGetGpaSessionResultsAMD;
+vkResetGpaSessionAMD_dynamic : PFN_vkResetGpaSessionAMD;
+vkCmdCopyGpaSessionResultsAMD_dynamic : PFN_vkCmdCopyGpaSessionResultsAMD;
 vkCmdBindDescriptorSets2_dynamic : PFN_vkCmdBindDescriptorSets2;
 vkCmdBindDescriptorSets2KHR_dynamic : PFN_vkCmdBindDescriptorSets2KHR;
 vkCmdPushConstants2_dynamic : PFN_vkCmdPushConstants2;
@@ -1557,6 +1631,13 @@ vkLatencySleepNV_dynamic : PFN_vkLatencySleepNV;
 vkSetLatencyMarkerNV_dynamic : PFN_vkSetLatencyMarkerNV;
 vkGetLatencyTimingsNV_dynamic : PFN_vkGetLatencyTimingsNV;
 vkQueueNotifyOutOfBandNV_dynamic : PFN_vkQueueNotifyOutOfBandNV;
+vkSetLatencySleepModeLegacyNV_dynamic : PFN_vkSetLatencySleepModeLegacyNV;
+vkLatencySleepLegacyNV_dynamic : PFN_vkLatencySleepLegacyNV;
+vkSetLatencyMarkerLegacyNV_dynamic : PFN_vkSetLatencyMarkerLegacyNV;
+vkGetLatencyTimingsLegacyNV_dynamic : PFN_vkGetLatencyTimingsLegacyNV;
+vkQueueNotifyOutOfBandLegacyNV_dynamic : PFN_vkQueueNotifyOutOfBandLegacyNV;
+vkGetSleepStatusLegacyNV_dynamic : PFN_vkGetSleepStatusLegacyNV;
+vkShutdownLatencyDeviceLegacyNV_dynamic : PFN_vkShutdownLatencyDeviceLegacyNV;
 vkCmdSetRenderingAttachmentLocations_dynamic : PFN_vkCmdSetRenderingAttachmentLocations;
 vkCmdSetRenderingAttachmentLocationsKHR_dynamic : PFN_vkCmdSetRenderingAttachmentLocationsKHR;
 vkCmdSetRenderingInputAttachmentIndices_dynamic : PFN_vkCmdSetRenderingInputAttachmentIndices;
@@ -1574,6 +1655,13 @@ vkCmdEndPerTileExecutionQCOM_dynamic : PFN_vkCmdEndPerTileExecutionQCOM;
 vkCreateExternalComputeQueueNV_dynamic : PFN_vkCreateExternalComputeQueueNV;
 vkDestroyExternalComputeQueueNV_dynamic : PFN_vkDestroyExternalComputeQueueNV;
 vkGetExternalComputeQueueDataNV_dynamic : PFN_vkGetExternalComputeQueueDataNV;
+vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM_dynamic : PFN_vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM;
+vkCreateShaderInstrumentationARM_dynamic : PFN_vkCreateShaderInstrumentationARM;
+vkDestroyShaderInstrumentationARM_dynamic : PFN_vkDestroyShaderInstrumentationARM;
+vkCmdBeginShaderInstrumentationARM_dynamic : PFN_vkCmdBeginShaderInstrumentationARM;
+vkCmdEndShaderInstrumentationARM_dynamic : PFN_vkCmdEndShaderInstrumentationARM;
+vkGetShaderInstrumentationValuesARM_dynamic : PFN_vkGetShaderInstrumentationValuesARM;
+vkClearShaderInstrumentationMetricsARM_dynamic : PFN_vkClearShaderInstrumentationMetricsARM;
 vkCreateTensorARM_dynamic : PFN_vkCreateTensorARM;
 vkDestroyTensorARM_dynamic : PFN_vkDestroyTensorARM;
 vkCreateTensorViewARM_dynamic : PFN_vkCreateTensorViewARM;
@@ -1601,6 +1689,7 @@ vkGetMemoryNativeBufferOHOS_dynamic : PFN_vkGetMemoryNativeBufferOHOS;
 vkGetSwapchainGrallocUsageOHOS_dynamic : PFN_vkGetSwapchainGrallocUsageOHOS;
 vkAcquireImageOHOS_dynamic : PFN_vkAcquireImageOHOS;
 vkQueueSignalReleaseImageOHOS_dynamic : PFN_vkQueueSignalReleaseImageOHOS;
+vkQueueSetPerfHintQCOM_dynamic : PFN_vkQueueSetPerfHintQCOM;
 vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM_dynamic : PFN_vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM;
 vkCmdSetComputeOccupancyPriorityNV_dynamic : PFN_vkCmdSetComputeOccupancyPriorityNV;
 vkWriteSamplerDescriptorsEXT_dynamic : PFN_vkWriteSamplerDescriptorsEXT;
@@ -1613,6 +1702,31 @@ vkUnregisterCustomBorderColorEXT_dynamic : PFN_vkUnregisterCustomBorderColorEXT;
 vkGetImageOpaqueCaptureDataEXT_dynamic : PFN_vkGetImageOpaqueCaptureDataEXT;
 vkGetPhysicalDeviceDescriptorSizeEXT_dynamic : PFN_vkGetPhysicalDeviceDescriptorSizeEXT;
 vkGetTensorOpaqueCaptureDataARM_dynamic : PFN_vkGetTensorOpaqueCaptureDataARM;
+vkCmdCopyMemoryKHR_dynamic : PFN_vkCmdCopyMemoryKHR;
+vkCmdCopyMemoryToImageKHR_dynamic : PFN_vkCmdCopyMemoryToImageKHR;
+vkCmdCopyImageToMemoryKHR_dynamic : PFN_vkCmdCopyImageToMemoryKHR;
+vkCmdUpdateMemoryKHR_dynamic : PFN_vkCmdUpdateMemoryKHR;
+vkCmdFillMemoryKHR_dynamic : PFN_vkCmdFillMemoryKHR;
+vkCmdCopyQueryPoolResultsToMemoryKHR_dynamic : PFN_vkCmdCopyQueryPoolResultsToMemoryKHR;
+vkCmdBeginConditionalRendering2EXT_dynamic : PFN_vkCmdBeginConditionalRendering2EXT;
+vkCmdBindTransformFeedbackBuffers2EXT_dynamic : PFN_vkCmdBindTransformFeedbackBuffers2EXT;
+vkCmdBeginTransformFeedback2EXT_dynamic : PFN_vkCmdBeginTransformFeedback2EXT;
+vkCmdEndTransformFeedback2EXT_dynamic : PFN_vkCmdEndTransformFeedback2EXT;
+vkCmdDrawIndirectByteCount2EXT_dynamic : PFN_vkCmdDrawIndirectByteCount2EXT;
+vkCmdWriteMarkerToMemoryAMD_dynamic : PFN_vkCmdWriteMarkerToMemoryAMD;
+vkCmdBindIndexBuffer3KHR_dynamic : PFN_vkCmdBindIndexBuffer3KHR;
+vkCmdBindVertexBuffers3KHR_dynamic : PFN_vkCmdBindVertexBuffers3KHR;
+vkCmdDrawIndirect2KHR_dynamic : PFN_vkCmdDrawIndirect2KHR;
+vkCmdDrawIndexedIndirect2KHR_dynamic : PFN_vkCmdDrawIndexedIndirect2KHR;
+vkCmdDrawIndirectCount2KHR_dynamic : PFN_vkCmdDrawIndirectCount2KHR;
+vkCmdDrawIndexedIndirectCount2KHR_dynamic : PFN_vkCmdDrawIndexedIndirectCount2KHR;
+vkCmdDrawMeshTasksIndirect2EXT_dynamic : PFN_vkCmdDrawMeshTasksIndirect2EXT;
+vkCmdDrawMeshTasksIndirectCount2EXT_dynamic : PFN_vkCmdDrawMeshTasksIndirectCount2EXT;
+vkCmdDispatchIndirect2KHR_dynamic : PFN_vkCmdDispatchIndirect2KHR;
+vkCreateAccelerationStructure2KHR_dynamic : PFN_vkCreateAccelerationStructure2KHR;
+vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM_dynamic : PFN_vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM;
+vkCmdSetDispatchParametersARM_dynamic : PFN_vkCmdSetDispatchParametersARM;
+vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM_dynamic : PFN_vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM;
 vkDebugUtilsMessengerCallbackEXT : PFN_vkDebugUtilsMessengerCallbackEXT;
 
 #scope_export
@@ -1657,6 +1771,8 @@ vk_load_instance_functions :: (instance: VkInstance) {
     vkCreateViSurfaceNN_dynamic                                                  = xx vkGetInstanceProcAddr(instance, "vkCreateViSurfaceNN");
     vkCreateWaylandSurfaceKHR_dynamic                                            = xx vkGetInstanceProcAddr(instance, "vkCreateWaylandSurfaceKHR");
     vkGetPhysicalDeviceWaylandPresentationSupportKHR_dynamic                     = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR");
+    vkCreateUbmSurfaceSEC_dynamic                                                = xx vkGetInstanceProcAddr(instance, "vkCreateUbmSurfaceSEC");
+    vkGetPhysicalDeviceUbmPresentationSupportSEC_dynamic                         = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceUbmPresentationSupportSEC");
     vkCreateWin32SurfaceKHR_dynamic                                              = xx vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
     vkGetPhysicalDeviceWin32PresentationSupportKHR_dynamic                       = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWin32PresentationSupportKHR");
     vkCreateXlibSurfaceKHR_dynamic                                               = xx vkGetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
@@ -1726,11 +1842,14 @@ vk_load_instance_functions :: (instance: VkInstance) {
     vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR_dynamic                    = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR");
     vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV_dynamic   = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV");
     vkGetPhysicalDeviceCooperativeVectorPropertiesNV_dynamic                     = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCooperativeVectorPropertiesNV");
+    vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM_dynamic             = xx vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM");
     vkGetPhysicalDeviceExternalTensorPropertiesARM_dynamic                       = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalTensorPropertiesARM");
     vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM_dynamic                 = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM");
     vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM_dynamic = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM");
     vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM_dynamic   = xx vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM");
     vkGetPhysicalDeviceDescriptorSizeEXT_dynamic                                 = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceDescriptorSizeEXT");
+    vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM_dynamic  = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM");
+    vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM_dynamic    = xx vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM");
 }
 
 vk_load_device_functions :: (device: VkDevice) {
@@ -1819,6 +1938,7 @@ vk_load_device_functions :: (device: VkDevice) {
     vkEndCommandBuffer_dynamic                                       = xx vkGetDeviceProcAddr(device, "vkEndCommandBuffer");
     vkResetCommandBuffer_dynamic                                     = xx vkGetDeviceProcAddr(device, "vkResetCommandBuffer");
     vkCmdBindPipeline_dynamic                                        = xx vkGetDeviceProcAddr(device, "vkCmdBindPipeline");
+    vkCmdSetPrimitiveRestartIndexEXT_dynamic                         = xx vkGetDeviceProcAddr(device, "vkCmdSetPrimitiveRestartIndexEXT");
     vkCmdSetAttachmentFeedbackLoopEnableEXT_dynamic                  = xx vkGetDeviceProcAddr(device, "vkCmdSetAttachmentFeedbackLoopEnableEXT");
     vkCmdSetViewport_dynamic                                         = xx vkGetDeviceProcAddr(device, "vkCmdSetViewport");
     vkCmdSetScissor_dynamic                                          = xx vkGetDeviceProcAddr(device, "vkCmdSetScissor");
@@ -2248,6 +2368,8 @@ vk_load_device_functions :: (device: VkDevice) {
     vkBindOpticalFlowSessionImageNV_dynamic                          = xx vkGetDeviceProcAddr(device, "vkBindOpticalFlowSessionImageNV");
     vkCmdOpticalFlowExecuteNV_dynamic                                = xx vkGetDeviceProcAddr(device, "vkCmdOpticalFlowExecuteNV");
     vkGetDeviceFaultInfoEXT_dynamic                                  = xx vkGetDeviceProcAddr(device, "vkGetDeviceFaultInfoEXT");
+    vkGetDeviceFaultReportsKHR_dynamic                               = xx vkGetDeviceProcAddr(device, "vkGetDeviceFaultReportsKHR");
+    vkGetDeviceFaultDebugInfoKHR_dynamic                             = xx vkGetDeviceProcAddr(device, "vkGetDeviceFaultDebugInfoKHR");
     vkCmdSetDepthBias2EXT_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkCmdSetDepthBias2EXT");
     vkReleaseSwapchainImagesKHR_dynamic                              = xx vkGetDeviceProcAddr(device, "vkReleaseSwapchainImagesKHR");
     vkGetDeviceImageSubresourceLayout_dynamic                        = xx vkGetDeviceProcAddr(device, "vkGetDeviceImageSubresourceLayout");
@@ -2269,6 +2391,18 @@ vk_load_device_functions :: (device: VkDevice) {
     vkCmdDispatchGraphAMDX_dynamic                                   = xx vkGetDeviceProcAddr(device, "vkCmdDispatchGraphAMDX");
     vkCmdDispatchGraphIndirectAMDX_dynamic                           = xx vkGetDeviceProcAddr(device, "vkCmdDispatchGraphIndirectAMDX");
     vkCmdDispatchGraphIndirectCountAMDX_dynamic                      = xx vkGetDeviceProcAddr(device, "vkCmdDispatchGraphIndirectCountAMDX");
+    vkCreateGpaSessionAMD_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkCreateGpaSessionAMD");
+    vkDestroyGpaSessionAMD_dynamic                                   = xx vkGetDeviceProcAddr(device, "vkDestroyGpaSessionAMD");
+    vkSetGpaDeviceClockModeAMD_dynamic                               = xx vkGetDeviceProcAddr(device, "vkSetGpaDeviceClockModeAMD");
+    vkGetGpaDeviceClockInfoAMD_dynamic                               = xx vkGetDeviceProcAddr(device, "vkGetGpaDeviceClockInfoAMD");
+    vkCmdBeginGpaSessionAMD_dynamic                                  = xx vkGetDeviceProcAddr(device, "vkCmdBeginGpaSessionAMD");
+    vkCmdEndGpaSessionAMD_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkCmdEndGpaSessionAMD");
+    vkCmdBeginGpaSampleAMD_dynamic                                   = xx vkGetDeviceProcAddr(device, "vkCmdBeginGpaSampleAMD");
+    vkCmdEndGpaSampleAMD_dynamic                                     = xx vkGetDeviceProcAddr(device, "vkCmdEndGpaSampleAMD");
+    vkGetGpaSessionStatusAMD_dynamic                                 = xx vkGetDeviceProcAddr(device, "vkGetGpaSessionStatusAMD");
+    vkGetGpaSessionResultsAMD_dynamic                                = xx vkGetDeviceProcAddr(device, "vkGetGpaSessionResultsAMD");
+    vkResetGpaSessionAMD_dynamic                                     = xx vkGetDeviceProcAddr(device, "vkResetGpaSessionAMD");
+    vkCmdCopyGpaSessionResultsAMD_dynamic                            = xx vkGetDeviceProcAddr(device, "vkCmdCopyGpaSessionResultsAMD");
     vkCmdBindDescriptorSets2_dynamic                                 = xx vkGetDeviceProcAddr(device, "vkCmdBindDescriptorSets2");
     vkCmdPushConstants2_dynamic                                      = xx vkGetDeviceProcAddr(device, "vkCmdPushConstants2");
     vkCmdPushDescriptorSet2_dynamic                                  = xx vkGetDeviceProcAddr(device, "vkCmdPushDescriptorSet2");
@@ -2280,6 +2414,13 @@ vk_load_device_functions :: (device: VkDevice) {
     vkSetLatencyMarkerNV_dynamic                                     = xx vkGetDeviceProcAddr(device, "vkSetLatencyMarkerNV");
     vkGetLatencyTimingsNV_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkGetLatencyTimingsNV");
     vkQueueNotifyOutOfBandNV_dynamic                                 = xx vkGetDeviceProcAddr(device, "vkQueueNotifyOutOfBandNV");
+    vkSetLatencySleepModeLegacyNV_dynamic                            = xx vkGetDeviceProcAddr(device, "vkSetLatencySleepModeLegacyNV");
+    vkLatencySleepLegacyNV_dynamic                                   = xx vkGetDeviceProcAddr(device, "vkLatencySleepLegacyNV");
+    vkSetLatencyMarkerLegacyNV_dynamic                               = xx vkGetDeviceProcAddr(device, "vkSetLatencyMarkerLegacyNV");
+    vkGetLatencyTimingsLegacyNV_dynamic                              = xx vkGetDeviceProcAddr(device, "vkGetLatencyTimingsLegacyNV");
+    vkQueueNotifyOutOfBandLegacyNV_dynamic                           = xx vkGetDeviceProcAddr(device, "vkQueueNotifyOutOfBandLegacyNV");
+    vkGetSleepStatusLegacyNV_dynamic                                 = xx vkGetDeviceProcAddr(device, "vkGetSleepStatusLegacyNV");
+    vkShutdownLatencyDeviceLegacyNV_dynamic                          = xx vkGetDeviceProcAddr(device, "vkShutdownLatencyDeviceLegacyNV");
     vkCmdSetRenderingAttachmentLocations_dynamic                     = xx vkGetDeviceProcAddr(device, "vkCmdSetRenderingAttachmentLocations");
     vkCmdSetRenderingInputAttachmentIndices_dynamic                  = xx vkGetDeviceProcAddr(device, "vkCmdSetRenderingInputAttachmentIndices");
     vkCmdSetDepthClampRangeEXT_dynamic                               = xx vkGetDeviceProcAddr(device, "vkCmdSetDepthClampRangeEXT");
@@ -2293,6 +2434,12 @@ vk_load_device_functions :: (device: VkDevice) {
     vkCreateExternalComputeQueueNV_dynamic                           = xx vkGetDeviceProcAddr(device, "vkCreateExternalComputeQueueNV");
     vkDestroyExternalComputeQueueNV_dynamic                          = xx vkGetDeviceProcAddr(device, "vkDestroyExternalComputeQueueNV");
     vkGetExternalComputeQueueDataNV_dynamic                          = xx vkGetDeviceProcAddr(device, "vkGetExternalComputeQueueDataNV");
+    vkCreateShaderInstrumentationARM_dynamic                         = xx vkGetDeviceProcAddr(device, "vkCreateShaderInstrumentationARM");
+    vkDestroyShaderInstrumentationARM_dynamic                        = xx vkGetDeviceProcAddr(device, "vkDestroyShaderInstrumentationARM");
+    vkCmdBeginShaderInstrumentationARM_dynamic                       = xx vkGetDeviceProcAddr(device, "vkCmdBeginShaderInstrumentationARM");
+    vkCmdEndShaderInstrumentationARM_dynamic                         = xx vkGetDeviceProcAddr(device, "vkCmdEndShaderInstrumentationARM");
+    vkGetShaderInstrumentationValuesARM_dynamic                      = xx vkGetDeviceProcAddr(device, "vkGetShaderInstrumentationValuesARM");
+    vkClearShaderInstrumentationMetricsARM_dynamic                   = xx vkGetDeviceProcAddr(device, "vkClearShaderInstrumentationMetricsARM");
     vkCreateTensorARM_dynamic                                        = xx vkGetDeviceProcAddr(device, "vkCreateTensorARM");
     vkDestroyTensorARM_dynamic                                       = xx vkGetDeviceProcAddr(device, "vkDestroyTensorARM");
     vkCreateTensorViewARM_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkCreateTensorViewARM");
@@ -2317,6 +2464,7 @@ vk_load_device_functions :: (device: VkDevice) {
     vkGetSwapchainGrallocUsageOHOS_dynamic                           = xx vkGetDeviceProcAddr(device, "vkGetSwapchainGrallocUsageOHOS");
     vkAcquireImageOHOS_dynamic                                       = xx vkGetDeviceProcAddr(device, "vkAcquireImageOHOS");
     vkQueueSignalReleaseImageOHOS_dynamic                            = xx vkGetDeviceProcAddr(device, "vkQueueSignalReleaseImageOHOS");
+    vkQueueSetPerfHintQCOM_dynamic                                   = xx vkGetDeviceProcAddr(device, "vkQueueSetPerfHintQCOM");
     vkCmdSetComputeOccupancyPriorityNV_dynamic                       = xx vkGetDeviceProcAddr(device, "vkCmdSetComputeOccupancyPriorityNV");
     vkWriteSamplerDescriptorsEXT_dynamic                             = xx vkGetDeviceProcAddr(device, "vkWriteSamplerDescriptorsEXT");
     vkWriteResourceDescriptorsEXT_dynamic                            = xx vkGetDeviceProcAddr(device, "vkWriteResourceDescriptorsEXT");
@@ -2327,6 +2475,29 @@ vk_load_device_functions :: (device: VkDevice) {
     vkUnregisterCustomBorderColorEXT_dynamic                         = xx vkGetDeviceProcAddr(device, "vkUnregisterCustomBorderColorEXT");
     vkGetImageOpaqueCaptureDataEXT_dynamic                           = xx vkGetDeviceProcAddr(device, "vkGetImageOpaqueCaptureDataEXT");
     vkGetTensorOpaqueCaptureDataARM_dynamic                          = xx vkGetDeviceProcAddr(device, "vkGetTensorOpaqueCaptureDataARM");
+    vkCmdCopyMemoryKHR_dynamic                                       = xx vkGetDeviceProcAddr(device, "vkCmdCopyMemoryKHR");
+    vkCmdCopyMemoryToImageKHR_dynamic                                = xx vkGetDeviceProcAddr(device, "vkCmdCopyMemoryToImageKHR");
+    vkCmdCopyImageToMemoryKHR_dynamic                                = xx vkGetDeviceProcAddr(device, "vkCmdCopyImageToMemoryKHR");
+    vkCmdUpdateMemoryKHR_dynamic                                     = xx vkGetDeviceProcAddr(device, "vkCmdUpdateMemoryKHR");
+    vkCmdFillMemoryKHR_dynamic                                       = xx vkGetDeviceProcAddr(device, "vkCmdFillMemoryKHR");
+    vkCmdCopyQueryPoolResultsToMemoryKHR_dynamic                     = xx vkGetDeviceProcAddr(device, "vkCmdCopyQueryPoolResultsToMemoryKHR");
+    vkCmdBeginConditionalRendering2EXT_dynamic                       = xx vkGetDeviceProcAddr(device, "vkCmdBeginConditionalRendering2EXT");
+    vkCmdBindTransformFeedbackBuffers2EXT_dynamic                    = xx vkGetDeviceProcAddr(device, "vkCmdBindTransformFeedbackBuffers2EXT");
+    vkCmdBeginTransformFeedback2EXT_dynamic                          = xx vkGetDeviceProcAddr(device, "vkCmdBeginTransformFeedback2EXT");
+    vkCmdEndTransformFeedback2EXT_dynamic                            = xx vkGetDeviceProcAddr(device, "vkCmdEndTransformFeedback2EXT");
+    vkCmdDrawIndirectByteCount2EXT_dynamic                           = xx vkGetDeviceProcAddr(device, "vkCmdDrawIndirectByteCount2EXT");
+    vkCmdWriteMarkerToMemoryAMD_dynamic                              = xx vkGetDeviceProcAddr(device, "vkCmdWriteMarkerToMemoryAMD");
+    vkCmdBindIndexBuffer3KHR_dynamic                                 = xx vkGetDeviceProcAddr(device, "vkCmdBindIndexBuffer3KHR");
+    vkCmdBindVertexBuffers3KHR_dynamic                               = xx vkGetDeviceProcAddr(device, "vkCmdBindVertexBuffers3KHR");
+    vkCmdDrawIndirect2KHR_dynamic                                    = xx vkGetDeviceProcAddr(device, "vkCmdDrawIndirect2KHR");
+    vkCmdDrawIndexedIndirect2KHR_dynamic                             = xx vkGetDeviceProcAddr(device, "vkCmdDrawIndexedIndirect2KHR");
+    vkCmdDrawIndirectCount2KHR_dynamic                               = xx vkGetDeviceProcAddr(device, "vkCmdDrawIndirectCount2KHR");
+    vkCmdDrawIndexedIndirectCount2KHR_dynamic                        = xx vkGetDeviceProcAddr(device, "vkCmdDrawIndexedIndirectCount2KHR");
+    vkCmdDrawMeshTasksIndirect2EXT_dynamic                           = xx vkGetDeviceProcAddr(device, "vkCmdDrawMeshTasksIndirect2EXT");
+    vkCmdDrawMeshTasksIndirectCount2EXT_dynamic                      = xx vkGetDeviceProcAddr(device, "vkCmdDrawMeshTasksIndirectCount2EXT");
+    vkCmdDispatchIndirect2KHR_dynamic                                = xx vkGetDeviceProcAddr(device, "vkCmdDispatchIndirect2KHR");
+    vkCreateAccelerationStructure2KHR_dynamic                        = xx vkGetDeviceProcAddr(device, "vkCreateAccelerationStructure2KHR");
+    vkCmdSetDispatchParametersARM_dynamic                            = xx vkGetDeviceProcAddr(device, "vkCmdSetDispatchParametersARM");
 }
 vkCreateInstance :: (pCreateInfo: *VkInstanceCreateInfo, pAllocator: *VkAllocationCallbacks, pInstance: *VkInstance) -> VkResult #c_call {
     return vkCreateInstance_dynamic(pCreateInfo, pAllocator, pInstance);
@@ -2744,6 +2915,10 @@ vkCmdBindPipeline :: (commandBuffer: VkCommandBuffer, pipelineBindPoint: VkPipel
     vkCmdBindPipeline_dynamic(commandBuffer, pipelineBindPoint, pipeline);
 }
 
+vkCmdSetPrimitiveRestartIndexEXT :: (commandBuffer: VkCommandBuffer, primitiveRestartIndex: u32) -> void #c_call {
+    vkCmdSetPrimitiveRestartIndexEXT_dynamic(commandBuffer, primitiveRestartIndex);
+}
+
 vkCmdSetAttachmentFeedbackLoopEnableEXT :: (commandBuffer: VkCommandBuffer, aspectMask: VkImageAspectFlags) -> void #c_call {
     vkCmdSetAttachmentFeedbackLoopEnableEXT_dynamic(commandBuffer, aspectMask);
 }
@@ -3062,6 +3237,14 @@ vkCreateWaylandSurfaceKHR :: (instance: VkInstance, pCreateInfo: *VkWaylandSurfa
 
 vkGetPhysicalDeviceWaylandPresentationSupportKHR :: (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, display: *wl_display) -> VkBool32 #c_call {
     return vkGetPhysicalDeviceWaylandPresentationSupportKHR_dynamic(physicalDevice, queueFamilyIndex, display);
+}
+
+vkCreateUbmSurfaceSEC :: (instance: VkInstance, pCreateInfo: *VkUbmSurfaceCreateInfoSEC, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call {
+    return vkCreateUbmSurfaceSEC_dynamic(instance, pCreateInfo, pAllocator, pSurface);
+}
+
+vkGetPhysicalDeviceUbmPresentationSupportSEC :: (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, device: *ubm_device) -> VkBool32 #c_call {
+    return vkGetPhysicalDeviceUbmPresentationSupportSEC_dynamic(physicalDevice, queueFamilyIndex, device);
 }
 
 vkCreateWin32SurfaceKHR :: (instance: VkInstance, pCreateInfo: *VkWin32SurfaceCreateInfoKHR, pAllocator: *VkAllocationCallbacks, pSurface: *VkSurfaceKHR) -> VkResult #c_call {
@@ -3916,7 +4099,7 @@ vkDestroyAccelerationStructureNV :: (device: VkDevice, accelerationStructure: Vk
     vkDestroyAccelerationStructureNV_dynamic(device, accelerationStructure, pAllocator);
 }
 
-vkGetAccelerationStructureMemoryRequirementsNV :: (device: VkDevice, pInfo: *VkAccelerationStructureMemoryRequirementsInfoNV, pMemoryRequirements: *VkMemoryRequirements2KHR) -> void #c_call {
+vkGetAccelerationStructureMemoryRequirementsNV :: (device: VkDevice, pInfo: *VkAccelerationStructureMemoryRequirementsInfoNV, pMemoryRequirements: *VkMemoryRequirements2) -> void #c_call {
     vkGetAccelerationStructureMemoryRequirementsNV_dynamic(device, pInfo, pMemoryRequirements);
 }
 
@@ -4934,7 +5117,7 @@ vkGetImageSubresourceLayout2KHR :: vkGetImageSubresourceLayout2;
 
 vkGetImageSubresourceLayout2EXT :: vkGetImageSubresourceLayout2;
 
-vkGetPipelinePropertiesEXT :: (device: VkDevice, pPipelineInfo: *VkPipelineInfoEXT, pPipelineProperties: *VkBaseOutStructure) -> VkResult #c_call {
+vkGetPipelinePropertiesEXT :: (device: VkDevice, pPipelineInfo: *VkPipelineInfoKHR, pPipelineProperties: *VkBaseOutStructure) -> VkResult #c_call {
     return vkGetPipelinePropertiesEXT_dynamic(device, pPipelineInfo, pPipelineProperties);
 }
 
@@ -4976,6 +5159,14 @@ vkCmdOpticalFlowExecuteNV :: (commandBuffer: VkCommandBuffer, session: VkOptical
 
 vkGetDeviceFaultInfoEXT :: (device: VkDevice, pFaultCounts: *VkDeviceFaultCountsEXT, pFaultInfo: *VkDeviceFaultInfoEXT) -> VkResult #c_call {
     return vkGetDeviceFaultInfoEXT_dynamic(device, pFaultCounts, pFaultInfo);
+}
+
+vkGetDeviceFaultReportsKHR :: (device: VkDevice, timeout: u64, pFaultCounts: *u32, pFaultInfo: *VkDeviceFaultInfoKHR) -> VkResult #c_call {
+    return vkGetDeviceFaultReportsKHR_dynamic(device, timeout, pFaultCounts, pFaultInfo);
+}
+
+vkGetDeviceFaultDebugInfoKHR :: (device: VkDevice, pDebugInfo: *VkDeviceFaultDebugInfoKHR) -> VkResult #c_call {
+    return vkGetDeviceFaultDebugInfoKHR_dynamic(device, pDebugInfo);
 }
 
 vkCmdSetDepthBias2EXT :: (commandBuffer: VkCommandBuffer, pDepthBiasInfo: *VkDepthBiasInfoEXT) -> void #c_call {
@@ -5074,6 +5265,54 @@ vkCmdDispatchGraphIndirectCountAMDX :: (commandBuffer: VkCommandBuffer, scratch:
     vkCmdDispatchGraphIndirectCountAMDX_dynamic(commandBuffer, scratch, scratchSize, countInfo);
 }
 
+vkCreateGpaSessionAMD :: (device: VkDevice, pCreateInfo: *VkGpaSessionCreateInfoAMD, pAllocator: *VkAllocationCallbacks, pGpaSession: *VkGpaSessionAMD) -> VkResult #c_call {
+    return vkCreateGpaSessionAMD_dynamic(device, pCreateInfo, pAllocator, pGpaSession);
+}
+
+vkDestroyGpaSessionAMD :: (device: VkDevice, gpaSession: VkGpaSessionAMD, pAllocator: *VkAllocationCallbacks) -> void #c_call {
+    vkDestroyGpaSessionAMD_dynamic(device, gpaSession, pAllocator);
+}
+
+vkSetGpaDeviceClockModeAMD :: (device: VkDevice, pInfo: *VkGpaDeviceClockModeInfoAMD) -> VkResult #c_call {
+    return vkSetGpaDeviceClockModeAMD_dynamic(device, pInfo);
+}
+
+vkGetGpaDeviceClockInfoAMD :: (device: VkDevice, pInfo: *VkGpaDeviceGetClockInfoAMD) -> VkResult #c_call {
+    return vkGetGpaDeviceClockInfoAMD_dynamic(device, pInfo);
+}
+
+vkCmdBeginGpaSessionAMD :: (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> VkResult #c_call {
+    return vkCmdBeginGpaSessionAMD_dynamic(commandBuffer, gpaSession);
+}
+
+vkCmdEndGpaSessionAMD :: (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> VkResult #c_call {
+    return vkCmdEndGpaSessionAMD_dynamic(commandBuffer, gpaSession);
+}
+
+vkCmdBeginGpaSampleAMD :: (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD, pGpaSampleBeginInfo: *VkGpaSampleBeginInfoAMD, pSampleID: *u32) -> VkResult #c_call {
+    return vkCmdBeginGpaSampleAMD_dynamic(commandBuffer, gpaSession, pGpaSampleBeginInfo, pSampleID);
+}
+
+vkCmdEndGpaSampleAMD :: (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD, sampleID: u32) -> void #c_call {
+    vkCmdEndGpaSampleAMD_dynamic(commandBuffer, gpaSession, sampleID);
+}
+
+vkGetGpaSessionStatusAMD :: (device: VkDevice, gpaSession: VkGpaSessionAMD) -> VkResult #c_call {
+    return vkGetGpaSessionStatusAMD_dynamic(device, gpaSession);
+}
+
+vkGetGpaSessionResultsAMD :: (device: VkDevice, gpaSession: VkGpaSessionAMD, sampleID: u32, pSizeInBytes: *u64, pData: *void) -> VkResult #c_call {
+    return vkGetGpaSessionResultsAMD_dynamic(device, gpaSession, sampleID, pSizeInBytes, pData);
+}
+
+vkResetGpaSessionAMD :: (device: VkDevice, gpaSession: VkGpaSessionAMD) -> VkResult #c_call {
+    return vkResetGpaSessionAMD_dynamic(device, gpaSession);
+}
+
+vkCmdCopyGpaSessionResultsAMD :: (commandBuffer: VkCommandBuffer, gpaSession: VkGpaSessionAMD) -> void #c_call {
+    vkCmdCopyGpaSessionResultsAMD_dynamic(commandBuffer, gpaSession);
+}
+
 vkCmdBindDescriptorSets2 :: (commandBuffer: VkCommandBuffer, pBindDescriptorSetsInfo: *VkBindDescriptorSetsInfo) -> void #c_call {
     vkCmdBindDescriptorSets2_dynamic(commandBuffer, pBindDescriptorSetsInfo);
 }
@@ -5124,6 +5363,34 @@ vkGetLatencyTimingsNV :: (device: VkDevice, swapchain: VkSwapchainKHR, pLatencyM
 
 vkQueueNotifyOutOfBandNV :: (queue: VkQueue, pQueueTypeInfo: *VkOutOfBandQueueTypeInfoNV) -> void #c_call {
     vkQueueNotifyOutOfBandNV_dynamic(queue, pQueueTypeInfo);
+}
+
+vkSetLatencySleepModeLegacyNV :: (device: VkDevice, lowLatencyMode: VkBool32, lowLatencyBoost: VkBool32, minimumIntervalUs: u32) -> void #c_call {
+    vkSetLatencySleepModeLegacyNV_dynamic(device, lowLatencyMode, lowLatencyBoost, minimumIntervalUs);
+}
+
+vkLatencySleepLegacyNV :: (device: VkDevice, signalSemaphore: VkSemaphore, value: u64) -> void #c_call {
+    vkLatencySleepLegacyNV_dynamic(device, signalSemaphore, value);
+}
+
+vkSetLatencyMarkerLegacyNV :: (device: VkDevice, frameID: u64, marker: u32) -> void #c_call {
+    vkSetLatencyMarkerLegacyNV_dynamic(device, frameID, marker);
+}
+
+vkGetLatencyTimingsLegacyNV :: (device: VkDevice, pTimings: *void) -> void #c_call {
+    vkGetLatencyTimingsLegacyNV_dynamic(device, pTimings);
+}
+
+vkQueueNotifyOutOfBandLegacyNV :: (queue: VkQueue, queueType: u32) -> void #c_call {
+    vkQueueNotifyOutOfBandLegacyNV_dynamic(queue, queueType);
+}
+
+vkGetSleepStatusLegacyNV :: (device: VkDevice, pLowLatencyMode: *VkBool32) -> void #c_call {
+    vkGetSleepStatusLegacyNV_dynamic(device, pLowLatencyMode);
+}
+
+vkShutdownLatencyDeviceLegacyNV :: (device: VkDevice) -> void #c_call {
+    vkShutdownLatencyDeviceLegacyNV_dynamic(device);
 }
 
 vkCmdSetRenderingAttachmentLocations :: (commandBuffer: VkCommandBuffer, pLocationInfo: *VkRenderingAttachmentLocationInfo) -> void #c_call {
@@ -5188,6 +5455,34 @@ vkDestroyExternalComputeQueueNV :: (device: VkDevice, externalQueue: VkExternalC
 
 vkGetExternalComputeQueueDataNV :: (externalQueue: VkExternalComputeQueueNV, params: *VkExternalComputeQueueDataParamsNV, pData: *void) -> void #c_call {
     vkGetExternalComputeQueueDataNV_dynamic(externalQueue, params, pData);
+}
+
+vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM :: (physicalDevice: VkPhysicalDevice, pDescriptionCount: *u32, pDescriptions: *VkShaderInstrumentationMetricDescriptionARM) -> VkResult #c_call {
+    return vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM_dynamic(physicalDevice, pDescriptionCount, pDescriptions);
+}
+
+vkCreateShaderInstrumentationARM :: (device: VkDevice, pCreateInfo: *VkShaderInstrumentationCreateInfoARM, pAllocator: *VkAllocationCallbacks, pInstrumentation: *VkShaderInstrumentationARM) -> VkResult #c_call {
+    return vkCreateShaderInstrumentationARM_dynamic(device, pCreateInfo, pAllocator, pInstrumentation);
+}
+
+vkDestroyShaderInstrumentationARM :: (device: VkDevice, instrumentation: VkShaderInstrumentationARM, pAllocator: *VkAllocationCallbacks) -> void #c_call {
+    vkDestroyShaderInstrumentationARM_dynamic(device, instrumentation, pAllocator);
+}
+
+vkCmdBeginShaderInstrumentationARM :: (commandBuffer: VkCommandBuffer, instrumentation: VkShaderInstrumentationARM) -> void #c_call {
+    vkCmdBeginShaderInstrumentationARM_dynamic(commandBuffer, instrumentation);
+}
+
+vkCmdEndShaderInstrumentationARM :: (commandBuffer: VkCommandBuffer) -> void #c_call {
+    vkCmdEndShaderInstrumentationARM_dynamic(commandBuffer);
+}
+
+vkGetShaderInstrumentationValuesARM :: (device: VkDevice, instrumentation: VkShaderInstrumentationARM, pMetricBlockCount: *u32, pMetricValues: *void, flags: VkShaderInstrumentationValuesFlagsARM) -> VkResult #c_call {
+    return vkGetShaderInstrumentationValuesARM_dynamic(device, instrumentation, pMetricBlockCount, pMetricValues, flags);
+}
+
+vkClearShaderInstrumentationMetricsARM :: (device: VkDevice, instrumentation: VkShaderInstrumentationARM) -> void #c_call {
+    vkClearShaderInstrumentationMetricsARM_dynamic(device, instrumentation);
 }
 
 vkCreateTensorARM :: (device: VkDevice, pCreateInfo: *VkTensorCreateInfoARM, pAllocator: *VkAllocationCallbacks, pTensor: *VkTensorARM) -> VkResult #c_call {
@@ -5298,6 +5593,10 @@ vkQueueSignalReleaseImageOHOS :: (queue: VkQueue, waitSemaphoreCount: u32, pWait
     return vkQueueSignalReleaseImageOHOS_dynamic(queue, waitSemaphoreCount, pWaitSemaphores, image, pNativeFenceFd);
 }
 
+vkQueueSetPerfHintQCOM :: (queue: VkQueue, pPerfHintInfo: *VkPerfHintInfoQCOM) -> VkResult #c_call {
+    return vkQueueSetPerfHintQCOM_dynamic(queue, pPerfHintInfo);
+}
+
 vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM :: (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pCounterCount: *u32, pCounters: *VkPerformanceCounterARM, pCounterDescriptions: *VkPerformanceCounterDescriptionARM) -> VkResult #c_call {
     return vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM_dynamic(physicalDevice, queueFamilyIndex, pCounterCount, pCounters, pCounterDescriptions);
 }
@@ -5344,5 +5643,105 @@ vkGetPhysicalDeviceDescriptorSizeEXT :: (physicalDevice: VkPhysicalDevice, descr
 
 vkGetTensorOpaqueCaptureDataARM :: (device: VkDevice, tensorCount: u32, pTensors: *VkTensorARM, pDatas: *VkHostAddressRangeEXT) -> VkResult #c_call {
     return vkGetTensorOpaqueCaptureDataARM_dynamic(device, tensorCount, pTensors, pDatas);
+}
+
+vkCmdCopyMemoryKHR :: (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryInfoKHR) -> void #c_call {
+    vkCmdCopyMemoryKHR_dynamic(commandBuffer, pCopyMemoryInfo);
+}
+
+vkCmdCopyMemoryToImageKHR :: (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryImageInfoKHR) -> void #c_call {
+    vkCmdCopyMemoryToImageKHR_dynamic(commandBuffer, pCopyMemoryInfo);
+}
+
+vkCmdCopyImageToMemoryKHR :: (commandBuffer: VkCommandBuffer, pCopyMemoryInfo: *VkCopyDeviceMemoryImageInfoKHR) -> void #c_call {
+    vkCmdCopyImageToMemoryKHR_dynamic(commandBuffer, pCopyMemoryInfo);
+}
+
+vkCmdUpdateMemoryKHR :: (commandBuffer: VkCommandBuffer, pDstRange: *VkDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, dataSize: VkDeviceSize, pData: *void) -> void #c_call {
+    vkCmdUpdateMemoryKHR_dynamic(commandBuffer, pDstRange, dstFlags, dataSize, pData);
+}
+
+vkCmdFillMemoryKHR :: (commandBuffer: VkCommandBuffer, pDstRange: *VkDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, data: u32) -> void #c_call {
+    vkCmdFillMemoryKHR_dynamic(commandBuffer, pDstRange, dstFlags, data);
+}
+
+vkCmdCopyQueryPoolResultsToMemoryKHR :: (commandBuffer: VkCommandBuffer, queryPool: VkQueryPool, firstQuery: u32, queryCount: u32, pDstRange: *VkStridedDeviceAddressRangeKHR, dstFlags: VkAddressCommandFlagsKHR, queryResultFlags: VkQueryResultFlags) -> void #c_call {
+    vkCmdCopyQueryPoolResultsToMemoryKHR_dynamic(commandBuffer, queryPool, firstQuery, queryCount, pDstRange, dstFlags, queryResultFlags);
+}
+
+vkCmdBeginConditionalRendering2EXT :: (commandBuffer: VkCommandBuffer, pConditionalRenderingBegin: *VkConditionalRenderingBeginInfo2EXT) -> void #c_call {
+    vkCmdBeginConditionalRendering2EXT_dynamic(commandBuffer, pConditionalRenderingBegin);
+}
+
+vkCmdBindTransformFeedbackBuffers2EXT :: (commandBuffer: VkCommandBuffer, firstBinding: u32, bindingCount: u32, pBindingInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call {
+    vkCmdBindTransformFeedbackBuffers2EXT_dynamic(commandBuffer, firstBinding, bindingCount, pBindingInfos);
+}
+
+vkCmdBeginTransformFeedback2EXT :: (commandBuffer: VkCommandBuffer, firstCounterRange: u32, counterRangeCount: u32, pCounterInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call {
+    vkCmdBeginTransformFeedback2EXT_dynamic(commandBuffer, firstCounterRange, counterRangeCount, pCounterInfos);
+}
+
+vkCmdEndTransformFeedback2EXT :: (commandBuffer: VkCommandBuffer, firstCounterRange: u32, counterRangeCount: u32, pCounterInfos: *VkBindTransformFeedbackBuffer2InfoEXT) -> void #c_call {
+    vkCmdEndTransformFeedback2EXT_dynamic(commandBuffer, firstCounterRange, counterRangeCount, pCounterInfos);
+}
+
+vkCmdDrawIndirectByteCount2EXT :: (commandBuffer: VkCommandBuffer, instanceCount: u32, firstInstance: u32, pCounterInfo: *VkBindTransformFeedbackBuffer2InfoEXT, counterOffset: u32, vertexStride: u32) -> void #c_call {
+    vkCmdDrawIndirectByteCount2EXT_dynamic(commandBuffer, instanceCount, firstInstance, pCounterInfo, counterOffset, vertexStride);
+}
+
+vkCmdWriteMarkerToMemoryAMD :: (commandBuffer: VkCommandBuffer, pInfo: *VkMemoryMarkerInfoAMD) -> void #c_call {
+    vkCmdWriteMarkerToMemoryAMD_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdBindIndexBuffer3KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkBindIndexBuffer3InfoKHR) -> void #c_call {
+    vkCmdBindIndexBuffer3KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdBindVertexBuffers3KHR :: (commandBuffer: VkCommandBuffer, firstBinding: u32, bindingCount: u32, pBindingInfos: *VkBindVertexBuffer3InfoKHR) -> void #c_call {
+    vkCmdBindVertexBuffers3KHR_dynamic(commandBuffer, firstBinding, bindingCount, pBindingInfos);
+}
+
+vkCmdDrawIndirect2KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call {
+    vkCmdDrawIndirect2KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDrawIndexedIndirect2KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call {
+    vkCmdDrawIndexedIndirect2KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDrawIndirectCount2KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call {
+    vkCmdDrawIndirectCount2KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDrawIndexedIndirectCount2KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call {
+    vkCmdDrawIndexedIndirectCount2KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDrawMeshTasksIndirect2EXT :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirect2InfoKHR) -> void #c_call {
+    vkCmdDrawMeshTasksIndirect2EXT_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDrawMeshTasksIndirectCount2EXT :: (commandBuffer: VkCommandBuffer, pInfo: *VkDrawIndirectCount2InfoKHR) -> void #c_call {
+    vkCmdDrawMeshTasksIndirectCount2EXT_dynamic(commandBuffer, pInfo);
+}
+
+vkCmdDispatchIndirect2KHR :: (commandBuffer: VkCommandBuffer, pInfo: *VkDispatchIndirect2InfoKHR) -> void #c_call {
+    vkCmdDispatchIndirect2KHR_dynamic(commandBuffer, pInfo);
+}
+
+vkCreateAccelerationStructure2KHR :: (device: VkDevice, pCreateInfo: *VkAccelerationStructureCreateInfo2KHR, pAllocator: *VkAllocationCallbacks, pAccelerationStructure: *VkAccelerationStructureKHR) -> VkResult #c_call {
+    return vkCreateAccelerationStructure2KHR_dynamic(device, pCreateInfo, pAllocator, pAccelerationStructure);
+}
+
+vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM :: (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pQueueFamilyDataGraphProperties: *VkQueueFamilyDataGraphPropertiesARM, pProperties: *VkBaseOutStructure) -> VkResult #c_call {
+    return vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM_dynamic(physicalDevice, queueFamilyIndex, pQueueFamilyDataGraphProperties, pProperties);
+}
+
+vkCmdSetDispatchParametersARM :: (commandBuffer: VkCommandBuffer, pDispatchParameters: *VkDispatchParametersARM) -> void #c_call {
+    vkCmdSetDispatchParametersARM_dynamic(commandBuffer, pDispatchParameters);
+}
+
+vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM :: (physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pQueueFamilyDataGraphProperties: *VkQueueFamilyDataGraphPropertiesARM, pOpticalFlowImageFormatInfo: *VkDataGraphOpticalFlowImageFormatInfoARM, pFormatCount: *u32, pImageFormatProperties: *VkDataGraphOpticalFlowImageFormatPropertiesARM) -> VkResult #c_call {
+    return vkGetPhysicalDeviceQueueFamilyDataGraphOpticalFlowImageFormatsARM_dynamic(physicalDevice, queueFamilyIndex, pQueueFamilyDataGraphProperties, pOpticalFlowImageFormatInfo, pFormatCount, pImageFormatProperties);
 }
 
