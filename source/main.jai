@@ -54,6 +54,7 @@ using vulkan_context : struct {
             descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
             untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
             address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
+            swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
         }
     }
 
@@ -80,6 +81,7 @@ using vulkan_context : struct {
         command_buffers             : [FRAMES_IN_FLIGHT] VkCommandBuffer;
         image_available_semaphores  : [FRAMES_IN_FLIGHT] VkSemaphore;
         present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
+        present_fences              : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkFence;
 
         using descriptor_heap : struct {
             image_descriptor_stride     : VkDeviceSize;

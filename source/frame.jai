@@ -34,9 +34,16 @@ init_render :: () {
         // Render / Present
         {
             using semaphore_create_info: VkSemaphoreCreateInfo;
+
+            fence_create_info : VkFenceCreateInfo;
+            fence_create_info.flags = .SIGNALED;
+
             for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
                 vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[image_index]);
                 set_debug_name(.SEMAPHORE, present_ready_semaphores[image_index], tprint("present ready semaphore %", image_index));
+
+                vkCreateFence(device, *fence_create_info, null, *present_fences[image_index]);
+                set_debug_name(.FENCE, present_fences[image_index], tprint("present fence %", image_index));
             }
             for index : 0..FRAMES_IN_FLIGHT-1 {
                 vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[index]);
@@ -136,7 +143,11 @@ deinit_render :: () {
     for shader : shaders {
         vkDestroyShaderEXT(device, shader, null);
     }
+    result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
+    assert(result == .SUCCESS);
+
     for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
+        vkDestroyFence(device, present_fences[image_index], null);
         vkDestroySemaphore(device, present_ready_semaphores[image_index], null);
     }
     for index : 0..FRAMES_IN_FLIGHT-1 {
@@ -289,6 +300,11 @@ draw_frame :: () {
     else {
         assert(result == .SUCCESS, "vkAcquireNextImageKHR failed: %", result);
     }
+
+    result = vkWaitForFences(device, 1, *present_fences[image_index], VK_TRUE, u64_max);
+    assert(result == .SUCCESS);
+    result = vkResetFences(device, 1, *present_fences[image_index]);
+    assert(result == .SUCCESS);
 
     {
         using begin_info: VkCommandBufferBeginInfo;
@@ -563,6 +579,11 @@ draw_frame :: () {
         swapchainCount     = 1;
         pSwapchains        = *swapchain_context.swapchain;
         pImageIndices      = *image_index;
+
+        present_fence_info : VkSwapchainPresentFenceInfoKHR;
+        present_fence_info.swapchainCount = 1;
+        present_fence_info.pFences        = *present_fences[image_index];
+        pNext = *present_fence_info;
 
         result = vkQueuePresentKHR(queue, *present_info);
         if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {

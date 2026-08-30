@@ -11,6 +11,8 @@ init_instance :: () {
 
         instance_extensions : [..] *u8;
         array_add(*instance_extensions, VK_KHR_SURFACE_EXTENSION_NAME.data);
+        array_add(*instance_extensions, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.data);
+        array_add(*instance_extensions, VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME.data);
         #if OS == .WINDOWS {
             array_add(*instance_extensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME.data);
         } else {
@@ -272,6 +274,7 @@ init_device :: () {
                 VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data,
                 VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data,
                 VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME.data,
+                VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.data,
             ];
 
             enabledExtensionCount   = xx device_extensions.count;
@@ -293,6 +296,7 @@ init_device :: () {
             {
                 supported : type_of(features);
                 {
+                    supported.address_commands_features.pNext     = *supported.swapchain_maintenance_features;
                     supported.untyped_pointers_features.pNext     = *supported.address_commands_features;
                     supported.descriptor_heap_features.pNext      = *supported.untyped_pointers_features;
                     supported.unified_image_layout_features.pNext = *supported.descriptor_heap_features;
@@ -317,8 +321,10 @@ init_device :: () {
                 assert(supported.descriptor_heap_features.descriptorHeap           == VK_TRUE, "This GPU does not support descriptorHeap.");
                 assert(supported.untyped_pointers_features.shaderUntypedPointers   == VK_TRUE, "This GPU does not support shaderUntypedPointers.");
                 assert(supported.address_commands_features.deviceAddressCommands   == VK_TRUE, "This GPU does not support deviceAddressCommands.");
+                assert(supported.swapchain_maintenance_features.swapchainMaintenance1 == VK_TRUE, "This GPU does not support swapchainMaintenance1.");
 
-                address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = null};
+                swapchain_maintenance_features = .{swapchainMaintenance1 = VK_TRUE, pNext = null};
+                address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = *swapchain_maintenance_features};
                 untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = *address_commands_features};
                 descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
                 unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = *descriptor_heap_features};

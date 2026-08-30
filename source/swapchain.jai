@@ -144,6 +144,9 @@ recreate_swapchain :: () -> ready: bool {
 
     vkDeviceWaitIdle(device);
 
+    fence_result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
+    assert(fence_result == .SUCCESS);
+
     deinit_swapchain();
     init_swapchain();
 
