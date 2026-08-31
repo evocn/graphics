@@ -5,8 +5,8 @@ DEVELOPER_TOOLS :: #run BUILD_TYPE == .DEBUG;
 
 program_state : struct {
     using window_context : struct {
-        window_width    : u32 = 960;
-        window_height   : u32 = 540;
+        window_width    : u32 = 1920;
+        window_height   : u32 = 1080;
 
         window          : Window_Type;
     }

@@ -150,6 +150,14 @@ init_imgui :: () {
         set_debug_name(.SHADER_EXT, shaders[1], "imgui fragment");
     }
 
+    // Font, baked at a size proportional to the initial window height. Rebaking on
+    // live resizes is not supported; the size chosen here sticks for the run.
+    {
+        font_size := cast(float) program_state.window_height / 50.0;
+        font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
+        assert(font != null, "Unable to load the ImGui font.");
+    }
+
     // Font atlas texture
     {
         pixels : *u8;
