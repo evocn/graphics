@@ -341,6 +341,7 @@ draw_frame :: () {
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
             storeOp = .STORE;
+            clearValue.color.float32_ = .[.1, .1, .12, 1];
         }
 
         {
@@ -362,49 +363,6 @@ draw_frame :: () {
         // Set up my dynamic state
         bind_descriptor_heaps(command_buffers[index]);
         set_draw_state(command_buffers[index]);
-
-        // Clear frame
-        {
-            clear_color : VkClearColorValue;
-            {
-                color1 := Vector4.{1,  1, 0, 1};
-                color2 := Vector4.{.5, 0, 1, 1};
-
-                now := seconds_since_init();
-                t := cos(cast(float) now) * .5 + .5;
-                Clamp(*t, 0, 1);
-                color := lerp(color1, color2, t);
-                clear_color.float32_ = color.component;
-            }
-
-            clear_attachments : [1] VkClearAttachment;
-            {
-                {
-                    using clear_attachments[0];
-                    aspectMask = .COLOR;
-                    colorAttachment = 0;
-                    clearValue.color = clear_color;
-                }
-            }
-
-            clear_rects : [1] VkClearRect;
-            {
-                {
-                    using clear_rects[0];
-                    rect = .{
-                        offset = .{0, 0},
-                        extent = swapchain_context.extent,
-                    };
-                    baseArrayLayer = 0;
-                    layerCount = 1;
-                }
-            }
-
-            vkCmdClearAttachments(command_buffers[index],
-                clear_attachments.count, clear_attachments.data,
-                clear_rects.count, clear_rects.data
-            );
-        }
 
         // Bind Shaders
         {

@@ -48,6 +48,8 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
 compile_shaders :: () {
     print("\nCompiling shaders!\n");
 
+    make_directory_if_it_does_not_exist(tprint("%compiled", #filepath));
+
     assert(slangc("material-vertex",   "material", "vertex_main"));
     assert(slangc("material-fragment", "material", "fragment_main"));
 
