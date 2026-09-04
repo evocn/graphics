@@ -8,22 +8,14 @@ Vertex :: struct {
 }
 
 vertices := Vertex.[
-    .{position = .{-0.5, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.0, 0.0}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1.0, 1.0}},
-    .{position = .{-0.5,  0.5,  0.0}, color = .{1, 1, 0}, uv = .{0.0, 1.0}},
-
-    .{position = .{-0.5, -0.5,  0.0}, color = .{1, 0, 0}, uv = .{0.0, 0.0}},
-    .{position = .{ 0.5, -0.5,  0.0}, color = .{0, 1, 0}, uv = .{1.0, 0.0}},
-    .{position = .{ 0.5,  0.5,  0.0}, color = .{0, 0, 1}, uv = .{1.0, 1.0}},
-
     // Ground plane at y = +1 (+Y is down), facing up toward the camera.
-    .{position = .{-3.0,  1.0,  3.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
-    .{position = .{ 3.0,  1.0, -3.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
-    .{position = .{-3.0,  1.0, -3.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 6.0}},
+    .{position = .{-15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
+    .{position = .{ 15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
+    .{position = .{-15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 6.0}},
 
-    .{position = .{-3.0,  1.0,  3.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
-    .{position = .{ 3.0,  1.0,  3.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 0.0}},
-    .{position = .{ 3.0,  1.0, -3.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
+    .{position = .{-15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
+    .{position = .{ 15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 0.0}},
+    .{position = .{ 15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
 ];
 
 Draw_Data :: struct {
@@ -35,8 +27,9 @@ Draw_Data :: struct {
 init_data :: () {
     result : VkResult;
 
-    texture_width  := cast(u32) program_state.texture_datas[0].width;
-    texture_height := cast(u32) program_state.texture_datas[0].height;
+    white_pixel : u32 = 0xFFFFFFFF;
+    texture_width  : u32 = 1;
+    texture_height : u32 = 1;
     texture_format : VkFormat = .R8G8B8A8_UNORM;
 
     use_host_image_copy := false;
@@ -61,10 +54,10 @@ init_data :: () {
     if !use_host_image_copy {
         using program_state;
 
-        staging_size   = cast(u64, size_of(u32) * texture_datas[0].width * texture_datas[0].height);
+        staging_size   = cast(u64, size_of(u32) * texture_width * texture_height);
         staging_offset = arena_suballocate(staging_size, 256);
 
-        memcpy(arena_pointer(staging_offset), texture_datas[0].bytes, xx staging_size);
+        memcpy(arena_pointer(staging_offset), *white_pixel, xx staging_size);
     }
 
     // Texture
@@ -139,7 +132,7 @@ init_data :: () {
                     region : VkMemoryToImageCopy;
                     {
                         using region;
-                        pHostPointer = program_state.texture_datas[0].bytes;
+                        pHostPointer = *white_pixel;
                         imageSubresource = .{
                             aspectMask = .COLOR,
                             layerCount = VK_REMAINING_ARRAY_LAYERS,

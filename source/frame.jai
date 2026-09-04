@@ -327,8 +327,6 @@ draw_frame :: () {
                 subresourceRange    = swapchain_image_subresource_range;
             }
 
-            // The depth image is shared by all frames in flight; this barrier also orders
-            // this frame's depth work after the previous frame's. Contents are discarded.
             {
                 using image_memory_barriers[1];
                 srcStageMask        = .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS;
@@ -370,7 +368,7 @@ draw_frame :: () {
             imageView = swapchain_context.depth_view;
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
-            storeOp = .DONT_CARE; // Depth is never read after the rendering scope.
+            storeOp = .DONT_CARE;
             clearValue.depthStencil = .{depth = 1, stencil = 0};
         }
 
@@ -416,7 +414,7 @@ draw_frame :: () {
             frame_constants := cast(*Frame_Constants) arena_pointer(frame_constants_slot);
             frame_constants.view_projection = camera_view_projection(aspect);
             frame_constants.tlas_address    = tlas_address;
-            frame_constants.light_direction = unit_vector(Vector3.{0.3, 1.0, 0.2});
+            frame_constants.light_direction = world_state.light_direction;
             frame_constants.time            = cast(float) seconds_since_init();
 
             Push_Data :: struct {

@@ -19,6 +19,10 @@ program_state : struct {
     texture_datas : [..] Texture_Data;
 }
 
+world_state : struct {
+    light_direction : Vector3;
+}
+
 using vulkan_context : struct {
     instance                : VkInstance;
     surface                 : VkSurfaceKHR;
@@ -302,7 +306,19 @@ main :: () {
         last_time = now;
         Clamp(*dt, 0, 0.1);
 
-        update_camera(dt);
+        // Update
+        {
+            update_camera(dt);
+
+            // Update Light
+            {
+                using world_state;
+
+                // The sun orbits the scene.
+                sun_angle := cast(float) now * 0.4;
+                light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.7, 1.0, sin(sun_angle) * 0.7});
+            }
+        }
 
         imgui_new_frame();
         imgui_debug_ui();
