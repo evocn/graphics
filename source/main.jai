@@ -63,12 +63,18 @@ using vulkan_context : struct {
 
     swapchain_context : struct {
         MAX_SWAPCHAIN_IMAGES   :: 3;
+        DEPTH_FORMAT : VkFormat : .D32_SFLOAT;
         swapchain       : VkSwapchainKHR;
         surface_format  : VkSurfaceFormatKHR;
         extent      : VkExtent2D;
         image_count : u32;
         images      : [MAX_SWAPCHAIN_IMAGES] VkImage;
         views       : [MAX_SWAPCHAIN_IMAGES] VkImageView;
+
+        // One depth image shared by all frames; sized with the swapchain extent.
+        depth_image     : VkImage;
+        depth_memory    : VkDeviceMemory;
+        depth_view      : VkImageView;
 
         needs_recreation : bool;
     }

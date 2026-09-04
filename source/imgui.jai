@@ -489,9 +489,12 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         }
     }
 
-    // State deltas from set_draw_state: no culling, alpha blending on.
+    // State deltas from set_draw_state: no culling, no depth, alpha blending on.
     {
         vkCmdSetCullMode(command_buffer, .NONE);
+
+        vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
+        vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
 
         color_blend_enables : [1] VkBool32;
         color_blend_enables[0] = VK_TRUE;

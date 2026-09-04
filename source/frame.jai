@@ -178,8 +178,9 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
 
     vkCmdSetPrimitiveTopology(command_buffer,       .TRIANGLE_LIST);
 
-    vkCmdSetDepthTestEnable(command_buffer,         VK_FALSE);
-    vkCmdSetDepthWriteEnable(command_buffer,        VK_FALSE);
+    vkCmdSetDepthTestEnable(command_buffer,         VK_TRUE);
+    vkCmdSetDepthWriteEnable(command_buffer,        VK_TRUE);
+    vkCmdSetDepthCompareOp(command_buffer,          .LESS);
     vkCmdSetDepthBiasEnable(command_buffer,         VK_FALSE);
     vkCmdSetDepthBoundsTestEnable(command_buffer,   VK_FALSE);
     vkCmdSetDepthClampEnableEXT(command_buffer,     VK_FALSE);
@@ -309,9 +310,9 @@ draw_frame :: () {
         }
 
         {
-            image_memory_barrier : VkImageMemoryBarrier2;
+            image_memory_barriers : [2] VkImageMemoryBarrier2;
             {
-                using image_memory_barrier;
+                using image_memory_barriers[0];
                 srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
                 srcAccessMask       = .NONE;
                 dstStageMask        = .COLOR_ATTACHMENT_OUTPUT;
@@ -324,11 +325,28 @@ draw_frame :: () {
                 subresourceRange    = swapchain_image_subresource_range;
             }
 
+            // The depth image is shared by all frames in flight; this barrier also orders
+            // this frame's depth work after the previous frame's. Contents are discarded.
+            {
+                using image_memory_barriers[1];
+                srcStageMask        = .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS;
+                srcAccessMask       = .NONE;
+                dstStageMask        = .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS;
+                dstAccessMask       = .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE;
+                oldLayout           = .UNDEFINED;
+                newLayout           = .GENERAL;
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                image               = swapchain_context.depth_image;
+                subresourceRange    = swapchain_image_subresource_range;
+                subresourceRange.aspectMask = .DEPTH;
+            }
+
             dependency_info : VkDependencyInfo;
             {
                 using dependency_info;
-                imageMemoryBarrierCount = 1;
-                pImageMemoryBarriers    = *image_memory_barrier;
+                imageMemoryBarrierCount = image_memory_barriers.count;
+                pImageMemoryBarriers    = image_memory_barriers.data;
             }
 
             vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
@@ -344,6 +362,16 @@ draw_frame :: () {
             clearValue.color.float32_ = .[.1, .1, .12, 1];
         }
 
+        depth_attachment : VkRenderingAttachmentInfoKHR;
+        {
+            using depth_attachment;
+            imageView = swapchain_context.depth_view;
+            imageLayout = .GENERAL;
+            loadOp = .CLEAR;
+            storeOp = .DONT_CARE; // Depth is never read after the rendering scope.
+            clearValue.depthStencil = .{depth = 1, stencil = 0};
+        }
+
         {
             using rendering_info : VkRenderingInfo;
             renderArea = VkRect2D.{
@@ -354,7 +382,7 @@ draw_frame :: () {
             viewMask = 0;
             colorAttachmentCount = 1;
             pColorAttachments = *color_attachment;
-            pDepthAttachment = null;
+            pDepthAttachment = *depth_attachment;
             pStencilAttachment = null;
 
             vkCmdBeginRendering(command_buffers[index], *rendering_info);

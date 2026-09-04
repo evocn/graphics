@@ -125,9 +125,79 @@ init_swapchain :: () {
             set_debug_name(.IMAGE_VIEW, swapchain_context.views[it],  tprint("swapchain view %", it));
         }
     }
+
+    // Depth buffer
+    {
+        {
+            image_create_info : VkImageCreateInfo;
+            {
+                using image_create_info;
+                imageType = .e2D;
+                format = swapchain_context.DEPTH_FORMAT;
+                extent = .{width = swapchain_context.extent.width, height = swapchain_context.extent.height, depth = 1};
+                mipLevels = 1;
+                arrayLayers = 1;
+                samples = .e1;
+                tiling = .OPTIMAL;
+                usage = .DEPTH_STENCIL_ATTACHMENT;
+                sharingMode = .EXCLUSIVE;
+                initialLayout = .UNDEFINED;
+            }
+
+            result = vkCreateImage(device, *image_create_info, null, *swapchain_context.depth_image);
+            assert(result == .SUCCESS);
+        }
+
+        {
+            memory_requirements : VkMemoryRequirements;
+            vkGetImageMemoryRequirements(device, swapchain_context.depth_image, *memory_requirements);
+
+            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL);
+            assert(success);
+            assert(memory_type_index != -1);
+
+            {
+                using allocate_info : VkMemoryAllocateInfo;
+                allocationSize = memory_requirements.size;
+                memoryTypeIndex = xx memory_type_index;
+
+                result = vkAllocateMemory(device, *allocate_info, null, *swapchain_context.depth_memory);
+                assert(result == .SUCCESS);
+            }
+            result = vkBindImageMemory(device, swapchain_context.depth_image, swapchain_context.depth_memory, 0);
+            assert(result == .SUCCESS);
+        }
+
+        {
+            image_view_create_info : VkImageViewCreateInfo;
+            {
+                using image_view_create_info;
+                image = swapchain_context.depth_image;
+                viewType = .e2D;
+                format = swapchain_context.DEPTH_FORMAT;
+
+                subresourceRange.aspectMask = .DEPTH;
+                subresourceRange.baseMipLevel = 0;
+                subresourceRange.levelCount = 1;
+                subresourceRange.baseArrayLayer = 0;
+                subresourceRange.layerCount = 1;
+            }
+
+            result = vkCreateImageView(device, *image_view_create_info, null, *swapchain_context.depth_view);
+            assert(result == .SUCCESS);
+        }
+
+        set_debug_name(.IMAGE,         swapchain_context.depth_image,  "depth image");
+        set_debug_name(.DEVICE_MEMORY, swapchain_context.depth_memory, "depth memory");
+        set_debug_name(.IMAGE_VIEW,    swapchain_context.depth_view,   "depth view");
+    }
 }
 
 deinit_swapchain :: () {
+    vkDestroyImageView(device, swapchain_context.depth_view, null);
+    vkDestroyImage(device, swapchain_context.depth_image, null);
+    vkFreeMemory(device, swapchain_context.depth_memory, null);
+
     for image_index : 0..swapchain_context.image_count-1 {
         vkDestroyImageView(device, swapchain_context.views[image_index], null);
     }
