@@ -22,7 +22,16 @@ init_arena :: () {
     {
         using buffer_create_info : VkBufferCreateInfo;
         size  = arena.SIZE;
-        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .VERTEX_BUFFER | .INDEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER;
+        usage = .DESCRIPTOR_HEAP_EXT
+              | .SHADER_DEVICE_ADDRESS
+              | .VERTEX_BUFFER
+              | .INDEX_BUFFER
+              | .TRANSFER_SRC
+              | .TRANSFER_DST
+              | .STORAGE_BUFFER
+              | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+              | .ACCELERATION_STRUCTURE_STORAGE_KHR
+        ;
 
         result = vkCreateBuffer(device, *buffer_create_info, null, *arena.buffer);
         assert(result == .SUCCESS);

@@ -40,7 +40,8 @@ using vulkan_context : struct {
             vulkan_1_2_properties   : VkPhysicalDeviceVulkan12Properties;
             vulkan_1_3_properties   : VkPhysicalDeviceVulkan13Properties;
             vulkan_1_4_properties   : VkPhysicalDeviceVulkan14Properties;
-            descriptor_heap_properties      : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+            descriptor_heap_properties          : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+            acceleration_structure_properties   : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
         }
 
         using features : struct {
@@ -55,6 +56,8 @@ using vulkan_context : struct {
             untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
             address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
             swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
+            acceleration_structure_features : VkPhysicalDeviceAccelerationStructureFeaturesKHR;
+            ray_query_features              : VkPhysicalDeviceRayQueryFeaturesKHR;
         }
     }
 
@@ -130,6 +133,10 @@ using vulkan_context : struct {
         staging_size    : VkDeviceSize;
         vertex_offset   : VkDeviceSize;
         vertex_size     : VkDeviceSize;
+
+        blas         : VkAccelerationStructureKHR;
+        tlas         : VkAccelerationStructureKHR;
+        tlas_address : VkDeviceAddress;
     }
 }
 

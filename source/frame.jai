@@ -3,6 +3,8 @@
 
 Frame_Constants :: struct {
     view_projection : Matrix4;
+    tlas_address    : u64;
+    light_direction : Vector3;
     time            : float;
 }
 
@@ -413,6 +415,8 @@ draw_frame :: () {
 
             frame_constants := cast(*Frame_Constants) arena_pointer(frame_constants_slot);
             frame_constants.view_projection = camera_view_projection(aspect);
+            frame_constants.tlas_address    = tlas_address;
+            frame_constants.light_direction = unit_vector(Vector3.{0.3, 1.0, 0.2});
             frame_constants.time            = cast(float) seconds_since_init();
 
             Push_Data :: struct {

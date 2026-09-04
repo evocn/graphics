@@ -12,6 +12,8 @@ struct Vertex {
 
 struct Frame_Constants {
     float4x4 view_projection;
+    uint64_t tlas_address;
+    float3   light_direction;
     float    time;
 }
 
@@ -28,9 +30,19 @@ struct Push_Data {
 }
 [[vk::push_constant]] Push_Data push_data;
 
+// RaytracingAccelerationStructure makes Slang declare SPV_KHR_ray_tracing,
+// which requires the ray-tracing-pipeline device extension...
+// Doing this only emits SPV_KHR_ray_query. So dumb...
+RaytracingAccelerationStructure acceleration_structure_from_address(uint64_t address) {
+    return spirv_asm {
+        result : $$RaytracingAccelerationStructure = OpConvertUToAccelerationStructureKHR $address
+    };
+}
+
 struct Coarse_Vertex {
     float3 color;
     float2 uv;
+    float3 world_position;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,6 +66,7 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
         {
             output.coarse_vertex.color = color;
             output.coarse_vertex.uv = vertex.uv;
+            output.coarse_vertex.world_position = position;
         }
 
         output.sv_position = mul(push_data.frame.view_projection, float4(position, 1.0));
@@ -76,10 +89,27 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) 
 
     float3 color = coarse_vertex.color;
     float4 texture_color = draw.texture.Sample(draw.sampler, coarse_vertex.uv);
+    float3 world_position = coarse_vertex.world_position;
+
+    // Shadows
+    float shadow;
+    {
+        RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
+        RayDesc ray;
+        ray.Origin      = world_position;
+        ray.Direction   = -push_data.frame.light_direction;
+        ray.TMin        = 0.01;
+        ray.TMax        = 10000.0;
+
+        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+        query.TraceRayInline(tlas, RAY_FLAG_NONE, 0xFF, ray);
+        query.Proceed();
+        shadow = (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.2 : 1.0;
+    }
 
     Fragment_Stage_Output output;
     {
-        output.color = lerp(texture_color.xyz, color, texture_color.a);
+        output.color = lerp(texture_color.xyz, color, texture_color.a) * shadow;
     }
     return output;
 }

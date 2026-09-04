@@ -27,6 +27,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             "-target spirv",
             "-matrix-layout-row-major",
             "-capability spvDescriptorHeapEXT",
+            "-capability spvRayQueryKHR",
         ],
         working_directory = #filepath,
         //capture_and_return_output = false,

@@ -275,6 +275,10 @@ init_device :: () {
                 VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data,
                 VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME.data,
                 VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.data,
+
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME.data,
+                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME.data,
+                VK_KHR_RAY_QUERY_EXTENSION_NAME.data,
             ];
 
             enabledExtensionCount   = xx device_extensions.count;
@@ -282,7 +286,8 @@ init_device :: () {
 
             // Properties
             {
-                descriptor_heap_properties = .{pNext = null};
+                acceleration_structure_properties = .{pNext = null};
+                descriptor_heap_properties = .{pNext = *acceleration_structure_properties};
                 vulkan_1_4_properties = .{pNext = *descriptor_heap_properties};
                 vulkan_1_3_properties = .{pNext = *vulkan_1_4_properties};
                 vulkan_1_2_properties = .{pNext = *vulkan_1_3_properties};
@@ -296,36 +301,44 @@ init_device :: () {
             {
                 supported : type_of(features);
                 {
-                    supported.address_commands_features.pNext     = *supported.swapchain_maintenance_features;
-                    supported.untyped_pointers_features.pNext     = *supported.address_commands_features;
-                    supported.descriptor_heap_features.pNext      = *supported.untyped_pointers_features;
-                    supported.unified_image_layout_features.pNext = *supported.descriptor_heap_features;
-                    supported.shader_object_features.pNext        = *supported.unified_image_layout_features;
-                    supported.vulkan_1_4_features.pNext           = *supported.shader_object_features;
-                    supported.vulkan_1_3_features.pNext           = *supported.vulkan_1_4_features;
-                    supported.vulkan_1_2_features.pNext           = *supported.vulkan_1_3_features;
-                    supported.vulkan_1_1_features.pNext           = *supported.vulkan_1_2_features;
-                    supported.features2.pNext                     = *supported.vulkan_1_1_features;
+                    supported.acceleration_structure_features.pNext = *supported.ray_query_features;
+                    supported.swapchain_maintenance_features.pNext  = *supported.acceleration_structure_features;
+                    supported.address_commands_features.pNext       = *supported.swapchain_maintenance_features;
+                    supported.untyped_pointers_features.pNext       = *supported.address_commands_features;
+                    supported.descriptor_heap_features.pNext        = *supported.untyped_pointers_features;
+                    supported.unified_image_layout_features.pNext   = *supported.descriptor_heap_features;
+                    supported.shader_object_features.pNext          = *supported.unified_image_layout_features;
+                    supported.vulkan_1_4_features.pNext             = *supported.shader_object_features;
+                    supported.vulkan_1_3_features.pNext             = *supported.vulkan_1_4_features;
+                    supported.vulkan_1_2_features.pNext             = *supported.vulkan_1_3_features;
+                    supported.vulkan_1_1_features.pNext             = *supported.vulkan_1_2_features;
+                    supported.features2.pNext                       = *supported.vulkan_1_1_features;
 
                     vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
                 }
 
-                assert(supported.vulkan_1_1_features.shaderDrawParameters          == VK_TRUE, "This GPU does not support shaderDrawParameters.");
-                assert(supported.vulkan_1_2_features.timelineSemaphore             == VK_TRUE, "This GPU does not support timelineSemaphore.");
-                assert(supported.vulkan_1_2_features.bufferDeviceAddress           == VK_TRUE, "This GPU does not support bufferDeviceAddress.");
-                assert(supported.vulkan_1_2_features.runtimeDescriptorArray        == VK_TRUE, "This GPU does not support runtimeDescriptorArray.");
-                assert(supported.vulkan_1_2_features.scalarBlockLayout             == VK_TRUE, "This GPU does not support scalarBlockLayout.");
-                assert(supported.vulkan_1_3_features.dynamicRendering              == VK_TRUE, "This GPU does not support dynamicRendering.");
-                assert(supported.vulkan_1_3_features.synchronization2              == VK_TRUE, "This GPU does not support synchronization2.");
-                assert(supported.vulkan_1_4_features.maintenance5                  == VK_TRUE, "This GPU does not support maintenance5.");
-                assert(supported.shader_object_features.shaderObject               == VK_TRUE, "This GPU does not support shaderObject.");
-                assert(supported.unified_image_layout_features.unifiedImageLayouts == VK_TRUE, "This GPU does not support unifiedImageLayouts.");
-                assert(supported.descriptor_heap_features.descriptorHeap           == VK_TRUE, "This GPU does not support descriptorHeap.");
-                assert(supported.untyped_pointers_features.shaderUntypedPointers   == VK_TRUE, "This GPU does not support shaderUntypedPointers.");
-                assert(supported.address_commands_features.deviceAddressCommands   == VK_TRUE, "This GPU does not support deviceAddressCommands.");
-                assert(supported.swapchain_maintenance_features.swapchainMaintenance1 == VK_TRUE, "This GPU does not support swapchainMaintenance1.");
+                assert(VK_TRUE == supported.features2.features.shaderInt64);
+                assert(VK_TRUE == supported.vulkan_1_1_features.shaderDrawParameters);
+                assert(VK_TRUE == supported.vulkan_1_2_features.timelineSemaphore);
+                assert(VK_TRUE == supported.vulkan_1_2_features.bufferDeviceAddress);
+                assert(VK_TRUE == supported.vulkan_1_2_features.runtimeDescriptorArray);
+                assert(VK_TRUE == supported.vulkan_1_2_features.scalarBlockLayout);
+                assert(VK_TRUE == supported.vulkan_1_3_features.dynamicRendering);
+                assert(VK_TRUE == supported.vulkan_1_3_features.synchronization2);
+                assert(VK_TRUE == supported.vulkan_1_4_features.maintenance5);
+                assert(VK_TRUE == supported.shader_object_features.shaderObject);
+                assert(VK_TRUE == supported.unified_image_layout_features.unifiedImageLayouts);
+                assert(VK_TRUE == supported.descriptor_heap_features.descriptorHeap);
+                assert(VK_TRUE == supported.untyped_pointers_features.shaderUntypedPointers);
+                assert(VK_TRUE == supported.address_commands_features.deviceAddressCommands);
+                assert(VK_TRUE == supported.swapchain_maintenance_features.swapchainMaintenance1);
 
-                swapchain_maintenance_features = .{swapchainMaintenance1 = VK_TRUE, pNext = null};
+                assert(VK_TRUE == supported.acceleration_structure_features.accelerationStructure);
+                assert(VK_TRUE == supported.ray_query_features.rayQuery);
+
+                ray_query_features = .{rayQuery = VK_TRUE, pNext = null};
+                acceleration_structure_features = .{accelerationStructure = VK_TRUE, pNext = *ray_query_features};
+                swapchain_maintenance_features = .{swapchainMaintenance1 = VK_TRUE, pNext = *acceleration_structure_features};
                 address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = *swapchain_maintenance_features};
                 untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = *address_commands_features};
                 descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
@@ -358,6 +371,10 @@ init_device :: () {
                     shaderDrawParameters = VK_TRUE;
                 }
                 features2 = .{pNext = *vulkan_1_1_features};
+                {
+                    using features2.features;
+                    shaderInt64 = VK_TRUE;
+                }
             }
 
             pNext = *features2;
