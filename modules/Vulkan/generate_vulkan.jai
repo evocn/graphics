@@ -32,6 +32,7 @@ VK :: struct {
         number_of_pointer : int;
         array_prefix      : string;
         type              : string;
+        len               : string; // The len attribute from vk.xml, e.g. "pPhysicalDeviceCount".
     }
 
     Function :: struct {
@@ -584,6 +585,7 @@ handle_commands :: (xml: *XML, idx: XML.Node.IDX) {
                     });
                 case "param";
                     function_param: VK.Function_Param;
+                    _, function_param.len = find_attribute(xml, member_idx, "len");
                     walk_children(xml, member_idx, #code {
                         if it.type == .ELEMENT {
                             if it.text == {
@@ -1635,6 +1637,12 @@ output_enumeration_wrapper :: () {
 
         if count_param.number_of_pointer != 1 || count_param.type != "u32" continue;
         if data_param.number_of_pointer == 0 continue;
+
+        // The count/data shape alone is not enough: some functions take a
+        // trailing *u32 as input (vkGetAccelerationStructureBuildSizesKHR,
+        // vkCmdSetDescriptorBufferOffsetsEXT, ...). A real enumerator's data
+        // param is declared in vk.xml with len pointing at the count param.
+        if data_param.len != count_param.name continue;
 
         has_return_value := func.return_type != "void";
         if has_return_value && func.return_type != "VkResult" continue;

@@ -414,16 +414,6 @@ vkGetPhysicalDeviceToolProperties :: (physicalDevice: VkPhysicalDevice) -> VkRes
     return result, data;
 }
 
-vkCmdBuildAccelerationStructuresIndirectKHR :: (commandBuffer: VkCommandBuffer, infoCount: u32, pInfos: *VkAccelerationStructureBuildGeometryInfoKHR, pIndirectDeviceAddresses: *VkDeviceAddress) -> [] u32 {
-    count: u32;
-    data: [] u32;
-    vkCmdBuildAccelerationStructuresIndirectKHR(commandBuffer, infoCount, pInfos, pIndirectDeviceAddresses, *count, data.data);
-    if count == 0 return .[];
-    data = NewArray(count, u32, initialized = false);
-    vkCmdBuildAccelerationStructuresIndirectKHR(commandBuffer, infoCount, pInfos, pIndirectDeviceAddresses, *count, data.data);
-    return data;
-}
-
 vkGetPhysicalDeviceRefreshableObjectTypesKHR :: (physicalDevice: VkPhysicalDevice) -> VkResult, [] VkObjectType {
     count: u32;
     data: [] VkObjectType;
@@ -446,16 +436,6 @@ vkGetPhysicalDeviceFragmentShadingRatesKHR :: (physicalDevice: VkPhysicalDevice)
     data = NewArray(count, VkPhysicalDeviceFragmentShadingRateKHR, initialized = false);
     result = vkGetPhysicalDeviceFragmentShadingRatesKHR(physicalDevice, *count, data.data);
     return result, data;
-}
-
-vkGetAccelerationStructureBuildSizesKHR :: (device: VkDevice, buildType: VkAccelerationStructureBuildTypeKHR, pBuildInfo: *VkAccelerationStructureBuildGeometryInfoKHR) -> [] VkAccelerationStructureBuildSizesInfoKHR {
-    count: u32;
-    data: [] VkAccelerationStructureBuildSizesInfoKHR;
-    vkGetAccelerationStructureBuildSizesKHR(device, buildType, pBuildInfo, *count, data.data);
-    if count == 0 return .[];
-    data = NewArray(count, VkAccelerationStructureBuildSizesInfoKHR, initialized = false);
-    vkGetAccelerationStructureBuildSizesKHR(device, buildType, pBuildInfo, *count, data.data);
-    return data;
 }
 
 vkGetQueueCheckpointData2NV :: (queue: VkQueue) -> [] VkCheckpointData2NV {
@@ -490,16 +470,6 @@ vkGetVideoSessionMemoryRequirementsKHR :: (device: VkDevice, videoSession: VkVid
     data = NewArray(count, VkVideoSessionMemoryRequirementsKHR, initialized = false);
     result = vkGetVideoSessionMemoryRequirementsKHR(device, videoSession, *count, data.data);
     return result, data;
-}
-
-vkCmdSetDescriptorBufferOffsetsEXT :: (commandBuffer: VkCommandBuffer, pipelineBindPoint: VkPipelineBindPoint, layout: VkPipelineLayout, firstSet: u32, setCount: u32) -> [] VkDeviceSize {
-    count: u32;
-    data: [] VkDeviceSize;
-    vkCmdSetDescriptorBufferOffsetsEXT(commandBuffer, pipelineBindPoint, layout, firstSet, setCount, *count, data.data);
-    if count == 0 return .[];
-    data = NewArray(count, VkDeviceSize, initialized = false);
-    vkCmdSetDescriptorBufferOffsetsEXT(commandBuffer, pipelineBindPoint, layout, firstSet, setCount, *count, data.data);
-    return data;
 }
 
 vkGetFramebufferTilePropertiesQCOM :: (device: VkDevice, framebuffer: VkFramebuffer) -> VkResult, [] VkTilePropertiesQCOM {
