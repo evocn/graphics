@@ -177,8 +177,16 @@ build :: () {
         for plugins if it.shutdown it.shutdown(it);
     }
 
-    if !generate_shader_types(tprint("%/shaders/generated/shared.slang", root)) return;
+    if !generate_shader_types(tprint("%/shaders/generated/shared.slang", root)) exit(1);
     compile_shaders();
+
+    {
+        spirv_paths : [..] string;
+        for name : string.["material-vertex", "material-fragment", "imgui-vertex", "imgui-fragment"] {
+            array_add(*spirv_paths, tprint("%/%/%.spv", root, compiled_shaders_directory, name));
+        }
+        if !check_shader_layouts(spirv_paths) exit(1);
+    }
 
     // Publishing work
     {
@@ -268,3 +276,4 @@ plugins: [..] *Metaprogram_Plugin;
 // @TODO: Only compile shaders if the source files have been edited...
 #load "shaders/compile-shaders.jai";
 #load "shaders/generate-shader-types.jai";
+#load "shaders/check-shader-layouts.jai";
