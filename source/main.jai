@@ -388,6 +388,7 @@ Clipboard :: #import "Clipboard";
 #load "memory.jai";
 #load "swapchain.jai";
 #load "texture.jai";
+#load "acceleration_structure.jai";
 #load "scene.jai";
 #load "frame.jai";
 #load "imgui.jai";
