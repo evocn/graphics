@@ -75,7 +75,7 @@ init_swapchain :: () {
         imageColorSpace             = swapchain_context.surface_format.colorSpace;
         imageExtent                 = swapchain_context.extent;
         imageArrayLayers            = 1;
-        imageUsage                  = .COLOR_ATTACHMENT;
+        imageUsage                  = .COLOR_ATTACHMENT | .TRANSFER_SRC;
         imageSharingMode            = .EXCLUSIVE;
         preTransform                = surface_capabilities.currentTransform;
         compositeAlpha              = .OPAQUE;

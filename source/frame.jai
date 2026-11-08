@@ -254,6 +254,141 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
     vkCmdSetVertexInputEXT(command_buffer, 0, null, 0, null);
 }
 
+record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkImage, subresource_range: VkImageSubresourceRange) {
+    screenshot.requested = false;
+    screenshot.extent    = swapchain_context.extent;
+    screenshot.format    = swapchain_context.surface_format.format;
+
+    size := cast(VkDeviceSize) (4 * screenshot.extent.width * screenshot.extent.height);
+    screenshot.offset = arena_suballocate(size, 256);
+
+    {
+        image_memory_barrier : VkImageMemoryBarrier2;
+        {
+            using image_memory_barrier;
+            srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
+            srcAccessMask       = .COLOR_ATTACHMENT_WRITE;
+            dstStageMask        = .COPY;
+            dstAccessMask       = .TRANSFER_READ;
+            oldLayout           = .GENERAL;
+            newLayout           = .GENERAL;
+            srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            image               = swapchain_image;
+            subresourceRange    = subresource_range;
+        }
+
+        dependency_info : VkDependencyInfo;
+        {
+            using dependency_info;
+            imageMemoryBarrierCount = 1;
+            pImageMemoryBarriers    = *image_memory_barrier;
+        }
+
+        vkCmdPipelineBarrier2(command_buffer, *dependency_info);
+    }
+
+    {
+        region : VkDeviceMemoryImageCopyKHR;
+        {
+            using region;
+            addressRange = .{
+                address = arena_address(screenshot.offset),
+                size    = size,
+            };
+            addressFlags = .STORAGE_BUFFER_USAGE;
+            imageSubresource = .{
+                aspectMask = .COLOR,
+                layerCount = 1,
+            };
+            imageLayout = .GENERAL;
+            imageExtent = .{screenshot.extent.width, screenshot.extent.height, 1};
+        }
+
+        using copy_info : VkCopyDeviceMemoryImageInfoKHR;
+        image = swapchain_image;
+        regionCount = 1;
+        pRegions = *region;
+
+        vkCmdCopyImageToMemoryKHR(command_buffer, *copy_info);
+    }
+
+    {
+        memory_barrier : VkMemoryBarrier2;
+        {
+            using memory_barrier;
+            srcStageMask  = .COPY;
+            srcAccessMask = .TRANSFER_WRITE;
+            dstStageMask  = .HOST;
+            dstAccessMask = .HOST_READ;
+        }
+
+        dependency_info : VkDependencyInfo;
+        {
+            using dependency_info;
+            memoryBarrierCount = 1;
+            pMemoryBarriers    = *memory_barrier;
+        }
+
+        vkCmdPipelineBarrier2(command_buffer, *dependency_info);
+    }
+
+    screenshot.captured = true;
+}
+
+save_screenshot :: () {
+    using screenshot;
+
+    Layout :: enum { RGBA8; BGRA8; A2B10G10R10; }
+    layout : Layout;
+    if format == {
+        case .R8G8B8A8_UNORM;           #through;
+        case .R8G8B8A8_SRGB;            layout = .RGBA8;
+        case .B8G8R8A8_UNORM;           #through;
+        case .B8G8R8A8_SRGB;            layout = .BGRA8;
+        case .A2B10G10R10_UNORM_PACK32; layout = .A2B10G10R10;
+        case;
+            log_error("Can't save a screenshot of swapchain format %.", format);
+            return;
+    }
+
+    pixel_count := extent.width * extent.height;
+    pixels := cast(*u32) alloc(4 * pixel_count);
+    defer free(pixels);
+    memcpy(pixels, arena_pointer(offset), 4 * pixel_count);
+
+    for i : 0..pixel_count-1 {
+        p := pixels[i];
+        r, g, b : u32;
+        if layout == {
+            case .RGBA8;
+                r = p & 0xFF;          g = (p >> 8) & 0xFF;            b = (p >> 16) & 0xFF;
+            case .BGRA8;
+                r = (p >> 16) & 0xFF;  g = (p >> 8) & 0xFF;            b = p & 0xFF;
+            case .A2B10G10R10;
+                r = (p & 0x3FF) >> 2;  g = ((p >> 10) & 0x3FF) >> 2;   b = ((p >> 20) & 0x3FF) >> 2;
+        }
+        pixels[i] = r | (g << 8) | (b << 16) | 0xFF00_0000;
+    }
+
+    directory :: "bin/screenshots";
+    make_directory_if_it_does_not_exist(directory);
+
+    time := to_calendar(current_time_consensus(), .LOCAL);
+    path := tprint("%/%-%-%_%-%-%.png", directory,
+        time.year,
+        formatInt(time.month_starting_at_0 + 1,       minimum_digits = 2),
+        formatInt(time.day_of_month_starting_at_0 + 1, minimum_digits = 2),
+        formatInt(time.hour,   minimum_digits = 2),
+        formatInt(time.minute, minimum_digits = 2),
+        formatInt(time.second, minimum_digits = 2));
+
+    written := stbi_write_png(temp_c_string(path), xx extent.width, xx extent.height, 4, pixels, xx (4 * extent.width));
+    assert(written != 0, "Unable to write screenshot %", path);
+
+    log("Saved screenshot to %.", path);
+}
+
 u64_min, u64_max :: #run get_integer_range(u64);
 
 draw_frame :: () {
@@ -455,11 +590,15 @@ draw_frame :: () {
 
         vkCmdEndRendering(command_buffers[index]);
 
+        if screenshot.requested {
+            record_screenshot_copy(command_buffers[index], swapchain_context.images[image_index], swapchain_image_subresource_range);
+        }
+
         {
             image_memory_barrier : VkImageMemoryBarrier2;
             {
                 using image_memory_barrier;
-                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
+                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT | .COPY;
                 srcAccessMask       = .COLOR_ATTACHMENT_WRITE;
                 dstStageMask        = .NONE;
                 dstAccessMask       = .NONE;

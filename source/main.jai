@@ -119,6 +119,14 @@ using vulkan_context : struct {
         }
 
         shaders                 : [2] VkShaderEXT;
+
+        screenshot : struct {
+            requested   : bool;
+            captured    : bool;
+            offset      : VkDeviceSize;
+            extent      : VkExtent2D;
+            format      : VkFormat;
+        }
     }
 
     arena : struct {
@@ -157,11 +165,22 @@ main :: () {
     }
     set_working_directory_to_base_folder();
 
+    Command_Line_Arguments :: struct {
+        automation : bool;  @"?Open the window at the bottom of the z-order without taking focus."
+        frames     : int;   @"?Quit after this many frames. 0 runs until closed."
+        screenshot : bool;  @"?Save the last frame to bin/screenshots/ and quit. Runs 1 frame unless -frames is given."
+    }
+    success, args := parse_arguments(Command_Line_Arguments);
+    if !success return;
+
+    if args.screenshot && args.frames == 0 then args.frames = 1;
+
     program_state.window = create_window(
         xx program_state.window_width, xx program_state.window_height,
         program_title,
         window_x = 0,
         window_y = 0,
+        activate = !args.automation,
     );
 
     {
@@ -330,10 +349,16 @@ main :: () {
         imgui_debug_ui();
         ImGui.Render();
 
+        if args.screenshot && frame_index + 1 == cast(u64) args.frames then screenshot.requested = true;
+
         draw_frame();
+
+        if args.frames > 0 && frame_index >= cast(u64) args.frames then running = false;
     }
 
     vkDeviceWaitIdle(device);
+
+    if screenshot.captured then save_screenshot();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -343,12 +368,14 @@ main :: () {
 #import "Math";
 
 #import "File";
+#import "Command_Line";
 
 #import "Window_Creation";
 #import "Input";
 
 #import "Vulkan";
 #import "stb_image";
+#import "stb_image_write";
 
 ImGui     :: #import "ImGui";
 Clipboard :: #import "Clipboard";
