@@ -5,7 +5,6 @@ init_swapchain :: () {
     result : VkResult;
     using physical_device_context;
 
-    // Use first available surface format
     surface_format_count : u32 = ---;
     surface_formats : [..] VkSurfaceFormatKHR;
     defer array_free(surface_formats);
@@ -16,16 +15,18 @@ init_swapchain :: () {
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, *surface_format_count, surface_formats.data);
     assert(result == .SUCCESS);
 
-    for surface_format : surface_formats {
-        if surface_format.format == .UNDEFINED {
-            swapchain_context.surface_format.format = .B8G8R8A8_UNORM;
-            break;
-        }
-        else {
-            swapchain_context.surface_format = surface_format;
-            // @NOTE: This is where you'd pick a desired swapchain format from the list provided by the physical device.
+    preferred_formats :: VkFormat.[.B8G8R8A8_UNORM, .R8G8B8A8_UNORM];
+
+    swapchain_context.surface_format = surface_formats[0];
+    for preferred : preferred_formats {
+        for surface_formats {
+            if it.format == preferred && it.colorSpace == .SRGB_NONLINEAR {
+                swapchain_context.surface_format = it;
+                break preferred;
+            }
         }
     }
+    log("Swapchain format: % (%).", swapchain_context.surface_format.format, swapchain_context.surface_format.colorSpace);
 
     present_mode_count : u32 = ---;
     present_modes: [..] VkPresentModeKHR;
