@@ -264,8 +264,7 @@ init_imgui :: () {
             vkCmdCopyMemoryToImageKHR(command_buffers[0], *copy_info);
         }
 
-        // Descriptor, one slot past the scene texture.
-        font_image_id = first_image_id + 1;
+        font_image_id = take_image_id();
         {
             view_create_info : VkImageViewCreateInfo;
             {
@@ -306,8 +305,7 @@ init_imgui :: () {
         io.Fonts.TexID = cast(*void) font_image_id;
     }
 
-    // Linear-clamp sampler for the UI, one slot past the scene sampler.
-    sampler_id = first_sampler_id + 1;
+    sampler_id = take_sampler_id();
     {
         sampler_create_info : VkSamplerCreateInfo;
         {

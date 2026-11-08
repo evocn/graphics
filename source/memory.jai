@@ -86,15 +86,10 @@ init_descriptor_heap :: () {
     image_descriptor_stride   = descriptor_heap_properties.imageDescriptorSize;
     sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;
 
-    max_image_descriptors   :: 2; // Scene texture + the ImGui font atlas.
-    max_sampler_descriptors :: 2; // Scene sampler + ImGui's linear-clamp sampler.
-
-    resource_heap_size := align_up(
-        align_up(max_image_descriptors * image_descriptor_stride, descriptor_heap_properties.imageDescriptorAlignment) + descriptor_heap_properties.minResourceHeapReservedRange,
-        descriptor_heap_properties.resourceHeapAlignment);
-    sampler_heap_size := align_up(
-        align_up(max_sampler_descriptors * sampler_descriptor_stride, descriptor_heap_properties.samplerDescriptorAlignment) + descriptor_heap_properties.minSamplerHeapReservedRange,
-        descriptor_heap_properties.samplerHeapAlignment);
+    resource_heap_size := descriptor_heap_properties.maxResourceHeapSize;
+    sampler_heap_size  := descriptor_heap_properties.maxSamplerHeapSize;
+    assert(resource_heap_size % descriptor_heap_properties.resourceHeapAlignment == 0);
+    assert(sampler_heap_size  % descriptor_heap_properties.samplerHeapAlignment  == 0);
 
     sampler_heap_offset  = arena_suballocate(sampler_heap_size,  descriptor_heap_properties.samplerHeapAlignment);
     resource_heap_offset = arena_suballocate(resource_heap_size, descriptor_heap_properties.resourceHeapAlignment);
@@ -121,4 +116,28 @@ init_descriptor_heap :: () {
 
     first_image_id    = cast(u32, (descriptor_heap_properties.minResourceHeapReservedRange + image_descriptor_stride - 1) / image_descriptor_stride);
     first_sampler_id  = cast(u32, (descriptor_heap_properties.minSamplerHeapReservedRange + sampler_descriptor_stride - 1) / sampler_descriptor_stride);
+
+    image_id_capacity   = cast(u32, resource_heap_size / image_descriptor_stride);
+    sampler_id_capacity = cast(u32, sampler_heap_size  / sampler_descriptor_stride);
+
+    next_image_id   = first_image_id;
+    next_sampler_id = first_sampler_id;
+
+    log("Descriptor heaps: % image slots (% KiB), % sampler slots (% KiB).",
+        image_id_capacity   - first_image_id,   resource_heap_size / 1024,
+        sampler_id_capacity - first_sampler_id, sampler_heap_size  / 1024);
+}
+
+take_image_id :: () -> u32 {
+    id := next_image_id;
+    assert(id < image_id_capacity, "Out of image descriptor slots.");
+    next_image_id += 1;
+    return id;
+}
+
+take_sampler_id :: () -> u32 {
+    id := next_sampler_id;
+    assert(id < sampler_id_capacity, "Out of sampler descriptor slots.");
+    next_sampler_id += 1;
+    return id;
 }

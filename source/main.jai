@@ -110,13 +110,19 @@ using vulkan_context : struct {
 
             first_image_id      : u32;
             first_sampler_id    : u32;
+
+            image_id_capacity   : u32;
+            sampler_id_capacity : u32;
+
+            next_image_id       : u32;
+            next_sampler_id     : u32;
         }
 
         shaders                 : [2] VkShaderEXT;
     }
 
     arena : struct {
-        SIZE :: 16 * 1024 * 1024;
+        SIZE :: 64 * 1024 * 1024;
 
         buffer  : VkBuffer;
         memory  : VkDeviceMemory;

@@ -50,6 +50,9 @@ init_data :: () {
 
     log("Uploading textures via %.\n", ifx use_host_image_copy then "host image copy" else "device copy");
 
+    texture_id := take_image_id();
+    sampler_id := take_sampler_id();
+
     // Staging data for the texture upload.
     if !use_host_image_copy {
         using program_state;
@@ -243,7 +246,7 @@ init_data :: () {
                 }
 
                 destination := VkHostAddressRangeEXT.{
-                    address = arena_pointer(resource_heap_offset + first_image_id * image_descriptor_stride),
+                    address = arena_pointer(resource_heap_offset + texture_id * image_descriptor_stride),
                     size    = image_descriptor_stride,
                 };
 
@@ -266,7 +269,7 @@ init_data :: () {
                 }
 
                 destination := VkHostAddressRangeEXT.{
-                    address = arena_pointer(sampler_heap_offset + first_sampler_id * sampler_descriptor_stride),
+                    address = arena_pointer(sampler_heap_offset + sampler_id * sampler_descriptor_stride),
                     size    = sampler_descriptor_stride,
                 };
 
@@ -291,8 +294,8 @@ init_data :: () {
         {
             using draw_data;
             vertices = arena_address(vertex_offset);
-            texture  = .[first_image_id,   0];
-            sampler  = .[first_sampler_id, 0];
+            texture  = .[texture_id, 0];
+            sampler  = .[sampler_id, 0];
         }
     }
 
