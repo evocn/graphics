@@ -140,15 +140,10 @@ using vulkan_context : struct {
     }
 
     using scene_data : struct {
-        texture : struct {
-            image   : VkImage;
-            memory  : VkDeviceMemory;
-        }
+        texture : Texture;
 
         draw_data_offset : VkDeviceSize;
 
-        staging_offset  : VkDeviceSize;
-        staging_size    : VkDeviceSize;
         vertex_offset   : VkDeviceSize;
         vertex_size     : VkDeviceSize;
 
@@ -392,6 +387,7 @@ Clipboard :: #import "Clipboard";
 #load "device.jai";
 #load "memory.jai";
 #load "swapchain.jai";
+#load "texture.jai";
 #load "scene.jai";
 #load "frame.jai";
 #load "imgui.jai";

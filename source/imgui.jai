@@ -17,11 +17,9 @@ imgui_state : struct {
 
     shaders : [2] VkShaderEXT;
 
-    font_image  : VkImage;
-    font_memory : VkDeviceMemory;
+    font_texture : Texture;
 
-    font_image_id : u32;
-    sampler_id    : u32;
+    sampler_id   : u32;
 
     VERTEX_BUDGET :: 65536;
     INDEX_BUDGET  :: 262144;
@@ -158,154 +156,15 @@ init_imgui :: () {
         assert(font != null, "Unable to load the ImGui font.");
     }
 
-    // Font atlas texture
     {
         pixels : *u8;
         width, height, bpp : s32;
         io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
 
-        // Stage the pixels in the arena for the copy below. The region is not
-        // reclaimed afterwards; the arena has no free, and the atlas is small.
-        staging_size   := cast(VkDeviceSize) (4 * width * height);
-        staging_offset := arena_suballocate(staging_size, 256);
-        memcpy(arena_pointer(staging_offset), pixels, xx staging_size);
-
-        {
-            using image_create_info : VkImageCreateInfo;
-            imageType     = .e2D;
-            format        = .R8G8B8A8_UNORM;
-            extent        = .{width = xx width, height = xx height, depth = 1};
-            mipLevels     = 1;
-            arrayLayers   = 1;
-            samples       = .e1;
-            tiling        = .OPTIMAL;
-            usage         = .SAMPLED | .TRANSFER_DST;
-            sharingMode   = .EXCLUSIVE;
-            initialLayout = .UNDEFINED;
-
-            result = vkCreateImage(device, *image_create_info, null, *font_image);
-            assert(result == .SUCCESS);
-        }
-
-        {
-            memory_requirements : VkMemoryRequirements;
-            vkGetImageMemoryRequirements(device, font_image, *memory_requirements);
-
-            success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL);
-            assert(success);
-
-            {
-                using allocate_info : VkMemoryAllocateInfo;
-                allocationSize  = memory_requirements.size;
-                memoryTypeIndex = xx memory_type_index;
-
-                result = vkAllocateMemory(device, *allocate_info, null, *font_memory);
-                assert(result == .SUCCESS);
-            }
-            result = vkBindImageMemory(device, font_image, font_memory, 0);
-            assert(result == .SUCCESS);
-
-            set_debug_name(.IMAGE,         font_image,  "imgui font texture");
-            set_debug_name(.DEVICE_MEMORY, font_memory, "imgui font texture memory");
-        }
-
-        {
-            image_memory_barrier : VkImageMemoryBarrier2;
-            {
-                using image_memory_barrier;
-                srcStageMask        = .NONE;
-                srcAccessMask       = .NONE;
-                dstStageMask        = .COPY;
-                dstAccessMask       = .TRANSFER_WRITE;
-                oldLayout           = .UNDEFINED;
-                newLayout           = .GENERAL;
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = font_image;
-                subresourceRange    = .{
-                    aspectMask = .COLOR,
-                    levelCount = VK_REMAINING_MIP_LEVELS,
-                    layerCount = VK_REMAINING_ARRAY_LAYERS,
-                };
-            }
-
-            dependency_info : VkDependencyInfo;
-            {
-                using dependency_info;
-                imageMemoryBarrierCount = 1;
-                pImageMemoryBarriers    = *image_memory_barrier;
-            }
-
-            vkCmdPipelineBarrier2(command_buffers[0], *dependency_info);
-        }
-
-        {
-            region : VkDeviceMemoryImageCopyKHR;
-            {
-                using region;
-                addressRange = .{
-                    address = arena_address(staging_offset),
-                    size    = staging_size,
-                };
-                addressFlags = .STORAGE_BUFFER_USAGE;
-                imageSubresource = .{
-                    aspectMask = .COLOR,
-                    layerCount = VK_REMAINING_ARRAY_LAYERS,
-                };
-                imageLayout = .GENERAL;
-                imageExtent = .{xx width, xx height, 1};
-            }
-
-            using copy_info : VkCopyDeviceMemoryImageInfoKHR;
-            image = font_image;
-            regionCount = 1;
-            pRegions = *region;
-
-            vkCmdCopyMemoryToImageKHR(command_buffers[0], *copy_info);
-        }
-
-        font_image_id = take_image_id();
-        {
-            view_create_info : VkImageViewCreateInfo;
-            {
-                using view_create_info;
-                image    = font_image;
-                viewType = .e2D;
-                format   = .R8G8B8A8_UNORM;
-                subresourceRange = .{
-                    aspectMask = .COLOR,
-                    levelCount = VK_REMAINING_MIP_LEVELS,
-                    layerCount = VK_REMAINING_ARRAY_LAYERS,
-                };
-            }
-
-            image_descriptor_info : VkImageDescriptorInfoEXT;
-            {
-                using image_descriptor_info;
-                pView  = *view_create_info;
-                layout = .GENERAL;
-            }
-
-            resource_descriptor_info : VkResourceDescriptorInfoEXT;
-            {
-                using resource_descriptor_info;
-                type = .SAMPLED_IMAGE;
-                data.pImage = *image_descriptor_info;
-            }
-
-            destination := VkHostAddressRangeEXT.{
-                address = arena_pointer(resource_heap_offset + font_image_id * image_descriptor_stride),
-                size    = image_descriptor_stride,
-            };
-
-            result = vkWriteResourceDescriptorsEXT(device, 1, *resource_descriptor_info, *destination);
-            assert(result == .SUCCESS);
-        }
-
-        io.Fonts.TexID = cast(*void) font_image_id;
+        font_texture = create_texture(command_buffers[0], pixels, xx width, xx height, "imgui font texture");
+        io.Fonts.TexID = cast(*void) font_texture.id;
     }
 
-    sampler_id = take_sampler_id();
     {
         sampler_create_info : VkSamplerCreateInfo;
         {
@@ -320,13 +179,7 @@ init_imgui :: () {
             borderColor  = .INT_OPAQUE_BLACK;
         }
 
-        destination := VkHostAddressRangeEXT.{
-            address = arena_pointer(sampler_heap_offset + sampler_id * sampler_descriptor_stride),
-            size    = sampler_descriptor_stride,
-        };
-
-        result = vkWriteSamplerDescriptorsEXT(device, 1, *sampler_create_info, *destination);
-        assert(result == .SUCCESS);
+        sampler_id = create_sampler(sampler_create_info);
     }
 }
 
@@ -336,8 +189,7 @@ deinit_imgui :: () {
     for shader : shaders {
         vkDestroyShaderEXT(device, shader, null);
     }
-    vkDestroyImage(device, font_image, null);
-    vkFreeMemory(device, font_memory, null);
+    destroy_texture(font_texture);
 
     free(clipboard_cstring);
     ImGui.DestroyContext(imgui_context);
