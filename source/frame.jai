@@ -20,7 +20,7 @@ FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
 init_render :: () {
     result : VkResult;
 
-    frame_constants_offset = arena_suballocate(FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
+    frame_constants_offset = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
 
     // Command Buffers
     {
@@ -175,11 +175,6 @@ deinit_render :: () {
     vkDestroyCommandPool(device, command_pool, null);
 }
 
-bind_descriptor_heaps :: (command_buffer : VkCommandBuffer) {
-    vkCmdBindSamplerHeapEXT(command_buffer, *bind_sampler_heap_info);
-    vkCmdBindResourceHeapEXT(command_buffer, *bind_resource_heap_info);
-}
-
 set_draw_state :: (command_buffer: VkCommandBuffer) {
     vkCmdSetRasterizerDiscardEnable(command_buffer, VK_FALSE);
     vkCmdSetPrimitiveRestartEnable(command_buffer,  VK_FALSE);
@@ -266,7 +261,7 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
     screenshot.format    = swapchain_context.surface_format.format;
 
     size := cast(VkDeviceSize) (4 * screenshot.extent.width * screenshot.extent.height);
-    screenshot.offset = arena_suballocate(size, 256);
+    screenshot.offset = heap_allocate(*heaps.scratch, size, 256);
 
     {
         image_memory_barrier : VkImageMemoryBarrier2;
@@ -299,7 +294,7 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
         {
             using region;
             addressRange = .{
-                address = arena_address(screenshot.offset),
+                address = heap_address(*heaps.scratch, screenshot.offset),
                 size    = size,
             };
             addressFlags = .STORAGE_BUFFER_USAGE;
@@ -361,7 +356,7 @@ save_screenshot :: () {
     pixel_count := extent.width * extent.height;
     pixels := cast(*u32) alloc(4 * pixel_count);
     defer free(pixels);
-    memcpy(pixels, arena_pointer(offset), 4 * pixel_count);
+    memcpy(pixels, heap_pointer(*heaps.scratch, offset), 4 * pixel_count);
 
     for i : 0..pixel_count-1 {
         p := pixels[i];
@@ -552,15 +547,15 @@ draw_frame :: () {
 
             aspect := cast(float) swapchain_context.extent.width / cast(float) swapchain_context.extent.height;
 
-            frame_constants := cast(*Frame_Constants) arena_pointer(frame_constants_slot);
+            frame_constants := cast(*Frame_Constants) heap_pointer(*heaps.buffer, frame_constants_slot);
             frame_constants.view_projection = camera_view_projection(aspect);
             frame_constants.tlas_address    = tlas_address;
             frame_constants.light_direction = world_state.light_direction;
             frame_constants.time            = cast(float) seconds_since_init();
 
             push_data := Push_Data.{
-                frame      = arena_gpu_pointer(Frame_Constants, frame_constants_slot),
-                draws      = arena_gpu_pointer(Draw_Data, draw_data_offset),
+                frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),
+                draws      = heap_gpu_pointer(*heaps.buffer, Draw_Data, draw_data_offset),
                 draw_index = 0,
             };
 

@@ -80,7 +80,6 @@ using vulkan_context : struct {
 
         // One depth image shared by all frames; sized with the swapchain extent.
         depth_image     : VkImage;
-        depth_memory    : VkDeviceMemory;
         depth_view      : VkImageView;
 
         needs_recreation : bool;
@@ -98,26 +97,6 @@ using vulkan_context : struct {
 
         frame_constants_offset      : VkDeviceSize;
 
-        using descriptor_heap : struct {
-            image_descriptor_stride     : VkDeviceSize;
-            sampler_descriptor_stride   : VkDeviceSize;
-
-            resource_heap_offset    : VkDeviceSize;
-            sampler_heap_offset     : VkDeviceSize;
-
-            bind_resource_heap_info : VkBindHeapInfoEXT;
-            bind_sampler_heap_info  : VkBindHeapInfoEXT;
-
-            first_image_id      : u32;
-            first_sampler_id    : u32;
-
-            image_id_capacity   : u32;
-            sampler_id_capacity : u32;
-
-            next_image_id       : u32;
-            next_sampler_id     : u32;
-        }
-
         shaders                 : [2] VkShaderEXT;
 
         screenshot : struct {
@@ -127,16 +106,6 @@ using vulkan_context : struct {
             extent      : VkExtent2D;
             format      : VkFormat;
         }
-    }
-
-    arena : struct {
-        SIZE :: 64 * 1024 * 1024;
-
-        buffer  : VkBuffer;
-        memory  : VkDeviceMemory;
-        address : VkDeviceAddress;
-        cpu_map : *void;
-        used    : VkDeviceSize;
     }
 
     using scene_data : struct {
@@ -232,10 +201,10 @@ main :: () {
 
     result : VkResult;
 
-    init_arena();
-    defer deinit_arena();
+    init_heaps();
+    defer deinit_heaps();
 
-    init_descriptor_heap();
+    init_descriptor_heaps();
 
     init_swapchain();
     defer deinit_swapchain();
@@ -269,8 +238,8 @@ main :: () {
         assert(result == .SUCCESS);
     }
 
-    // Wait until all GPU initialization work is complete before proceeding.
     vkDeviceWaitIdle(device);
+    heap_reset(*heaps.scratch);
 
     running := true;
     last_time := seconds_since_init();
@@ -385,7 +354,8 @@ Clipboard :: #import "Clipboard";
 #load "utils.jai";
 #load "camera.jai";
 #load "device.jai";
-#load "memory.jai";
+#load "heap.jai";
+#load "descriptors.jai";
 #load "gpu.jai";
 #load "swapchain.jai";
 #load "texture.jai";

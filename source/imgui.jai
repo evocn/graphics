@@ -85,8 +85,8 @@ init_imgui :: () {
 
     // Arena regions for streamed vertex/index data.
     {
-        vertex_offset = arena_suballocate(FRAMES_IN_FLIGHT * vertex_slot_stride, 256);
-        index_offset  = arena_suballocate(FRAMES_IN_FLIGHT * index_slot_stride,  256);
+        vertex_offset = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * vertex_slot_stride, 256);
+        index_offset  = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * index_slot_stride,  256);
     }
 
     // Shaders
@@ -330,8 +330,8 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
             vertex_bytes := cast(VkDeviceSize) cmd_list.VtxBuffer.Size * size_of(ImGui.ImDrawVert);
             index_bytes  := cast(VkDeviceSize) cmd_list.IdxBuffer.Size * size_of(ImGui.ImDrawIdx);
 
-            memcpy(arena_pointer(vertex_slot_offset + vertex_bytes_used), cmd_list.VtxBuffer.Data, xx vertex_bytes);
-            memcpy(arena_pointer(index_slot_offset  + index_bytes_used),  cmd_list.IdxBuffer.Data,  xx index_bytes);
+            memcpy(heap_pointer(*heaps.buffer, vertex_slot_offset + vertex_bytes_used), cmd_list.VtxBuffer.Data, xx vertex_bytes);
+            memcpy(heap_pointer(*heaps.buffer, index_slot_offset  + index_bytes_used),  cmd_list.IdxBuffer.Data,  xx index_bytes);
 
             vertex_bytes_used += vertex_bytes;
             index_bytes_used  += index_bytes;
@@ -371,7 +371,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         vkCmdBindShadersEXT(command_buffer, stages.count, stages.data, shaders.data);
     }
 
-    vkCmdBindIndexBuffer(command_buffer, arena.buffer, index_slot_offset, .UINT16);
+    vkCmdBindIndexBuffer(command_buffer, heaps.buffer.buffer, index_slot_offset, .UINT16);
 
     push_data := Imgui_Push_Data.{
         scale     = .{2.0 / io.DisplaySize.x, 2.0 / io.DisplaySize.y},
@@ -387,7 +387,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     for n : 0..draw_data.CmdListsCount-1 {
         cmd_list := draw_data.CmdLists[n];
 
-        push_data.vertices = arena_gpu_pointer(ImGui.ImDrawVert, vertex_slot_offset + vertex_bytes_base);
+        push_data.vertices = heap_gpu_pointer(*heaps.buffer, ImGui.ImDrawVert, vertex_slot_offset + vertex_bytes_base);
 
         for cmd_i : 0..cmd_list.CmdBuffer.Size-1 {
             pcmd := *cmd_list.CmdBuffer.Data[cmd_i];

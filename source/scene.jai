@@ -48,25 +48,24 @@ init_data :: () {
         sampler = create_sampler(sampler_create_info);
     }
 
-    // Vertex data lives in the arena and is bound by address.
     {
         vertex_size   = size_of(type_of(vertices));
-        vertex_offset = arena_suballocate(vertex_size, 256);
+        vertex_offset = heap_allocate(*heaps.buffer, vertex_size, 256);
 
-        memcpy(arena_pointer(vertex_offset), *vertices, xx vertex_size);
+        memcpy(heap_pointer(*heaps.buffer, vertex_offset), *vertices, xx vertex_size);
     }
 
     {
-        draw_data_offset = arena_suballocate(size_of(Draw_Data), 256);
+        draw_data_offset = heap_allocate(*heaps.buffer, size_of(Draw_Data), 256);
 
-        draw_data := cast(*Draw_Data) arena_pointer(draw_data_offset);
-        draw_data.vertices = arena_gpu_pointer(Vertex, vertex_offset);
+        draw_data := cast(*Draw_Data) heap_pointer(*heaps.buffer, draw_data_offset);
+        draw_data.vertices = heap_gpu_pointer(*heaps.buffer, Vertex, vertex_offset);
         draw_data.texture  = texture.handle;
         draw_data.sampler  = sampler;
     }
 
     blas_address : VkDeviceAddress;
-    blas, blas_address = build_blas(command_buffers[0], arena_address(vertex_offset), xx vertices.count);
+    blas, blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, vertex_offset), xx vertices.count);
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
     instance : VkAccelerationStructureInstanceKHR;

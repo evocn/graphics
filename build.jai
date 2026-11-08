@@ -117,6 +117,8 @@ build :: () {
         set_build_options(options, w);
     }
 
+    compilation_failed := false;
+
     // Compile the target program
     {
         log("Starting compilation now!\n");
@@ -167,7 +169,10 @@ build :: () {
                     for plugin : plugins if plugin.message plugin.message(plugin, message);
                 }
 
-                if message.kind == .COMPLETE break;
+                if message.kind == .COMPLETE {
+                    compilation_failed = (cast(*Message_Complete) message).error_code != .NONE;
+                    break;
+                }
             }
         }
 
@@ -176,6 +181,8 @@ build :: () {
         for plugins if it.finish it.finish(it);
         for plugins if it.shutdown it.shutdown(it);
     }
+
+    if compilation_failed exit(1);
 
     if !generate_shader_types(tprint("%/shaders/generated/shared.slang", root)) exit(1);
     compile_shaders();

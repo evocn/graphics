@@ -3,21 +3,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-select_memory_type :: (memory_properties: VkPhysicalDeviceMemoryProperties, type_bits : u32, requirements_mask : VkMemoryPropertyFlagBits) -> success: bool, memory_type_index: u32
-{
-    for i : 0..memory_properties.memoryTypeCount-1 {
-        bit : u32 = cast(u32) (1 << i);
-        if (type_bits & bit) == 0 continue;
-
-        if (memory_properties.memoryTypes[i].propertyFlags & requirements_mask) == requirements_mask {
-            return true, i;
-        }
-    }
-    return false, 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 align_up :: (size : u64, power_of_two_alignment : u64) -> aligned: u64 {
     return (size + (power_of_two_alignment - 1)) & ~(power_of_two_alignment - 1);
 }

@@ -1,6 +1,5 @@
 Texture :: struct {
     image  : VkImage;
-    memory : VkDeviceMemory;
     handle : Texture_Handle;
 }
 
@@ -48,28 +47,8 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         assert(result == .SUCCESS);
     }
 
-    {
-        memory_requirements : VkMemoryRequirements;
-        vkGetImageMemoryRequirements(device, texture.image, *memory_requirements);
-
-        success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_requirements.memoryTypeBits, .DEVICE_LOCAL);
-        assert(success);
-        assert(memory_type_index != -1);
-
-        {
-            using allocate_info : VkMemoryAllocateInfo;
-            allocationSize = memory_requirements.size;
-            memoryTypeIndex = xx memory_type_index;
-
-            result = vkAllocateMemory(device, *allocate_info, null, *texture.memory);
-            assert(result == .SUCCESS);
-        }
-        result = vkBindImageMemory(device, texture.image, texture.memory, 0);
-        assert(result == .SUCCESS);
-
-        set_debug_name(.IMAGE,         texture.image,  name);
-        set_debug_name(.DEVICE_MEMORY, texture.memory, tprint("% memory", name));
-    }
+    heap_bind_image(*heaps.image, texture.image);
+    set_debug_name(.IMAGE, texture.image, name);
 
     subresource_range := VkImageSubresourceRange.{
         aspectMask = .COLOR,
@@ -112,8 +91,8 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         }
     }
     else {
-        staging_offset := arena_suballocate(size, 256);
-        memcpy(arena_pointer(staging_offset), pixels, xx size);
+        staging_offset := heap_allocate(*heaps.scratch, size, 256);
+        memcpy(heap_pointer(*heaps.scratch, staging_offset), pixels, xx size);
 
         {
             image_memory_barrier : VkImageMemoryBarrier2;
@@ -146,7 +125,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
             {
                 using region;
                 addressRange = .{
-                    address = arena_address(staging_offset),
+                    address = heap_address(*heaps.scratch, staging_offset),
                     size    = size,
                 };
                 addressFlags = .STORAGE_BUFFER_USAGE;
@@ -167,7 +146,6 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         }
     }
 
-    texture.handle = .{id = take_image_id()};
     {
         view_create_info : VkImageViewCreateInfo;
         {
@@ -178,27 +156,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
             subresourceRange = subresource_range;
         }
 
-        image_descriptor_info : VkImageDescriptorInfoEXT;
-        {
-            using image_descriptor_info;
-            pView  = *view_create_info;
-            layout = .GENERAL;
-        }
-
-        resource_descriptor_info : VkResourceDescriptorInfoEXT;
-        {
-            using resource_descriptor_info;
-            type = .SAMPLED_IMAGE;
-            data.pImage = *image_descriptor_info;
-        }
-
-        destination := VkHostAddressRangeEXT.{
-            address = arena_pointer(resource_heap_offset + texture.handle.id * image_descriptor_stride),
-            size    = image_descriptor_stride,
-        };
-
-        result = vkWriteResourceDescriptorsEXT(device, 1, *resource_descriptor_info, *destination);
-        assert(result == .SUCCESS);
+        texture.handle = create_image_descriptor(view_create_info);
     }
 
     log("Uploaded % (%x%) via %.", name, width, height, ifx use_host_image_copy then "host image copy" else "device copy");
@@ -208,20 +166,4 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
 
 destroy_texture :: (texture: Texture) {
     vkDestroyImage(device, texture.image, null);
-    vkFreeMemory(device, texture.memory, null);
-}
-
-create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {
-    id := take_sampler_id();
-
-    info := sampler_create_info;
-    destination := VkHostAddressRangeEXT.{
-        address = arena_pointer(sampler_heap_offset + id * sampler_descriptor_stride),
-        size    = sampler_descriptor_stride,
-    };
-
-    result := vkWriteSamplerDescriptorsEXT(device, 1, *info, *destination);
-    assert(result == .SUCCESS);
-
-    return .{id = id};
 }

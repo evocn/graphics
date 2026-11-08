@@ -12,6 +12,3 @@ Sampler_Handle :: struct {
     padding : u32;
 }
 
-arena_gpu_pointer :: ($T: Type, offset: VkDeviceSize) -> Gpu_Pointer(T) {
-    return .{address = arena_address(offset)};
-}
