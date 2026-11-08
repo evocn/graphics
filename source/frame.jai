@@ -1,11 +1,17 @@
 // Graphics
 // Frame
 
-Frame_Constants :: struct {
+Frame_Constants :: struct @Gpu {
     view_projection : Matrix4;
     tlas_address    : u64;
     light_direction : Vector3;
     time            : float;
+}
+
+Push_Data :: struct @Gpu {
+    frame      : Gpu_Pointer(Frame_Constants);
+    draws      : Gpu_Pointer(Draw_Data);
+    draw_index : u32;
 }
 
 FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
@@ -552,15 +558,9 @@ draw_frame :: () {
             frame_constants.light_direction = world_state.light_direction;
             frame_constants.time            = cast(float) seconds_since_init();
 
-            Push_Data :: struct {
-                frame      : VkDeviceAddress;
-                draws      : VkDeviceAddress;
-                draw_index : u32;
-            }
-
             push_data := Push_Data.{
-                frame      = arena_address(frame_constants_slot),
-                draws      = arena_address(draw_data_offset),
+                frame      = arena_gpu_pointer(Frame_Constants, frame_constants_slot),
+                draws      = arena_gpu_pointer(Draw_Data, draw_data_offset),
                 draw_index = 0,
             };
 

@@ -1,7 +1,7 @@
 Texture :: struct {
     image  : VkImage;
     memory : VkDeviceMemory;
-    id     : u32;
+    handle : Texture_Handle;
 }
 
 TEXTURE_FORMAT :: VkFormat.R8G8B8A8_UNORM;
@@ -167,7 +167,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         }
     }
 
-    texture.id = take_image_id();
+    texture.handle = .{id = take_image_id()};
     {
         view_create_info : VkImageViewCreateInfo;
         {
@@ -193,7 +193,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         }
 
         destination := VkHostAddressRangeEXT.{
-            address = arena_pointer(resource_heap_offset + texture.id * image_descriptor_stride),
+            address = arena_pointer(resource_heap_offset + texture.handle.id * image_descriptor_stride),
             size    = image_descriptor_stride,
         };
 
@@ -211,7 +211,7 @@ destroy_texture :: (texture: Texture) {
     vkFreeMemory(device, texture.memory, null);
 }
 
-create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> id: u32 {
+create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {
     id := take_sampler_id();
 
     info := sampler_create_info;
@@ -223,5 +223,5 @@ create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> id: u32 {
     result := vkWriteSamplerDescriptorsEXT(device, 1, *info, *destination);
     assert(result == .SUCCESS);
 
-    return id;
+    return .{id = id};
 }

@@ -19,7 +19,7 @@ imgui_state : struct {
 
     font_texture : Texture;
 
-    sampler_id   : u32;
+    sampler      : Sampler_Handle;
 
     VERTEX_BUDGET :: 65536;
     INDEX_BUDGET  :: 262144;
@@ -34,13 +34,12 @@ imgui_state : struct {
     clipboard_cstring : *u8;
 }
 
-// Must match Push_Data in imgui.slang (scalar layout).
-Imgui_Push_Data :: struct {
-    vertices  : VkDeviceAddress;
+Imgui_Push_Data :: struct @Gpu {
+    vertices  : Gpu_Pointer(ImGui.ImDrawVert);
     scale     : Vector2;
     translate : Vector2;
-    texture   : [2] u32;
-    sampler   : [2] u32;
+    texture   : Texture_Handle;
+    sampler   : Sampler_Handle;
 }
 
 // Records the font upload into command_buffers[0], so call it inside main's GPU
@@ -162,7 +161,7 @@ init_imgui :: () {
         io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
 
         font_texture = create_texture(command_buffers[0], pixels, xx width, xx height, "imgui font texture");
-        io.Fonts.TexID = cast(*void) font_texture.id;
+        io.Fonts.TexID = cast(*void) font_texture.handle.id;
     }
 
     {
@@ -179,7 +178,7 @@ init_imgui :: () {
             borderColor  = .INT_OPAQUE_BLACK;
         }
 
-        sampler_id = create_sampler(sampler_create_info);
+        sampler = create_sampler(sampler_create_info);
     }
 }
 
@@ -377,7 +376,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     push_data := Imgui_Push_Data.{
         scale     = .{2.0 / io.DisplaySize.x, 2.0 / io.DisplaySize.y},
         translate = .{-1, -1},
-        sampler   = .[sampler_id, 0],
+        sampler   = sampler,
     };
 
     // Slang lowers SV_VertexID to gl_VertexIndex - gl_BaseVertex (D3D semantics), so
@@ -388,7 +387,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     for n : 0..draw_data.CmdListsCount-1 {
         cmd_list := draw_data.CmdLists[n];
 
-        push_data.vertices = arena_address(vertex_slot_offset + vertex_bytes_base);
+        push_data.vertices = arena_gpu_pointer(ImGui.ImDrawVert, vertex_slot_offset + vertex_bytes_base);
 
         for cmd_i : 0..cmd_list.CmdBuffer.Size-1 {
             pcmd := *cmd_list.CmdBuffer.Data[cmd_i];
@@ -409,7 +408,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
                     };
                     vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
 
-                    push_data.texture = .[cast(u32) cast(u64) pcmd.TextureId, 0];
+                    push_data.texture = .{id = cast(u32) cast(u64) pcmd.TextureId};
 
                     push_data_info : VkPushDataInfoEXT;
                     {

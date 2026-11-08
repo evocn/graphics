@@ -386,6 +386,7 @@ Clipboard :: #import "Clipboard";
 #load "camera.jai";
 #load "device.jai";
 #load "memory.jai";
+#load "gpu.jai";
 #load "swapchain.jai";
 #load "texture.jai";
 #load "acceleration_structure.jai";

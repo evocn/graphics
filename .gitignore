@@ -11,3 +11,4 @@ bin/packages/
 *.rdbg
 *.build
 shaders/compiled/
+shaders/generated/

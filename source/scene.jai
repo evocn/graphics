@@ -1,7 +1,7 @@
 // Graphics
 // Scene
 
-Vertex :: struct {
+Vertex :: struct @Gpu {
     position    : Vector3;
     color       : Vector3;
     uv          : Vector2;
@@ -18,10 +18,10 @@ vertices := Vertex.[
     .{position = .{ 15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
 ];
 
-Draw_Data :: struct {
-    vertices : VkDeviceAddress;
-    texture  : [2] u32;
-    sampler  : [2] u32;
+Draw_Data :: struct @Gpu {
+    vertices : Gpu_Pointer(Vertex);
+    texture  : Texture_Handle;
+    sampler  : Sampler_Handle;
 }
 
 init_data :: () {
@@ -30,7 +30,7 @@ init_data :: () {
     white_pixel : u32 = 0xFFFFFFFF;
     texture = create_texture(command_buffers[0], *white_pixel, 1, 1, "white texture");
 
-    sampler_id : u32;
+    sampler : Sampler_Handle;
     {
         sampler_create_info : VkSamplerCreateInfo;
         {
@@ -45,7 +45,7 @@ init_data :: () {
             borderColor  = .INT_OPAQUE_BLACK;
         }
 
-        sampler_id = create_sampler(sampler_create_info);
+        sampler = create_sampler(sampler_create_info);
     }
 
     // Vertex data lives in the arena and is bound by address.
@@ -59,14 +59,10 @@ init_data :: () {
     {
         draw_data_offset = arena_suballocate(size_of(Draw_Data), 256);
 
-        texture_id := texture.id;
         draw_data := cast(*Draw_Data) arena_pointer(draw_data_offset);
-        {
-            using draw_data;
-            vertices = arena_address(vertex_offset);
-            texture  = .[texture_id, 0];
-            sampler  = .[sampler_id, 0];
-        }
+        draw_data.vertices = arena_gpu_pointer(Vertex, vertex_offset);
+        draw_data.texture  = texture.handle;
+        draw_data.sampler  = sampler;
     }
 
     blas_address : VkDeviceAddress;

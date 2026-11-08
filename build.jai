@@ -162,6 +162,7 @@ build :: () {
 
                 if message.workspace == w {
                     process_message(*ctags, message);
+                    collect_gpu_structs(message);
 
                     for plugin : plugins if plugin.message plugin.message(plugin, message);
                 }
@@ -175,6 +176,9 @@ build :: () {
         for plugins if it.finish it.finish(it);
         for plugins if it.shutdown it.shutdown(it);
     }
+
+    if !generate_shader_types(tprint("%/shaders/generated/shared.slang", root)) return;
+    compile_shaders();
 
     // Publishing work
     {
@@ -263,4 +267,4 @@ plugins: [..] *Metaprogram_Plugin;
 
 // @TODO: Only compile shaders if the source files have been edited...
 #load "shaders/compile-shaders.jai";
-#run compile_shaders();
+#load "shaders/generate-shader-types.jai";

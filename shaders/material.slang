@@ -4,30 +4,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Structs
 
-struct Vertex {
-    float3 position;
-    float3 color;
-    float2 uv;
-}
+#include "generated/shared.slang"
 
-struct Frame_Constants {
-    float4x4 view_projection;
-    uint64_t tlas_address;
-    float3   light_direction;
-    float    time;
-}
-
-struct Draw_Data {
-    Vertex*                         vertices;
-    DescriptorHandle<Texture2D>     texture;
-    DescriptorHandle<SamplerState>  sampler;
-}
-
-struct Push_Data {
-    Frame_Constants*    frame;
-    Draw_Data*          draws;
-    uint                draw_index;
-}
 [[vk::push_constant]] Push_Data push_data;
 
 // RaytracingAccelerationStructure makes Slang declare SPV_KHR_ray_tracing,
