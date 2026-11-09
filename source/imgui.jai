@@ -3,13 +3,6 @@ imgui_shaders      : [2] VkShaderEXT;
 imgui_font_texture : Texture;
 imgui_sampler      : Sampler_Handle;
 
-IMGUI_VERTEX_BUDGET      :: 65536;
-IMGUI_INDEX_BUDGET       :: 262144;
-IMGUI_VERTEX_SLOT_STRIDE :: IMGUI_VERTEX_BUDGET * size_of(ImGui.ImDrawVert);
-IMGUI_INDEX_SLOT_STRIDE  :: IMGUI_INDEX_BUDGET  * size_of(ImGui.ImDrawIdx);
-imgui_vertex_offset : VkDeviceSize;
-imgui_index_offset  : VkDeviceSize;
-
 imgui_time              : float64;
 imgui_mouse_pressed     : [3] bool;
 imgui_mouse_wheel       : float;
@@ -56,9 +49,6 @@ init_imgui :: () {
     io.ClipboardUserData = null;
 
     #if OS == .WINDOWS { io.ImeWindowHandle = window; }
-
-    imgui_vertex_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_VERTEX_SLOT_STRIDE, 256);
-    imgui_index_offset  = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_INDEX_SLOT_STRIDE,  256);
 
     imgui_shaders = create_graphics_shaders("imgui");
 
@@ -203,7 +193,7 @@ imgui_debug_ui :: () {
     ImGui.End();
 }
 
-render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
+render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
     draw_data := ImGui.GetDrawData();
     if !draw_data || draw_data.CmdListsCount == 0  return;
 
@@ -212,11 +202,8 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     fb_height := cast(s32) swapchain_extent.height;
     if fb_width <= 0 || fb_height <= 0  return;
 
-    assert(draw_data.TotalVtxCount <= IMGUI_VERTEX_BUDGET, "ImGui vertex budget exceeded: % > %", draw_data.TotalVtxCount, IMGUI_VERTEX_BUDGET);
-    assert(draw_data.TotalIdxCount <= IMGUI_INDEX_BUDGET,  "ImGui index budget exceeded: % > %",  draw_data.TotalIdxCount, IMGUI_INDEX_BUDGET);
-
-    vertex_slot_offset := imgui_vertex_offset + frame_slot * IMGUI_VERTEX_SLOT_STRIDE;
-    index_slot_offset  := imgui_index_offset  + frame_slot * IMGUI_INDEX_SLOT_STRIDE;
+    vertex_offset := heap_allocate(frame_heap, cast(VkDeviceSize) draw_data.TotalVtxCount * size_of(ImGui.ImDrawVert), 256);
+    index_offset  := heap_allocate(frame_heap, cast(VkDeviceSize) draw_data.TotalIdxCount * size_of(ImGui.ImDrawIdx),  256);
 
     {
         vertex_bytes_used, index_bytes_used : VkDeviceSize;
@@ -225,8 +212,8 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
             vertex_bytes := cast(VkDeviceSize) cmd_list.VtxBuffer.Size * size_of(ImGui.ImDrawVert);
             index_bytes  := cast(VkDeviceSize) cmd_list.IdxBuffer.Size * size_of(ImGui.ImDrawIdx);
 
-            memcpy(heap_pointer(*buffer_heap, vertex_slot_offset + vertex_bytes_used), cmd_list.VtxBuffer.Data, xx vertex_bytes);
-            memcpy(heap_pointer(*buffer_heap, index_slot_offset  + index_bytes_used),  cmd_list.IdxBuffer.Data,  xx index_bytes);
+            memcpy(heap_pointer(frame_heap, vertex_offset + vertex_bytes_used), cmd_list.VtxBuffer.Data, xx vertex_bytes);
+            memcpy(heap_pointer(frame_heap, index_offset  + index_bytes_used),  cmd_list.IdxBuffer.Data,  xx index_bytes);
 
             vertex_bytes_used += vertex_bytes;
             index_bytes_used  += index_bytes;
@@ -253,7 +240,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
 
     index_buffer_info := VkBindIndexBuffer3InfoKHR.{
         addressRange = .{
-            address = heap_address(*buffer_heap, index_slot_offset),
+            address = heap_address(frame_heap, index_offset),
             size    = cast(VkDeviceSize) draw_data.TotalIdxCount * size_of(ImGui.ImDrawIdx),
         },
         addressFlags = .STORAGE_BUFFER_USAGE,
@@ -272,7 +259,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     for n : 0..draw_data.CmdListsCount-1 {
         cmd_list := draw_data.CmdLists[n];
 
-        push_data.vertices = heap_gpu_pointer(*buffer_heap, ImGui.ImDrawVert, vertex_slot_offset + vertex_bytes_base);
+        push_data.vertices = heap_gpu_pointer(frame_heap, ImGui.ImDrawVert, vertex_offset + vertex_bytes_base);
 
         for cmd_i : 0..cmd_list.CmdBuffer.Size-1 {
             pcmd := *cmd_list.CmdBuffer.Data[cmd_i];

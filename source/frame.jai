@@ -9,8 +9,6 @@ image_available_semaphores : [FRAMES_IN_FLIGHT] VkSemaphore;
 present_ready_semaphores   : [MAX_SWAPCHAIN_IMAGES] VkSemaphore;
 present_fences             : [MAX_SWAPCHAIN_IMAGES] VkFence;
 
-frame_constants_offset : VkDeviceSize;
-
 ambient_write_index      : u32;
 previous_view_projection : Matrix4;
 previous_camera_position : Vector3;
@@ -159,13 +157,8 @@ Tonemap_Push_Data :: struct @Gpu {
     raw      : u32;
 }
 
-FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
-#assert(size_of(Frame_Constants) <= FRAME_CONSTANTS_STRIDE);
-
 init_render :: () {
     result : VkResult;
-
-    frame_constants_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
 
     command_pool_create_info := VkCommandPoolCreateInfo.{flags = .RESET_COMMAND_BUFFER, queueFamilyIndex = queue_family_index};
     result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
@@ -375,6 +368,9 @@ draw_frame :: () {
     result = vkWaitSemaphores(device, *semaphore_wait_info, U64_MAX);
     assert(result == .SUCCESS);
 
+    frame_heap := *frame_heaps[index];
+    heap_reset(frame_heap);
+
     if frame_index > FRAMES_IN_FLIGHT {
         timestamps : [2] u64;
         result = vkGetQueryPoolResults(device, timestamp_pool, xx (index * 2), 2, size_of(type_of(timestamps)), timestamps.data, size_of(u64), .e64);
@@ -451,11 +447,10 @@ draw_frame :: () {
     bind_descriptor_heaps(command_buffers[index]);
     set_draw_state(command_buffers[index]);
 
-
-    frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
+    frame_constants_offset := heap_allocate(frame_heap, size_of(Frame_Constants), 256);
     aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
 
-    frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
+    frame_constants := cast(*Frame_Constants) heap_pointer(frame_heap, frame_constants_offset);
     frame_constants.view_projection = camera_view_projection(aspect);
     frame_constants.tlas_address    = tlas_address;
     frame_constants.light_direction = light_direction;
@@ -472,10 +467,10 @@ draw_frame :: () {
     frame_constants.ambient_history_valid = xx ambient_history_valid;
     frame_constants.frame_number          = cast(u32) frame_index;
     frame_constants.debug_view            = cast(u32) debug_view;
-        ambient_write_index = 1 - ambient_write_index;
+    ambient_write_index = 1 - ambient_write_index;
 
     push_data := Push_Data.{
-        frame     = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
+        frame     = heap_gpu_pointer(frame_heap, Frame_Constants, frame_constants_offset),
         draws     = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
         materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
     };
@@ -520,7 +515,7 @@ draw_frame :: () {
 
     vkCmdDraw(command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
 
-    render_imgui(command_buffers[index], index);
+    render_imgui(command_buffers[index], frame_heap);
 
     vkCmdEndRendering(command_buffers[index]);
 

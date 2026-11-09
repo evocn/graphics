@@ -15,6 +15,7 @@ scratch_heap       : Heap;
 readback_heap      : Heap;
 image_heap         : Heap;
 render_target_heap : Heap;
+frame_heaps        : [FRAMES_IN_FLIGHT] Heap;
 
 MiB :: 1024 * 1024;
 
@@ -22,16 +23,23 @@ init_heaps :: () {
     init_buffer_heap(*buffer_heap,  "buffer heap",  128 * MiB);
     init_buffer_heap(*scratch_heap, "scratch heap", 512 * MiB);
     init_buffer_heap(*readback_heap, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
+    for * frame_heaps  init_buffer_heap(it, sprint("frame heap %", it_index), 8 * MiB);
 
     init_image_heap(*image_heap,         "image heap",         512 * MiB, .R8G8B8A8_UNORM, .SAMPLED | .TRANSFER_DST);
     init_image_heap(*render_target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT,    .DEPTH_STENCIL_ATTACHMENT);
 }
 
 deinit_heaps :: () {
-    for heap : (*Heap).[*buffer_heap, *scratch_heap, *readback_heap, *image_heap, *render_target_heap] {
-        if heap.buffer then vkDestroyBuffer(device, heap.buffer, null);
+    destroy :: (heap: Heap) {
+        if heap.buffer  vkDestroyBuffer(device, heap.buffer, null);
         vkFreeMemory(device, heap.memory, null);
     }
+    destroy(buffer_heap);
+    destroy(scratch_heap);
+    destroy(readback_heap);
+    destroy(image_heap);
+    destroy(render_target_heap);
+    for frame_heaps  destroy(it);
 }
 
 heap_allocate :: (heap: *Heap, size: VkDeviceSize, alignment: VkDeviceSize) -> offset: VkDeviceSize {
