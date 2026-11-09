@@ -23,103 +23,40 @@ world_state : struct {
     light_direction : Vector3;
 }
 
-using vulkan_context : struct {
-    instance                : VkInstance;
-    surface                 : VkSurfaceKHR;
-    debug_messenger         : VkDebugUtilsMessengerEXT;
+using render_context : struct {
+    FRAMES_IN_FLIGHT :: 2;
+    frame_index : u64 = 0;
+    timeline_semaphore  : VkSemaphore;
+    command_pool        : VkCommandPool;
+    command_buffers             : [FRAMES_IN_FLIGHT] VkCommandBuffer;
+    image_available_semaphores  : [FRAMES_IN_FLIGHT] VkSemaphore;
+    present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
+    present_fences              : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkFence;
 
-    physical_device_context : struct {
-        physical_device : VkPhysicalDevice;
-        queue_family_indices : struct {
-            graphics : int = -1;
-            compute  : int = -1;
-            transfer : int = -1;
-        }
+    frame_constants_offset      : VkDeviceSize;
 
-        memory_properties : VkPhysicalDeviceMemoryProperties;
+    shaders                 : [2] VkShaderEXT;
 
-        using properties : struct {
-            properties2 : VkPhysicalDeviceProperties2;
-            vulkan_1_1_properties   : VkPhysicalDeviceVulkan11Properties;
-            vulkan_1_2_properties   : VkPhysicalDeviceVulkan12Properties;
-            vulkan_1_3_properties   : VkPhysicalDeviceVulkan13Properties;
-            vulkan_1_4_properties   : VkPhysicalDeviceVulkan14Properties;
-            descriptor_heap_properties          : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
-            acceleration_structure_properties   : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
-        }
-
-        using features : struct {
-            features2           : VkPhysicalDeviceFeatures2;
-            vulkan_1_1_features : VkPhysicalDeviceVulkan11Features;
-            vulkan_1_2_features : VkPhysicalDeviceVulkan12Features;
-            vulkan_1_3_features : VkPhysicalDeviceVulkan13Features;
-            vulkan_1_4_features : VkPhysicalDeviceVulkan14Features;
-            shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
-            unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
-            descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
-            untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
-            address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
-            swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
-            acceleration_structure_features : VkPhysicalDeviceAccelerationStructureFeaturesKHR;
-            ray_query_features              : VkPhysicalDeviceRayQueryFeaturesKHR;
-        }
-    }
-
-    device  : VkDevice;
-    queue   : VkQueue;
-
-    swapchain_context : struct {
-        MAX_SWAPCHAIN_IMAGES   :: 3;
-        DEPTH_FORMAT : VkFormat : .D32_SFLOAT;
-        swapchain       : VkSwapchainKHR;
-        surface_format  : VkSurfaceFormatKHR;
+    screenshot : struct {
+        requested   : bool;
+        captured    : bool;
+        offset      : VkDeviceSize;
         extent      : VkExtent2D;
-        image_count : u32;
-        images      : [MAX_SWAPCHAIN_IMAGES] VkImage;
-        views       : [MAX_SWAPCHAIN_IMAGES] VkImageView;
-
-        // One depth image shared by all frames; sized with the swapchain extent.
-        depth_image     : VkImage;
-        depth_view      : VkImageView;
-
-        needs_recreation : bool;
+        format      : VkFormat;
     }
+}
 
-    using render_context : struct {
-        FRAMES_IN_FLIGHT :: 2;
-        frame_index : u64 = 0;
-        timeline_semaphore  : VkSemaphore;
-        command_pool        : VkCommandPool;
-        command_buffers             : [FRAMES_IN_FLIGHT] VkCommandBuffer;
-        image_available_semaphores  : [FRAMES_IN_FLIGHT] VkSemaphore;
-        present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
-        present_fences              : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkFence;
+using scene_data : struct {
+    texture : Texture;
 
-        frame_constants_offset      : VkDeviceSize;
+    draw_data_offset : VkDeviceSize;
 
-        shaders                 : [2] VkShaderEXT;
+    vertex_offset   : VkDeviceSize;
+    vertex_size     : VkDeviceSize;
 
-        screenshot : struct {
-            requested   : bool;
-            captured    : bool;
-            offset      : VkDeviceSize;
-            extent      : VkExtent2D;
-            format      : VkFormat;
-        }
-    }
-
-    using scene_data : struct {
-        texture : Texture;
-
-        draw_data_offset : VkDeviceSize;
-
-        vertex_offset   : VkDeviceSize;
-        vertex_size     : VkDeviceSize;
-
-        blas         : VkAccelerationStructureKHR;
-        tlas         : VkAccelerationStructureKHR;
-        tlas_address : VkDeviceAddress;
-    }
+    blas         : VkAccelerationStructureKHR;
+    tlas         : VkAccelerationStructureKHR;
+    tlas_address : VkDeviceAddress;
 }
 
 main :: () {
@@ -184,7 +121,7 @@ main :: () {
 
     vk_load_instance_functions(instance);
 
-    init_surface();
+    init_surface(program_state.window);
     defer deinit_surface();
 
     init_device();
@@ -206,7 +143,7 @@ main :: () {
 
     init_descriptor_heaps();
 
-    init_swapchain();
+    init_swapchain(program_state.window_width, program_state.window_height);
     defer deinit_swapchain();
 
     init_render();
@@ -284,7 +221,7 @@ main :: () {
         if !running break;
 
         if swapchain_context.needs_recreation {
-            if !recreate_swapchain() {
+            if !recreate_swapchain(program_state.window_width, program_state.window_height, present_fences) {
                 sleep_milliseconds(16);
                 continue;
             }
@@ -353,13 +290,13 @@ Clipboard :: #import "Clipboard";
 
 #load "utils.jai";
 #load "camera.jai";
-#load "device.jai";
-#load "heap.jai";
-#load "descriptors.jai";
-#load "gpu.jai";
-#load "swapchain.jai";
-#load "texture.jai";
-#load "acceleration_structure.jai";
+#load "rhi/device.jai";
+#load "rhi/heap.jai";
+#load "rhi/descriptors.jai";
+#load "rhi/gpu.jai";
+#load "rhi/swapchain.jai";
+#load "rhi/texture.jai";
+#load "rhi/acceleration_structure.jai";
 #load "scene.jai";
 #load "frame.jai";
 #load "imgui.jai";

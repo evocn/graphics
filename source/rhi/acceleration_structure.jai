@@ -1,4 +1,4 @@
-build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress, vertex_count: u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
+build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress, vertex_stride: VkDeviceSize, vertex_count: u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
     triangle_geometry : VkAccelerationStructureGeometryKHR;
     {
         using triangle_geometry;
@@ -6,7 +6,7 @@ build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress,
         geometry.triangles = .{
             vertexFormat = .R32G32B32_SFLOAT,
             vertexData.deviceAddress = vertex_address,
-            vertexStride = size_of(Vertex),
+            vertexStride = vertex_stride,
             maxVertex = vertex_count - 1,
             indexType = .NONE_KHR,
         };

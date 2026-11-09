@@ -186,3 +186,7 @@ select_memory_type :: (memory_properties: VkPhysicalDeviceMemoryProperties, type
     }
     return false, 0;
 }
+
+align_up :: (size : u64, power_of_two_alignment : u64) -> aligned: u64 {
+    return (size + (power_of_two_alignment - 1)) & ~(power_of_two_alignment - 1);
+}

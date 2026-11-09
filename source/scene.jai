@@ -65,7 +65,7 @@ init_data :: () {
     }
 
     blas_address : VkDeviceAddress;
-    blas, blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, vertex_offset), xx vertices.count);
+    blas, blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, vertex_offset), size_of(Vertex), xx vertices.count);
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
     instance : VkAccelerationStructureInstanceKHR;

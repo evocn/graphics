@@ -1,7 +1,24 @@
 // Graphics
 // Swapchain
 
-init_swapchain :: () {
+swapchain_context : struct {
+    MAX_SWAPCHAIN_IMAGES   :: 3;
+    DEPTH_FORMAT : VkFormat : .D32_SFLOAT;
+    swapchain       : VkSwapchainKHR;
+    surface_format  : VkSurfaceFormatKHR;
+    extent      : VkExtent2D;
+    image_count : u32;
+    images      : [MAX_SWAPCHAIN_IMAGES] VkImage;
+    views       : [MAX_SWAPCHAIN_IMAGES] VkImageView;
+
+    // One depth image shared by all frames; sized with the swapchain extent.
+    depth_image     : VkImage;
+    depth_view      : VkImageView;
+
+    needs_recreation : bool;
+}
+
+init_swapchain :: (width: u32, height: u32) {
     result : VkResult;
     using physical_device_context;
 
@@ -54,12 +71,12 @@ init_swapchain :: () {
     swapchain_context.extent = surface_capabilities.currentExtent;
     if swapchain_context.extent.width == U32_MAX {
         swapchain_context.extent.width  = clamp(
-            program_state.window_width,
+            width,
             surface_capabilities.minImageExtent.width,
             surface_capabilities.maxImageExtent.width
         );
         swapchain_context.extent.height = clamp(
-            program_state.window_height,
+            height,
             surface_capabilities.minImageExtent.height,
             surface_capabilities.maxImageExtent.height
         );
@@ -186,7 +203,7 @@ deinit_swapchain :: () {
     vkDestroySwapchainKHR(device, swapchain_context.swapchain, null);
 }
 
-recreate_swapchain :: () -> ready: bool {
+recreate_swapchain :: (width: u32, height: u32, present_fences: [] VkFence) -> ready: bool {
     surface_capabilities : VkSurfaceCapabilitiesKHR;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_context.physical_device, surface, *surface_capabilities);
 
@@ -196,11 +213,11 @@ recreate_swapchain :: () -> ready: bool {
 
     vkDeviceWaitIdle(device);
 
-    fence_result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
+    fence_result := vkWaitForFences(device, xx present_fences.count, present_fences.data, VK_TRUE, U64_MAX);
     assert(fence_result == .SUCCESS);
 
     deinit_swapchain();
-    init_swapchain();
+    init_swapchain(width, height);
 
     swapchain_context.needs_recreation = false;
     return true;

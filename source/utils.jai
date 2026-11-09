@@ -3,10 +3,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-align_up :: (size : u64, power_of_two_alignment : u64) -> aligned: u64 {
-    return (size + (power_of_two_alignment - 1)) & ~(power_of_two_alignment - 1);
-}
-
 offset_of :: ($T: Type, $member: string) -> u32 {
     for type_info(T).members {
         if it.name == member return cast(u32)it.offset_in_bytes;
@@ -18,41 +14,8 @@ offset_of :: ($T: Type, $member: string) -> u32 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-log_physical_device_properties :: (using physical_device_properties : VkPhysicalDeviceProperties) {
-    log("================================================");
-    log("Name: %", cast(string, deviceName));
-    //log("Vendor: %", vendorID);
-    //log("Device: %", deviceID);
-    log("Type: %", deviceType);
-    log("API Version: %.%.%", VK_API_VERSION_MAJOR(apiVersion), VK_API_VERSION_MINOR(apiVersion), VK_API_VERSION_PATCH(apiVersion));
-    log("================================================");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 error_callback :: (error: s32, description: *u8) #c_call {
     push_context {
         print("Error: %\n\n", to_string(description));
-    }
-}
-
-debug_utils_callback :: (severity: VkDebugUtilsMessageSeverityFlagBitsEXT, types: VkDebugUtilsMessageTypeFlagsEXT, callback_data: *VkDebugUtilsMessengerCallbackDataEXT, user_data: *void) -> VkBool32 #c_call {
-    push_context {
-        print("VULKAN %: %\n\n", severity, to_string(callback_data.pMessage));
-    }
-
-    return VK_FALSE;
-}
-
-set_debug_name :: (object_type: VkObjectType, handle: *void, name: string) {
-    #if DEVELOPER_TOOLS {
-        if handle == null return;
-
-        name_info : VkDebugUtilsObjectNameInfoEXT;
-        name_info.objectType   = object_type;
-        name_info.objectHandle = cast(u64) handle;
-        name_info.pObjectName  = temp_c_string(name);
-
-        vkSetDebugUtilsObjectNameEXT(device, *name_info);
     }
 }

@@ -1,6 +1,52 @@
 // Graphics
 // Device
 
+using vulkan_device : struct {
+    instance                : VkInstance;
+    surface                 : VkSurfaceKHR;
+    debug_messenger         : VkDebugUtilsMessengerEXT;
+
+    physical_device_context : struct {
+        physical_device : VkPhysicalDevice;
+        queue_family_indices : struct {
+            graphics : int = -1;
+            compute  : int = -1;
+            transfer : int = -1;
+        }
+
+        memory_properties : VkPhysicalDeviceMemoryProperties;
+
+        using properties : struct {
+            properties2 : VkPhysicalDeviceProperties2;
+            vulkan_1_1_properties   : VkPhysicalDeviceVulkan11Properties;
+            vulkan_1_2_properties   : VkPhysicalDeviceVulkan12Properties;
+            vulkan_1_3_properties   : VkPhysicalDeviceVulkan13Properties;
+            vulkan_1_4_properties   : VkPhysicalDeviceVulkan14Properties;
+            descriptor_heap_properties          : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+            acceleration_structure_properties   : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
+        }
+
+        using features : struct {
+            features2           : VkPhysicalDeviceFeatures2;
+            vulkan_1_1_features : VkPhysicalDeviceVulkan11Features;
+            vulkan_1_2_features : VkPhysicalDeviceVulkan12Features;
+            vulkan_1_3_features : VkPhysicalDeviceVulkan13Features;
+            vulkan_1_4_features : VkPhysicalDeviceVulkan14Features;
+            shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
+            unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
+            descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
+            untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
+            address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
+            swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
+            acceleration_structure_features : VkPhysicalDeviceAccelerationStructureFeaturesKHR;
+            ray_query_features              : VkPhysicalDeviceRayQueryFeaturesKHR;
+        }
+    }
+
+    device  : VkDevice;
+    queue   : VkQueue;
+}
+
 init_instance :: () {
     result : VkResult;
 
@@ -86,12 +132,12 @@ deinit_instance :: () {
     vkDestroyInstance(instance, null);
 }
 
-init_surface :: () {
+init_surface :: (window: Window_Type) {
     #if OS == .WINDOWS {
-        my_hwnd := program_state.window;
+
         using surface_create_info: VkWin32SurfaceCreateInfoKHR; 
         hinstance = GetModuleHandleW(null);
-        hwnd      = my_hwnd;
+        hwnd      = window;
         result := vkCreateWin32SurfaceKHR(instance, *surface_create_info, null, *surface);
         assert(result == .SUCCESS);
     } else {
@@ -387,4 +433,35 @@ init_device :: () {
 
 deinit_device :: () {
     vkDestroyDevice(device, null);
+}
+
+log_physical_device_properties :: (using physical_device_properties : VkPhysicalDeviceProperties) {
+    log("================================================");
+    log("Name: %", cast(string, deviceName));
+    //log("Vendor: %", vendorID);
+    //log("Device: %", deviceID);
+    log("Type: %", deviceType);
+    log("API Version: %.%.%", VK_API_VERSION_MAJOR(apiVersion), VK_API_VERSION_MINOR(apiVersion), VK_API_VERSION_PATCH(apiVersion));
+    log("================================================");
+}
+
+debug_utils_callback :: (severity: VkDebugUtilsMessageSeverityFlagBitsEXT, types: VkDebugUtilsMessageTypeFlagsEXT, callback_data: *VkDebugUtilsMessengerCallbackDataEXT, user_data: *void) -> VkBool32 #c_call {
+    push_context {
+        print("VULKAN %: %\n\n", severity, to_string(callback_data.pMessage));
+    }
+
+    return VK_FALSE;
+}
+
+set_debug_name :: (object_type: VkObjectType, handle: *void, name: string) {
+    #if DEVELOPER_TOOLS {
+        if handle == null return;
+
+        name_info : VkDebugUtilsObjectNameInfoEXT;
+        name_info.objectType   = object_type;
+        name_info.objectHandle = cast(u64) handle;
+        name_info.pObjectName  = temp_c_string(name);
+
+        vkSetDebugUtilsObjectNameEXT(device, *name_info);
+    }
 }
