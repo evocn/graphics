@@ -205,7 +205,7 @@ void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
 
 [earlydepthstencil]
 [shader("fragment")]
-float3 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
+float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
@@ -260,12 +260,12 @@ float3 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_posit
     float3 ambient_light = ambient * ambient_occlusion * (diffuse_color + f0);
 
     switch (push_data.frame.debug_view) {
-        case 1:  return float3(ambient_occlusion);
-        case 2:  return base_color;
-        case 3:  return normal * 0.5 + 0.5;
-        case 4:  return float3(metallic, roughness, 0.0);
-        case 5:  return sun;
-        case 6:  return ambient_light;
-        default: return ambient_light + sun;
+        case 1:  return float4(ambient_occlusion.xxx, 1.0);
+        case 2:  return float4(base_color, 1.0);
+        case 3:  return float4(normal * 0.5 + 0.5, 1.0);
+        case 4:  return float4(metallic, roughness, 0.0, 1.0);
+        case 5:  return float4(sun, 1.0);
+        case 6:  return float4(ambient_light, 1.0);
+        default: return float4(ambient_light + sun, 1.0);
     }
 }
