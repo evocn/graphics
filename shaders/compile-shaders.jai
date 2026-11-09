@@ -28,6 +28,7 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             "-matrix-layout-row-major",
             "-capability spvDescriptorHeapEXT",
             "-capability spvRayQueryKHR",
+            "-capability spvGroupNonUniformBallot",
         ],
         working_directory = #filepath,
         //capture_and_return_output = false,
