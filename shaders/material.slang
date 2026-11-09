@@ -35,22 +35,12 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Vertex_Attributes attributes = draw.attributes[vertex_id];
 
     Vertex_Stage_Output output;
-    {
-        {
-            output.coarse_vertex.normal = transform_normal(draw.transform, attributes.normal);
-            output.coarse_vertex.tangent = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
-            output.coarse_vertex.uv = attributes.uv;
-            output.coarse_vertex.world_position = position;
-        }
-
-        output.sv_position = mul(push_data.frame.view_projection, float4(position, 1.0));
-    }
-
+    output.coarse_vertex.normal         = transform_normal(draw.transform, attributes.normal);
+    output.coarse_vertex.tangent        = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
+    output.coarse_vertex.uv             = attributes.uv;
+    output.coarse_vertex.world_position = position;
+    output.sv_position                  = mul(push_data.frame.view_projection, float4(position, 1.0));
     return output;
-}
-
-struct Fragment_Stage_Output {
-    float3 color;
 }
 
 bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentrics) {
@@ -215,7 +205,7 @@ void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
 
 [earlydepthstencil]
 [shader("fragment")]
-Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
+float3 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
@@ -269,15 +259,13 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, 
     float ambient_occlusion = accumulated_ambient_visibility(world_position, geometric_normal, sv_position.xy);
     float3 ambient_light = ambient * ambient_occlusion * (diffuse_color + f0);
 
-    Fragment_Stage_Output output;
     switch (push_data.frame.debug_view) {
-        case 1:  output.color = float3(ambient_occlusion); break;
-        case 2:  output.color = base_color; break;
-        case 3:  output.color = normal * 0.5 + 0.5; break;
-        case 4:  output.color = float3(metallic, roughness, 0.0); break;
-        case 5:  output.color = sun; break;
-        case 6:  output.color = ambient_light; break;
-        default: output.color = ambient_light + sun; break;
+        case 1:  return float3(ambient_occlusion);
+        case 2:  return base_color;
+        case 3:  return normal * 0.5 + 0.5;
+        case 4:  return float3(metallic, roughness, 0.0);
+        case 5:  return sun;
+        case 6:  return ambient_light;
+        default: return ambient_light + sun;
     }
-    return output;
 }

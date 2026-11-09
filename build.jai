@@ -159,7 +159,7 @@ build :: () {
 
     {
         spirv_paths : [..] string;
-        for name : string.["material-vertex", "material-fragment", "imgui-vertex", "imgui-fragment"] {
+        for name : SHADER_NAMES {
             array_add(*spirv_paths, tprint("%/%/%.spv", root, compiled_shaders_directory, name));
         }
         if !check_shader_layouts(spirv_paths) exit(1);

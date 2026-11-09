@@ -25,25 +25,13 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     color.rgb = linear_from_srgb(color.rgb);
 
     Vertex_Stage_Output output;
-    {
-        output.coarse_vertex.color = color;
-        output.coarse_vertex.uv    = vertex.uv;
-
-        output.sv_position = float4(vertex.pos * push_data.scale + push_data.translate, 0.0, 1.0);
-    }
-
+    output.coarse_vertex.color = color;
+    output.coarse_vertex.uv    = vertex.uv;
+    output.sv_position         = float4(vertex.pos * push_data.scale + push_data.translate, 0.0, 1.0);
     return output;
-}
-
-struct Fragment_Stage_Output {
-    float4 color;
 }
 
 [shader("fragment")]
-Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
-    Fragment_Stage_Output output;
-    {
-        output.color = coarse_vertex.color * push_data.texture.Sample(push_data.sampler, coarse_vertex.uv);
-    }
-    return output;
+float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
+    return coarse_vertex.color * push_data.texture.Sample(push_data.sampler, coarse_vertex.uv);
 }

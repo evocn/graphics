@@ -207,7 +207,7 @@ init_render :: () {
 
     material_shaders = create_graphics_shaders("material");
     tonemap_shaders  = create_graphics_shaders("tonemap");
-    depth_shaders    = create_graphics_shaders("material", "material-depth-fragment");
+    depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
 
     hdr_texture         = .{id = reserve_image_descriptor()};
     ambient_storages[0] = .{id = reserve_image_descriptor()};

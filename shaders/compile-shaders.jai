@@ -9,51 +9,36 @@ vulkan_sdk_path :: () -> string {
     return path;
 }
 
-slangc :: (output_filename: string, filename: string, entry_point: string) -> success : bool {
-    input_file  := tprint("%.slang", filename);
-    output_file := tprint("compiled/%.spv", output_filename);
+slangc :: (name: string) -> success: bool {
+    input_file  := tprint("%.slang", name);
+    output_file := tprint("compiled/%.spv", name);
 
-    process_result := run_command(
-        args = ...[
+    process_result := run_command(args = ...[
             tprint("%/Bin/slangc.exe", vulkan_sdk_path()),
             input_file,
-            tprint("-o %", output_file),
-            tprint("-entry %", entry_point),
-            "-profile spirv_1_6",
-            "-target spirv",
+            "-o", output_file,
+            "-fvk-use-entrypoint-name",
+            "-profile", "spirv_1_6",
+            "-target", "spirv",
             "-matrix-layout-row-major",
-            "-capability spvDescriptorHeapEXT",
-            "-capability spvRayQueryKHR",
-            "-capability spvGroupNonUniformBallot",
+            "-capability", "spvDescriptorHeapEXT",
+            "-capability", "spvRayQueryKHR",
+            "-capability", "spvGroupNonUniformBallot",
         ],
         working_directory = #filepath,
-        arg_quoting = Process_Argument_Quoting.NEVER_QUOTE
     );
 
-    if process_result.exit_code == 0 {
-        log("% -> %", input_file, output_file);
-        return true;
-    }
-    else {
-        log("% failed to compile via slangc.", filename);
+    if process_result.exit_code != 0 {
+        log("% failed to compile via slangc.", input_file);
         return false;
     }
+    log("% -> %", input_file, output_file);
+    return true;
 }
 
+SHADER_NAMES :: string.["material", "tonemap", "imgui"];
+
 compile_shaders :: () {
-    print("\nCompiling shaders!\n");
-
     make_directory_if_it_does_not_exist(tprint("%compiled", #filepath));
-
-    assert(slangc("material-vertex",   "material", "vertex_main"));
-    assert(slangc("material-fragment", "material", "fragment_main"));
-    assert(slangc("material-depth-fragment", "material", "depth_fragment_main"));
-
-    assert(slangc("tonemap-vertex",   "tonemap", "vertex_main"));
-    assert(slangc("tonemap-fragment", "tonemap", "fragment_main"));
-
-    assert(slangc("imgui-vertex",   "imgui", "vertex_main"));
-    assert(slangc("imgui-fragment", "imgui", "fragment_main"));
-
-    print("Compiled all shaders.\n\n");
+    for SHADER_NAMES  assert(slangc(it));
 }
