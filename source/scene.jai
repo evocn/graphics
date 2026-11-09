@@ -1,5 +1,19 @@
-// Graphics
-// Scene
+textures         : [..] Texture;
+materials        : [..] Material;
+materials_offset : VkDeviceSize;
+
+white_texture       : Texture_Handle;
+flat_normal_texture : Texture_Handle;
+
+meshes           : [..] Mesh;
+instances        : [..] Instance;
+draw_data_offset : VkDeviceSize;
+
+scene_blas         : VkAccelerationStructureKHR;
+scene_blas_address : VkDeviceAddress;
+
+tlas         : VkAccelerationStructureKHR;
+tlas_address : VkDeviceAddress;
 
 Vertex_Attributes :: struct @Gpu {
     normal  : Vector3;
@@ -83,7 +97,7 @@ init_data :: () {
     flat_normal_pixel : u32 = 0xFFFF8080;
     flat_normal_texture = add_texture(create_texture(command_buffers[0], *flat_normal_pixel, 1, 1, .R8G8B8A8_UNORM, "flat normal texture"));
 
-    croc_data := program_state.texture_datas[0];
+    croc_data := texture_datas[0];
     croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
 
     sampler : Sampler_Handle;
@@ -153,9 +167,9 @@ init_data :: () {
             mesh := meshes[it.mesh_index];
             array_add(*draw_datas, .{
                 transform      = it.transform,
-                positions      = heap_gpu_pointer(*heaps.buffer, Vector3, mesh.position_offset),
-                attributes     = heap_gpu_pointer(*heaps.buffer, Vertex_Attributes, mesh.attribute_offset),
-                indices        = heap_gpu_pointer(*heaps.buffer, u32, mesh.index_offset),
+                positions      = heap_gpu_pointer(*buffer_heap, Vector3, mesh.position_offset),
+                attributes     = heap_gpu_pointer(*buffer_heap, Vertex_Attributes, mesh.attribute_offset),
+                indices        = heap_gpu_pointer(*buffer_heap, u32, mesh.index_offset),
                 material_index = it.material_index,
             });
         }
@@ -171,12 +185,12 @@ init_data :: () {
         for instances {
             mesh := meshes[it.mesh_index];
             geometries[it_index] = .{
-                vertex_address    = heap_address(*heaps.buffer, mesh.position_offset),
+                vertex_address    = heap_address(*buffer_heap, mesh.position_offset),
                 vertex_stride     = size_of(Vector3),
                 vertex_count      = mesh.vertex_count,
-                index_address     = heap_address(*heaps.buffer, mesh.index_offset),
+                index_address     = heap_address(*buffer_heap, mesh.index_offset),
                 index_count       = mesh.index_count,
-                transform_address = heap_address(*heaps.buffer, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
+                transform_address = heap_address(*buffer_heap, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
                 opaque            = materials[it.material_index].alpha_cutoff == 0,
             };
         }
@@ -253,7 +267,7 @@ placement :: (translation: Vector3, yaw: float) -> Matrix4 {
 
 upload :: (array: [] $T) -> VkDeviceSize {
     size := array.count * size_of(T);
-    offset := heap_allocate(*heaps.buffer, xx size, 256);
-    memcpy(heap_pointer(*heaps.buffer, offset), array.data, size);
+    offset := heap_allocate(*buffer_heap, xx size, 256);
+    memcpy(heap_pointer(*buffer_heap, offset), array.data, size);
     return offset;
 }

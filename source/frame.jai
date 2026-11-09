@@ -1,5 +1,32 @@
-// Graphics
-// Frame
+FRAMES_IN_FLIGHT :: 2;
+
+frame_index                : u64;
+timeline_semaphore         : VkSemaphore;
+command_pool               : VkCommandPool;
+command_buffers            : [FRAMES_IN_FLIGHT] VkCommandBuffer;
+image_available_semaphores : [FRAMES_IN_FLIGHT] VkSemaphore;
+present_ready_semaphores   : [MAX_SWAPCHAIN_IMAGES] VkSemaphore;
+present_fences             : [MAX_SWAPCHAIN_IMAGES] VkFence;
+
+frame_constants_offset : VkDeviceSize;
+
+ambient_write_index      : u32;
+previous_view_projection : Matrix4;
+previous_camera_position : Vector3;
+
+timestamp_pool : VkQueryPool;
+gpu_frame_ms   : float;
+
+material_shaders : [2] VkShaderEXT;
+depth_shaders    : [2] VkShaderEXT;
+tonemap_shaders  : [2] VkShaderEXT;
+
+screenshot_requested      : bool;
+screenshot_captured       : bool;
+screenshot_offset         : VkDeviceSize;
+screenshot_allocated_size : VkDeviceSize;
+screenshot_extent         : VkExtent2D;
+screenshot_format         : VkFormat;
 
 Frame_Constants :: struct @Gpu {
     view_projection          : Matrix4;
@@ -48,7 +75,7 @@ FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
 init_render :: () {
     result : VkResult;
 
-    frame_constants_offset = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
+    frame_constants_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
 
     // Command Buffers
     {
@@ -84,7 +111,7 @@ init_render :: () {
             fence_create_info : VkFenceCreateInfo;
             fence_create_info.flags = .SIGNALED;
 
-            for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
+            for image_index : 0..MAX_SWAPCHAIN_IMAGES-1 {
                 vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[image_index]);
                 set_debug_name(.SEMAPHORE, present_ready_semaphores[image_index], tprint("present ready semaphore %", image_index));
 
@@ -124,19 +151,19 @@ init_render :: () {
         set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
     }
 
-    shaders         = create_graphics_shaders("material");
-    tonemap_shaders = create_graphics_shaders("tonemap");
-    depth_shaders   = create_graphics_shaders("material", "material-depth-fragment");
+    material_shaders = create_graphics_shaders("material");
+    tonemap_shaders  = create_graphics_shaders("tonemap");
+    depth_shaders    = create_graphics_shaders("material", "material-depth-fragment");
 }
 
 deinit_render :: () {
-    destroy_graphics_shaders(shaders);
+    destroy_graphics_shaders(material_shaders);
     destroy_graphics_shaders(tonemap_shaders);
     destroy_graphics_shaders(depth_shaders);
-    result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
+    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
     assert(result == .SUCCESS);
 
-    for image_index : 0..swapchain_context.MAX_SWAPCHAIN_IMAGES-1 {
+    for image_index : 0..MAX_SWAPCHAIN_IMAGES-1 {
         vkDestroyFence(device, present_fences[image_index], null);
         vkDestroySemaphore(device, present_ready_semaphores[image_index], null);
     }
@@ -204,8 +231,8 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
                 using viewports[0];
                 x = 0;                    
                 y = 0;
-                width       = xx swapchain_context.extent.width;
-                height      = xx swapchain_context.extent.height;
+                width       = xx swapchain_extent.width;
+                height      = xx swapchain_extent.height;
                 minDepth = 0;
                 maxDepth = 1;
             }
@@ -219,7 +246,7 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
             {
                 using scissors[0];
                 offset = .{0, 0};
-                extent = swapchain_context.extent;
+                extent = swapchain_extent;
             }
         }
         vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
@@ -229,14 +256,14 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
 }
 
 record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkImage, subresource_range: VkImageSubresourceRange) {
-    screenshot.requested = false;
-    screenshot.extent    = swapchain_context.extent;
-    screenshot.format    = swapchain_context.surface_format.format;
+    screenshot_requested = false;
+    screenshot_extent    = swapchain_extent;
+    screenshot_format    = surface_format.format;
 
-    size := cast(VkDeviceSize) (4 * screenshot.extent.width * screenshot.extent.height);
-    if size > screenshot.allocated_size {
-        screenshot.offset = heap_allocate(*heaps.readback, size, 256);
-        screenshot.allocated_size = size;
+    size := cast(VkDeviceSize) (4 * screenshot_extent.width * screenshot_extent.height);
+    if size > screenshot_allocated_size {
+        screenshot_offset = heap_allocate(*readback_heap, size, 256);
+        screenshot_allocated_size = size;
     }
 
     memory_barrier(command_buffer, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .COPY, .TRANSFER_READ);
@@ -246,7 +273,7 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
         {
             using region;
             addressRange = .{
-                address = heap_address(*heaps.readback, screenshot.offset),
+                address = heap_address(*readback_heap, screenshot_offset),
                 size    = size,
             };
             addressFlags = .STORAGE_BUFFER_USAGE;
@@ -255,7 +282,7 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
                 layerCount = 1,
             };
             imageLayout = .GENERAL;
-            imageExtent = .{screenshot.extent.width, screenshot.extent.height, 1};
+            imageExtent = .{screenshot_extent.width, screenshot_extent.height, 1};
         }
 
         using copy_info : VkCopyDeviceMemoryImageInfoKHR;
@@ -268,18 +295,16 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
 
     memory_barrier(command_buffer, .COPY, .TRANSFER_WRITE, .HOST, .HOST_READ);
 
-    screenshot.captured = true;
+    screenshot_captured = true;
 }
 
 save_screenshot :: () {
-    using screenshot;
-
     pixels := read_screenshot_pixels();
     if !pixels return;
     defer free(pixels);
 
     path := timestamped_png_path("bin/screenshots");
-    written := stbi_write_png(temp_c_string(path), xx extent.width, xx extent.height, 4, pixels, xx (4 * extent.width));
+    written := stbi_write_png(temp_c_string(path), xx screenshot_extent.width, xx screenshot_extent.height, 4, pixels, xx (4 * screenshot_extent.width));
     assert(written != 0, "Unable to write screenshot %", path);
 
     log("Saved screenshot to %.", path);
@@ -299,24 +324,22 @@ timestamped_png_path :: (directory: string) -> string {
 }
 
 read_screenshot_pixels :: () -> *u32 {
-    using screenshot;
-
     Layout :: enum { RGBA8; BGRA8; A2B10G10R10; }
     layout : Layout;
-    if format == {
+    if screenshot_format == {
         case .R8G8B8A8_UNORM;           #through;
         case .R8G8B8A8_SRGB;            layout = .RGBA8;
         case .B8G8R8A8_UNORM;           #through;
         case .B8G8R8A8_SRGB;            layout = .BGRA8;
         case .A2B10G10R10_UNORM_PACK32; layout = .A2B10G10R10;
         case;
-            log_error("Can't read a screenshot of swapchain format %.", format);
+            log_error("Can't read a screenshot of swapchain format %.", screenshot_format);
             return null;
     }
 
-    pixel_count := extent.width * extent.height;
+    pixel_count := screenshot_extent.width * screenshot_extent.height;
     pixels := cast(*u32) alloc(4 * pixel_count);
-    memcpy(pixels, heap_pointer(*heaps.readback, offset), 4 * pixel_count);
+    memcpy(pixels, heap_pointer(*readback_heap, screenshot_offset), 4 * pixel_count);
 
     for i : 0..pixel_count-1 {
         p := pixels[i];
@@ -365,14 +388,14 @@ draw_frame :: () {
     }
 
     image_index: u32;
-    result = vkAcquireNextImageKHR(device, swapchain_context.swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
+    result = vkAcquireNextImageKHR(device, swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
     if result == .ERROR_OUT_OF_DATE_KHR {
         frame_index -= 1;
-        swapchain_context.needs_recreation = true;
+        swapchain_needs_recreation = true;
         return;
     }
     if result == .SUBOPTIMAL_KHR {
-        swapchain_context.needs_recreation = true;
+        swapchain_needs_recreation = true;
     }
     else {
         assert(result == .SUCCESS, "vkAcquireNextImageKHR failed: %", result);
@@ -404,8 +427,8 @@ draw_frame :: () {
             layerCount     = VK_REMAINING_ARRAY_LAYERS;
         }
 
-        ambient_history_valid := swapchain_context.ambient_initialized;
-        swapchain_context.ambient_initialized = true;
+        ambient_history_valid := ambient_initialized;
+        ambient_initialized = true;
 
         {
             history_barrier := VkMemoryBarrier2.{
@@ -425,7 +448,7 @@ draw_frame :: () {
                 newLayout           = .GENERAL,
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = swapchain_context.ambient_images[ambient_write_index],
+                image               = ambient_images[ambient_write_index],
                 subresourceRange    = swapchain_image_subresource_range,
             };
             image_memory_barriers[4] = .{
@@ -437,7 +460,7 @@ draw_frame :: () {
                 newLayout           = .GENERAL,
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = swapchain_context.ambient_images[1 - ambient_write_index],
+                image               = ambient_images[1 - ambient_write_index],
                 subresourceRange    = swapchain_image_subresource_range,
             };
             {
@@ -450,7 +473,7 @@ draw_frame :: () {
                 newLayout           = .GENERAL;
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = swapchain_context.images[image_index];
+                image               = swapchain_images[image_index];
                 subresourceRange    = swapchain_image_subresource_range;
             }
 
@@ -464,7 +487,7 @@ draw_frame :: () {
                 newLayout           = .GENERAL;
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = swapchain_context.depth_image;
+                image               = depth_image;
                 subresourceRange    = swapchain_image_subresource_range;
                 subresourceRange.aspectMask = .DEPTH;
             }
@@ -478,7 +501,7 @@ draw_frame :: () {
                 newLayout           = .GENERAL,
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = swapchain_context.hdr_image,
+                image               = hdr_image,
                 subresourceRange    = swapchain_image_subresource_range,
             };
 
@@ -497,7 +520,7 @@ draw_frame :: () {
         color_attachment : VkRenderingAttachmentInfoKHR;
         {
             using color_attachment;
-            imageView = swapchain_context.hdr_view;
+            imageView = hdr_view;
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
             storeOp = .STORE;
@@ -507,7 +530,7 @@ draw_frame :: () {
         depth_attachment : VkRenderingAttachmentInfoKHR;
         {
             using depth_attachment;
-            imageView = swapchain_context.depth_view;
+            imageView = depth_view;
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
             storeOp = .DONT_CARE;
@@ -518,7 +541,7 @@ draw_frame :: () {
             using rendering_info : VkRenderingInfo;
             renderArea = VkRect2D.{
                 offset = .{0, 0},
-                extent = swapchain_context.extent,
+                extent = swapchain_extent,
             };
             layerCount = 1;
             viewMask = 0;
@@ -537,32 +560,32 @@ draw_frame :: () {
         {
             frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
 
-            aspect := cast(float) swapchain_context.extent.width / cast(float) swapchain_context.extent.height;
+            aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
 
-            frame_constants := cast(*Frame_Constants) heap_pointer(*heaps.buffer, frame_constants_slot);
+            frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
             frame_constants.view_projection = camera_view_projection(aspect);
             frame_constants.tlas_address    = tlas_address;
-            frame_constants.light_direction = world_state.light_direction;
-            frame_constants.sun_intensity   = world_state.sun_intensity;
+            frame_constants.light_direction = light_direction;
+            frame_constants.sun_intensity   = sun_intensity;
             frame_constants.time            = cast(float) seconds_since_init();
-            frame_constants.camera_position = camera.position;
+            frame_constants.camera_position = camera_position;
 
             frame_constants.previous_view_projection = previous_view_projection;
             frame_constants.previous_camera_position = previous_camera_position;
             previous_view_projection = frame_constants.view_projection;
             previous_camera_position = frame_constants.camera_position;
 
-            frame_constants.ambient               = swapchain_context.ambient_storages[ambient_write_index];
-            frame_constants.ambient_history       = swapchain_context.ambient_storages[1 - ambient_write_index];
+            frame_constants.ambient               = ambient_storages[ambient_write_index];
+            frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
             frame_constants.ambient_history_valid = xx ambient_history_valid;
             frame_constants.frame_number          = cast(u32) frame_index;
-            frame_constants.debug_view            = cast(u32) world_state.debug_view;
+            frame_constants.debug_view            = cast(u32) debug_view;
             ambient_write_index = 1 - ambient_write_index;
 
             push_data := Push_Data.{
-                frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),
-                draws      = heap_gpu_pointer(*heaps.buffer, Draw_Data, draw_data_offset),
-                materials  = heap_gpu_pointer(*heaps.buffer, Material, materials_offset),
+                frame      = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
+                draws      = heap_gpu_pointer(*buffer_heap, Draw_Data, draw_data_offset),
+                materials  = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
             };
 
             push_data_info := VkPushDataInfoEXT.{
@@ -581,7 +604,7 @@ draw_frame :: () {
         vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
         vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
         vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
-        bind_graphics_shaders(command_buffers[index], shaders);
+        bind_graphics_shaders(command_buffers[index], material_shaders);
         draw_instances(command_buffers[index]);
 
         vkCmdEndRendering(command_buffers[index]);
@@ -590,13 +613,13 @@ draw_frame :: () {
 
         {
             swapchain_attachment := VkRenderingAttachmentInfoKHR.{
-                imageView   = swapchain_context.views[image_index],
+                imageView   = swapchain_views[image_index],
                 imageLayout = .GENERAL,
                 loadOp      = .DONT_CARE,
                 storeOp     = .STORE,
             };
             rendering_info := VkRenderingInfo.{
-                renderArea           = .{extent = swapchain_context.extent},
+                renderArea           = .{extent = swapchain_extent},
                 layerCount           = 1,
                 colorAttachmentCount = 1,
                 pColorAttachments    = *swapchain_attachment,
@@ -611,9 +634,9 @@ draw_frame :: () {
             bind_graphics_shaders(command_buffers[index], tonemap_shaders);
 
             push_data := Tonemap_Push_Data.{
-                hdr      = swapchain_context.hdr_texture,
-                exposure = world_state.exposure,
-                raw      = xx (world_state.debug_view != .LIT),
+                hdr      = hdr_texture,
+                exposure = exposure,
+                raw      = xx (debug_view != .LIT),
             };
             push_data_info := VkPushDataInfoEXT.{
                 offset = 0,
@@ -628,8 +651,8 @@ draw_frame :: () {
 
         vkCmdEndRendering(command_buffers[index]);
 
-        if screenshot.requested {
-            record_screenshot_copy(command_buffers[index], swapchain_context.images[image_index], swapchain_image_subresource_range);
+        if screenshot_requested {
+            record_screenshot_copy(command_buffers[index], swapchain_images[image_index], swapchain_image_subresource_range);
         }
 
         {
@@ -644,7 +667,7 @@ draw_frame :: () {
                 newLayout           = .PRESENT_SRC_KHR;
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = swapchain_context.images[image_index];
+                image               = swapchain_images[image_index];
                 subresourceRange    = swapchain_image_subresource_range;
             }
 
@@ -720,7 +743,7 @@ draw_frame :: () {
         waitSemaphoreCount = 1;
         pWaitSemaphores    = *present_ready_semaphores[image_index];
         swapchainCount     = 1;
-        pSwapchains        = *swapchain_context.swapchain;
+        pSwapchains        = *swapchain;
         pImageIndices      = *image_index;
 
         present_fence_info : VkSwapchainPresentFenceInfoKHR;
@@ -730,7 +753,7 @@ draw_frame :: () {
 
         result = vkQueuePresentKHR(queue, *present_info);
         if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {
-            swapchain_context.needs_recreation = true;
+            swapchain_needs_recreation = true;
         }
         else {
             assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
@@ -757,7 +780,7 @@ draw_instances :: (command_buffer: VkCommandBuffer) {
 
         index_buffer_info := VkBindIndexBuffer3InfoKHR.{
             addressRange = .{
-                address = heap_address(*heaps.buffer, mesh.index_offset),
+                address = heap_address(*buffer_heap, mesh.index_offset),
                 size    = cast(VkDeviceSize) mesh.index_count * size_of(u32),
             },
             addressFlags = .STORAGE_BUFFER_USAGE,

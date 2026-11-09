@@ -3,80 +3,21 @@
 
 DEVELOPER_TOOLS :: #run BUILD_TYPE == .DEBUG;
 
-program_state : struct {
-    using window_context : struct {
-        window_width    : u32 = 1920;
-        window_height   : u32 = 1080;
+window        : Window_Type;
+window_width  : u32 = 1920;
+window_height : u32 = 1080;
 
-        window          : Window_Type;
-    }
-
-    Texture_Data :: struct {
-        bytes : *void;
-        width : s32;
-        height: s32;
-    }
-    texture_datas : [..] Texture_Data;
+Texture_Data :: struct {
+    bytes : *void;
+    width : s32;
+    height: s32;
 }
+texture_datas : [..] Texture_Data;
 
-world_state : struct {
-    light_direction : Vector3;
-    sun_intensity   : float = 3.0;
-    exposure        : float = 1.0;
-    debug_view      : Debug_View;
-}
-
-using render_context : struct {
-    FRAMES_IN_FLIGHT :: 2;
-    frame_index : u64 = 0;
-    timeline_semaphore  : VkSemaphore;
-    command_pool        : VkCommandPool;
-    command_buffers             : [FRAMES_IN_FLIGHT] VkCommandBuffer;
-    image_available_semaphores  : [FRAMES_IN_FLIGHT] VkSemaphore;
-    present_ready_semaphores    : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkSemaphore;
-    present_fences              : [swapchain_context.MAX_SWAPCHAIN_IMAGES] VkFence;
-
-    frame_constants_offset      : VkDeviceSize;
-
-    ambient_write_index      : u32;
-    previous_view_projection : Matrix4;
-    previous_camera_position : Vector3;
-
-    timestamp_pool : VkQueryPool;
-    gpu_frame_ms   : float;
-
-    shaders                 : [2] VkShaderEXT;
-    tonemap_shaders         : [2] VkShaderEXT;
-    depth_shaders           : [2] VkShaderEXT;
-
-    screenshot : struct {
-        requested   : bool;
-        captured    : bool;
-        offset         : VkDeviceSize;
-        allocated_size : VkDeviceSize;
-        extent      : VkExtent2D;
-        format      : VkFormat;
-    }
-}
-
-using scene_data : struct {
-    textures         : [..] Texture;
-    materials        : [..] Material;
-    materials_offset : VkDeviceSize;
-
-    white_texture       : Texture_Handle;
-    flat_normal_texture : Texture_Handle;
-
-    meshes           : [..] Mesh;
-    instances        : [..] Instance;
-    draw_data_offset : VkDeviceSize;
-
-    scene_blas         : VkAccelerationStructureKHR;
-    scene_blas_address : VkDeviceAddress;
-
-    tlas         : VkAccelerationStructureKHR;
-    tlas_address : VkDeviceAddress;
-}
+light_direction : Vector3;
+sun_intensity   : float = 3.0;
+exposure        : float = 1.0;
+debug_view      : Debug_View;
 
 main :: () {
     set_working_directory_to_base_folder :: () {
@@ -100,13 +41,13 @@ main :: () {
     if args.shimmer > 0 then args.frames = SHIMMER_WARMUP_FRAMES + args.shimmer;
     if args.benchmark > 0 then args.frames = SHIMMER_WARMUP_FRAMES + args.benchmark;
     flying := args.shimmer > 0 || args.benchmark > 0;
-    world_state.debug_view = xx args.view;
+    debug_view = xx args.view;
 
     benchmark_total : float64;
     benchmark_count : int;
 
-    program_state.window = create_window(
-        xx program_state.window_width, xx program_state.window_height,
+    window = create_window(
+        xx window_width, xx window_height,
         program_title,
         window_x = 0,
         window_y = 0,
@@ -127,7 +68,7 @@ main :: () {
     {
         log("Loading our textures...");
         for texture_name : textures_to_load {
-            new_texture_data := array_add(*program_state.texture_datas);
+            new_texture_data := array_add(*texture_datas);
 
             desired_channels :: 4;
             channels : s32;
@@ -159,14 +100,14 @@ main :: () {
 
     init_descriptor_heaps();
 
-    init_swapchain(program_state.window_width, program_state.window_height);
+    init_swapchain(window_width, window_height);
     defer deinit_swapchain();
 
     init_render();
     defer deinit_render();
 
     begin_init_commands();
-    heaps.scratch.on_full = (heap: *Heap) {
+    scratch_heap.on_full = (heap: *Heap) {
         submit_init_commands();
         begin_init_commands();
     };
@@ -174,14 +115,14 @@ main :: () {
     init_data();
     defer deinit_data();
 
-    for program_state.texture_datas  stbi_image_free(it.bytes);
-    array_free(program_state.texture_datas);
+    for texture_datas  stbi_image_free(it.bytes);
+    array_free(texture_datas);
 
     init_imgui();
     defer deinit_imgui();
 
     submit_init_commands();
-    heaps.scratch.on_full = null;
+    scratch_heap.on_full = null;
 
     running := true;
     last_time := seconds_since_init();
@@ -207,7 +148,7 @@ main :: () {
 
                     // Debug inputs
                     if it.key_pressed && it.key_code == .ESCAPE {
-                        if camera.mouse_look_active  set_mouse_look(false);
+                        if mouse_look_active  set_mouse_look(false);
                         else                         running = false;
                     }
             }
@@ -216,17 +157,17 @@ main :: () {
         }
 
         for get_window_resizes() {
-            if it.window != program_state.window continue;
+            if it.window != window continue;
 
-            program_state.window_width  = xx it.width;
-            program_state.window_height = xx it.height;
-            swapchain_context.needs_recreation = true;
+            window_width  = xx it.width;
+            window_height = xx it.height;
+            swapchain_needs_recreation = true;
         }
 
         if !running break;
 
-        if swapchain_context.needs_recreation {
-            if !recreate_swapchain(program_state.window_width, program_state.window_height, present_fences) {
+        if swapchain_needs_recreation {
+            if !recreate_swapchain(window_width, window_height, present_fences) {
                 sleep_milliseconds(16);
                 continue;
             }
@@ -247,8 +188,6 @@ main :: () {
 
             // Update Light
             {
-                using world_state;
-
                 // The sun orbits the scene.
                 sun_angle := cast(float) now * 0.4;
                 light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
@@ -259,15 +198,15 @@ main :: () {
         if !flying  imgui_debug_ui();
         ImGui.Render();
 
-        if args.screenshot && frame_index + 1 == cast(u64) args.frames then screenshot.requested = true;
-        if args.shimmer > 0 && frame_index >= SHIMMER_WARMUP_FRAMES then screenshot.requested = true;
+        if args.screenshot && frame_index + 1 == cast(u64) args.frames then screenshot_requested = true;
+        if args.shimmer > 0 && frame_index >= SHIMMER_WARMUP_FRAMES then screenshot_requested = true;
 
         draw_frame();
 
-        if args.shimmer > 0 && screenshot.captured {
+        if args.shimmer > 0 && screenshot_captured {
             vkDeviceWaitIdle(device);
             shimmer_accumulate();
-            screenshot.captured = false;
+            screenshot_captured = false;
         }
 
         if args.benchmark > 0 && frame_index > SHIMMER_WARMUP_FRAMES + FRAMES_IN_FLIGHT {
@@ -280,7 +219,7 @@ main :: () {
 
     vkDeviceWaitIdle(device);
 
-    if screenshot.captured then save_screenshot();
+    if screenshot_captured then save_screenshot();
     if args.shimmer > 0 then shimmer_finish();
     if benchmark_count > 0 then print("BENCHMARK % ms average GPU frame time over % frames\n", formatFloat(benchmark_total / benchmark_count, trailing_width = 3), benchmark_count);
 }
@@ -300,7 +239,7 @@ submit_init_commands :: () {
     assert(result == .SUCCESS);
 
     vkDeviceWaitIdle(device);
-    heap_reset(*heaps.scratch);
+    heap_reset(*scratch_heap);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,22 +1,20 @@
-using descriptor_heaps : struct {
-    image_descriptor_stride     : VkDeviceSize;
-    sampler_descriptor_stride   : VkDeviceSize;
+image_descriptor_stride   : VkDeviceSize;
+sampler_descriptor_stride : VkDeviceSize;
 
-    resource_heap_offset    : VkDeviceSize;
-    sampler_heap_offset     : VkDeviceSize;
+resource_heap_offset : VkDeviceSize;
+sampler_heap_offset  : VkDeviceSize;
 
-    bind_resource_heap_info : VkBindHeapInfoEXT;
-    bind_sampler_heap_info  : VkBindHeapInfoEXT;
+bind_resource_heap_info : VkBindHeapInfoEXT;
+bind_sampler_heap_info  : VkBindHeapInfoEXT;
 
-    first_image_id      : u32;
-    first_sampler_id    : u32;
+first_image_id   : u32;
+first_sampler_id : u32;
 
-    image_id_capacity   : u32;
-    sampler_id_capacity : u32;
+image_id_capacity   : u32;
+sampler_id_capacity : u32;
 
-    next_image_id       : u32;
-    next_sampler_id     : u32;
-}
+next_image_id   : u32;
+next_sampler_id : u32;
 
 init_descriptor_heaps :: () {
 
@@ -28,13 +26,13 @@ init_descriptor_heaps :: () {
     assert(resource_heap_size % descriptor_heap_properties.resourceHeapAlignment == 0);
     assert(sampler_heap_size  % descriptor_heap_properties.samplerHeapAlignment  == 0);
 
-    sampler_heap_offset  = heap_allocate(*heaps.buffer, sampler_heap_size,  descriptor_heap_properties.samplerHeapAlignment);
-    resource_heap_offset = heap_allocate(*heaps.buffer, resource_heap_size, descriptor_heap_properties.resourceHeapAlignment);
+    sampler_heap_offset  = heap_allocate(*buffer_heap, sampler_heap_size,  descriptor_heap_properties.samplerHeapAlignment);
+    resource_heap_offset = heap_allocate(*buffer_heap, resource_heap_size, descriptor_heap_properties.resourceHeapAlignment);
 
     {
         using bind_sampler_heap_info;
         heapRange = .{
-            address = heap_address(*heaps.buffer, sampler_heap_offset),
+            address = heap_address(*buffer_heap, sampler_heap_offset),
             size = sampler_heap_size,
         };
         reservedRangeOffset = 0;
@@ -44,7 +42,7 @@ init_descriptor_heaps :: () {
     {
         using bind_resource_heap_info;
         heapRange = .{
-            address = heap_address(*heaps.buffer, resource_heap_offset),
+            address = heap_address(*buffer_heap, resource_heap_offset),
             size = resource_heap_size,
         };
         reservedRangeOffset = 0;
@@ -104,7 +102,7 @@ write_resource_image_descriptor :: (id: u32, type: VkDescriptorType, view_create
     resource_descriptor_info.data.pImage = *image_descriptor_info;
 
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heaps.buffer, resource_heap_offset + id * image_descriptor_stride),
+        address = heap_pointer(*buffer_heap, resource_heap_offset + id * image_descriptor_stride),
         size    = image_descriptor_stride,
     };
 
@@ -117,7 +115,7 @@ create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {
 
     info := sampler_create_info;
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heaps.buffer, sampler_heap_offset + id * sampler_descriptor_stride),
+        address = heap_pointer(*buffer_heap, sampler_heap_offset + id * sampler_descriptor_stride),
         size    = sampler_descriptor_stride,
     };
 

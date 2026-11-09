@@ -33,8 +33,8 @@ build_blas ::(command_buffer: VkCommandBuffer, inputs: [] Blas_Geometry) -> VkAc
 
 build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerationStructureKHR, VkDeviceAddress {
     instances_size := cast(VkDeviceSize) (instances.count * size_of(VkAccelerationStructureInstanceKHR));
-    instances_offset := heap_allocate(*heaps.scratch, instances_size, 16);
-    memcpy(heap_pointer(*heaps.scratch, instances_offset), instances.data, xx instances_size);
+    instances_offset := heap_allocate(*scratch_heap, instances_size, 16);
+    memcpy(heap_pointer(*scratch_heap, instances_offset), instances.data, xx instances_size);
 
     instance_geometry : VkAccelerationStructureGeometryKHR;
     {
@@ -42,7 +42,7 @@ build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStru
         geometryType = .INSTANCES;
         geometry.instances = .{
             arrayOfPointers = VK_FALSE,
-            data.deviceAddress = heap_address(*heaps.scratch, instances_offset),
+            data.deviceAddress = heap_address(*scratch_heap, instances_offset),
         };
     }
 
@@ -70,8 +70,8 @@ build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccele
     build_sizes : VkAccelerationStructureBuildSizesInfoKHR;
     vkGetAccelerationStructureBuildSizesKHR(device, .DEVICE, *build_geometry_info, primitive_counts.data, *build_sizes);
 
-    storage_offset := heap_allocate(*heaps.buffer, build_sizes.accelerationStructureSize, 256);
-    scratch_offset := heap_allocate(*heaps.scratch,
+    storage_offset := heap_allocate(*buffer_heap, build_sizes.accelerationStructureSize, 256);
+    scratch_offset := heap_allocate(*scratch_heap,
         build_sizes.buildScratchSize,
         acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment
     );
@@ -82,7 +82,7 @@ build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccele
         {
             create_info.createFlags = 0;
             create_info.addressRange = .{
-                address = heap_address(*heaps.buffer, storage_offset),
+                address = heap_address(*buffer_heap, storage_offset),
                 size = build_sizes.accelerationStructureSize,
             };
             create_info.addressFlags = .STORAGE_BUFFER_USAGE;
@@ -102,7 +102,7 @@ build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccele
     assert(address != 0);
 
     build_geometry_info.dstAccelerationStructure  = acceleration_structure;
-    build_geometry_info.scratchData.deviceAddress = heap_address(*heaps.scratch, scratch_offset);
+    build_geometry_info.scratchData.deviceAddress = heap_address(*scratch_heap, scratch_offset);
 
     build_range_infos := NewArray(primitive_counts.count, VkAccelerationStructureBuildRangeInfoKHR,, temp);
     for primitive_counts  build_range_infos[it_index].primitiveCount = it;

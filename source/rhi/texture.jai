@@ -26,7 +26,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     result := vkCreateImage(device, *image_create_info, null, *texture.image);
     assert(result == .SUCCESS);
 
-    heap_bind_image(*heaps.image, texture.image);
+    heap_bind_image(*image_heap, texture.image);
     set_debug_name(.IMAGE, texture.image, name);
 
     subresource_range := VkImageSubresourceRange.{
@@ -35,8 +35,8 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         layerCount = VK_REMAINING_ARRAY_LAYERS,
     };
 
-    staging_offset := heap_allocate(*heaps.scratch, size, 256);
-    memcpy(heap_pointer(*heaps.scratch, staging_offset), pixels, xx size);
+    staging_offset := heap_allocate(*scratch_heap, size, 256);
+    memcpy(heap_pointer(*scratch_heap, staging_offset), pixels, xx size);
 
     image_barrier := VkImageMemoryBarrier2.{
         dstStageMask        = .ALL_TRANSFER,
@@ -52,7 +52,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     vkCmdPipelineBarrier2(command_buffer, *dependency_info);
 
     region := VkDeviceMemoryImageCopyKHR.{
-        addressRange     = .{address = heap_address(*heaps.scratch, staging_offset), size = size},
+        addressRange     = .{address = heap_address(*scratch_heap, staging_offset), size = size},
         addressFlags     = .STORAGE_BUFFER_USAGE,
         imageSubresource = .{aspectMask = .COLOR, layerCount = 1},
         imageLayout      = .GENERAL,

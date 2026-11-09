@@ -74,7 +74,7 @@ deinit_instance :: () {
 
 init_surface :: () {
     #if OS == .WINDOWS {
-        surface_create_info := VkWin32SurfaceCreateInfoKHR.{hinstance = GetModuleHandleW(null), hwnd = program_state.window};
+        surface_create_info := VkWin32SurfaceCreateInfoKHR.{hinstance = GetModuleHandleW(null), hwnd = window};
         result := vkCreateWin32SurfaceKHR(instance, *surface_create_info, null, *surface);
         assert(result == .SUCCESS);
     } else {

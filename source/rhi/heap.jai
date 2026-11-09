@@ -12,20 +12,18 @@ Heap :: struct {
     on_full : #type (heap: *Heap);
 }
 
-heaps : struct {
-    buffer        : Heap;
-    scratch       : Heap;
-    readback      : Heap;
-    image         : Heap;
-    render_target : Heap;
-}
+buffer_heap        : Heap;
+scratch_heap       : Heap;
+readback_heap      : Heap;
+image_heap         : Heap;
+render_target_heap : Heap;
 
 MiB :: 1024 * 1024;
 
 init_heaps :: () {
-    init_buffer_heap(*heaps.buffer,  "buffer heap",  128 * MiB);
-    init_buffer_heap(*heaps.scratch, "scratch heap", 64 * MiB);
-    init_buffer_heap(*heaps.readback, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
+    init_buffer_heap(*buffer_heap,  "buffer heap",  128 * MiB);
+    init_buffer_heap(*scratch_heap, "scratch heap", 64 * MiB);
+    init_buffer_heap(*readback_heap, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
 
     {
         texture_info : VkImageCreateInfo;
@@ -40,7 +38,7 @@ init_heaps :: () {
             tiling      = .OPTIMAL;
             usage       = .SAMPLED | .TRANSFER_DST;
         }
-        init_image_heap(*heaps.image, "image heap", 512 * MiB, texture_info);
+        init_image_heap(*image_heap, "image heap", 512 * MiB, texture_info);
     }
 
     {
@@ -48,7 +46,7 @@ init_heaps :: () {
         {
             using depth_info;
             imageType   = .e2D;
-            format      = swapchain_context.DEPTH_FORMAT;
+            format      = DEPTH_FORMAT;
             extent      = .{width = 1, height = 1, depth = 1};
             mipLevels   = 1;
             arrayLayers = 1;
@@ -56,12 +54,12 @@ init_heaps :: () {
             tiling      = .OPTIMAL;
             usage       = .DEPTH_STENCIL_ATTACHMENT;
         }
-        init_image_heap(*heaps.render_target, "render target heap", 256 * MiB, depth_info);
+        init_image_heap(*render_target_heap, "render target heap", 256 * MiB, depth_info);
     }
 }
 
 deinit_heaps :: () {
-    for heap : (*Heap).[*heaps.buffer, *heaps.scratch, *heaps.readback, *heaps.image, *heaps.render_target] {
+    for heap : (*Heap).[*buffer_heap, *scratch_heap, *readback_heap, *image_heap, *render_target_heap] {
         if heap.buffer then vkDestroyBuffer(device, heap.buffer, null);
         vkFreeMemory(device, heap.memory, null);
     }

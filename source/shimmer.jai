@@ -6,9 +6,9 @@ SHIMMER_SNAPSHOT_INTERVAL :: 150;
 SHIMMER_CAMERA_POSITION   :: Vector3.{0, 0.2, -0.4};
 
 shimmer_camera_path :: (time: float) {
-    camera.position = SHIMMER_CAMERA_POSITION;
-    camera.yaw      = 1.2  * sin(time * 3.3);
-    camera.pitch    = 0.25 * sin(time * 2.3);
+    camera_position = SHIMMER_CAMERA_POSITION;
+    camera_yaw      = 1.2  * sin(time * 3.3);
+    camera_pitch    = 0.25 * sin(time * 2.3);
 }
 
 shimmer_accumulate :: () {
@@ -16,11 +16,11 @@ shimmer_accumulate :: () {
     if !pixels return;
     defer free(pixels);
 
-    count := cast(s64) (screenshot.extent.width * screenshot.extent.height);
+    count := cast(s64) (screenshot_extent.width * screenshot_extent.height);
     if shimmer.pixel_count == 0 {
         shimmer.pixel_count = count;
-        shimmer.width    = screenshot.extent.width;
-        shimmer.height   = screenshot.extent.height;
+        shimmer.width    = screenshot_extent.width;
+        shimmer.height   = screenshot_extent.height;
         shimmer.residual = NewArray(count, float);
     }
     assert(count == shimmer.pixel_count, "The window changed size during the shimmer measurement.");
