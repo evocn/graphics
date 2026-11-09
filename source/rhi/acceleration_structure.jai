@@ -51,21 +51,7 @@ build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStru
 }
 
 acceleration_structure_build_barrier :: (command_buffer: VkCommandBuffer, dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
-    memory_barrier : VkMemoryBarrier2;
-    {
-        using memory_barrier;
-        srcStageMask  = .ACCELERATION_STRUCTURE_BUILD_KHR;
-        srcAccessMask = .ACCELERATION_STRUCTURE_WRITE_KHR;
-        dstStageMask  = dst_stage;
-        dstAccessMask = dst_access;
-    }
-    dependency_info : VkDependencyInfo;
-    {
-        using dependency_info;
-        memoryBarrierCount = 1;
-        pMemoryBarriers    = *memory_barrier;
-    }
-    vkCmdPipelineBarrier2(command_buffer, *dependency_info);
+    memory_barrier(command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
 }
 
 build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccelerationStructureTypeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> VkAccelerationStructureKHR, VkDeviceAddress {

@@ -349,6 +349,7 @@ Clipboard :: #import "Clipboard";
 #load "rhi/descriptors.jai";
 #load "rhi/gpu.jai";
 #load "rhi/swapchain.jai";
+#load "rhi/barrier.jai";
 #load "rhi/shader.jai";
 #load "rhi/texture.jai";
 #load "rhi/acceleration_structure.jai";

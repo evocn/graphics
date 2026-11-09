@@ -148,7 +148,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     }
 
     for level : 1..mip_levels - 1 {
-        image_barrier(command_buffer, texture.image, level - 1, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
+        memory_barrier(command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
 
         source_width  := max(width  >> (level - 1), 1);
         source_height := max(height >> (level - 1), 1);
@@ -170,7 +170,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         };
         vkCmdBlitImage2(command_buffer, *blit_info);
     }
-    image_barrier(command_buffer, texture.image, VK_REMAINING_MIP_LEVELS, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+    memory_barrier(command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
 
     {
         view_create_info := VkImageViewCreateInfo.{
@@ -190,28 +190,4 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
 
 destroy_texture :: (texture: Texture) {
     vkDestroyImage(device, texture.image, null);
-}
-
-#scope_file
-
-image_barrier :: (command_buffer: VkCommandBuffer, image: VkImage, level: u32, src_stage: VkPipelineStageFlags2, src_access: VkAccessFlags2, dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
-    barrier := VkImageMemoryBarrier2.{
-        srcStageMask        = src_stage,
-        srcAccessMask       = src_access,
-        dstStageMask        = dst_stage,
-        dstAccessMask       = dst_access,
-        oldLayout           = .GENERAL,
-        newLayout           = .GENERAL,
-        srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        image               = image,
-        subresourceRange    = .{
-            aspectMask   = .COLOR,
-            baseMipLevel = ifx level == VK_REMAINING_MIP_LEVELS then 0 else level,
-            levelCount   = ifx level == VK_REMAINING_MIP_LEVELS then VK_REMAINING_MIP_LEVELS else 1,
-            layerCount   = 1,
-        },
-    };
-    dependency_info := VkDependencyInfo.{imageMemoryBarrierCount = 1, pImageMemoryBarriers = *barrier};
-    vkCmdPipelineBarrier2(command_buffer, *dependency_info);
 }
