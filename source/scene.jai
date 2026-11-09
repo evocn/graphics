@@ -2,8 +2,9 @@
 // Scene
 
 Vertex_Attributes :: struct @Gpu {
-    normal : Vector3;
-    uv     : Vector2;
+    normal  : Vector3;
+    tangent : Vector4;
+    uv      : Vector2;
 }
 
 ground_positions := Vector3.[
@@ -15,10 +16,10 @@ ground_positions := Vector3.[
 ];
 
 ground_attributes := Vertex_Attributes.[
-    .{normal = .{0, -1, 0}, uv = .{0.0, 0.0}},
-    .{normal = .{0, -1, 0}, uv = .{6.0, 6.0}},
-    .{normal = .{0, -1, 0}, uv = .{0.0, 6.0}},
-    .{normal = .{0, -1, 0}, uv = .{6.0, 0.0}},
+    .{normal = .{0, -1, 0}, tangent = .{1, 0, 0, -1}, uv = .{0.0, 0.0}},
+    .{normal = .{0, -1, 0}, tangent = .{1, 0, 0, -1}, uv = .{6.0, 6.0}},
+    .{normal = .{0, -1, 0}, tangent = .{1, 0, 0, -1}, uv = .{0.0, 6.0}},
+    .{normal = .{0, -1, 0}, tangent = .{1, 0, 0, -1}, uv = .{6.0, 0.0}},
 ];
 
 ground_indices := u32.[0, 1, 2, 0, 3, 1];
@@ -31,10 +32,10 @@ quad_positions := Vector3.[
 ];
 
 quad_attributes := Vertex_Attributes.[
-    .{normal = .{0, 0, -1}, uv = .{0.0, 1.0}},
-    .{normal = .{0, 0, -1}, uv = .{0.0, 0.0}},
-    .{normal = .{0, 0, -1}, uv = .{1.0, 0.0}},
-    .{normal = .{0, 0, -1}, uv = .{1.0, 1.0}},
+    .{normal = .{0, 0, -1}, tangent = .{1, 0, 0, -1}, uv = .{0.0, 1.0}},
+    .{normal = .{0, 0, -1}, tangent = .{1, 0, 0, -1}, uv = .{0.0, 0.0}},
+    .{normal = .{0, 0, -1}, tangent = .{1, 0, 0, -1}, uv = .{1.0, 0.0}},
+    .{normal = .{0, 0, -1}, tangent = .{1, 0, 0, -1}, uv = .{1.0, 1.0}},
 ];
 
 quad_indices := u32.[0, 1, 2, 0, 2, 3];
@@ -45,6 +46,12 @@ Material :: struct @Gpu {
     sampler      : Sampler_Handle;
     alpha_cutoff : float;
     double_sided : u32;
+
+    normal_texture             : Texture_Handle;
+    metallic_roughness_texture : Texture_Handle;
+    normal_scale               : float = 1;
+    metallic                   : float = 0;
+    roughness                  : float = 1;
 }
 
 Draw_Data :: struct @Gpu {
@@ -73,7 +80,10 @@ Instance :: struct {
 
 init_data :: () {
     white_pixel : u32 = 0xFFFFFFFF;
-    white_texture := add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, .R8G8B8A8_SRGB, "white texture"));
+    white_texture = add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, .R8G8B8A8_SRGB, "white texture"));
+
+    flat_normal_pixel : u32 = 0xFFFF8080;
+    flat_normal_texture = add_texture(create_texture(command_buffers[0], *flat_normal_pixel, 1, 1, .R8G8B8A8_UNORM, "flat normal texture"));
 
     croc_data := program_state.texture_datas[0];
     croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
@@ -117,7 +127,7 @@ init_data :: () {
 
     sponza_path := tprint("%/Sponza/Sponza.gltf", models_path);
     if file_exists(sponza_path) {
-        if !load_gltf(sponza_path, placement(.{0.0, 1.0, 0.0}, PI / 2), trilinear_sampler, white_texture) {
+        if !load_gltf(sponza_path, placement(.{0.0, 1.0, 0.0}, PI / 2), trilinear_sampler) {
             log_error("Could not load Sponza.");
         }
     } else {
@@ -128,7 +138,7 @@ init_data :: () {
     add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
 
     box_first_material := materials.count;
-    if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler, white_texture) {
+    if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler) {
         log_error("Could not load BoxTextured.");
     }
     for box_first_material..materials.count - 1 {
@@ -196,7 +206,11 @@ add_texture :: (texture: Texture) -> Texture_Handle {
     return texture.handle;
 }
 
-add_material :: (material: Material) -> u32 {
+add_material :: (material_in: Material) -> u32 {
+    material := material_in;
+    if material.texture.id == 0                     material.texture = white_texture;
+    if material.normal_texture.id == 0              material.normal_texture = flat_normal_texture;
+    if material.metallic_roughness_texture.id == 0  material.metallic_roughness_texture = white_texture;
     array_add(*materials, material);
     return xx (materials.count - 1);
 }

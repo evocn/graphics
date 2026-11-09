@@ -1,7 +1,7 @@
 // Graphics
 // glTF
 
-load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle, white_texture: Texture_Handle) -> bool {
+load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
     options : cgltf_options;
     data : *cgltf_data;
 
@@ -21,10 +21,22 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle, white_textur
 
     directory := path_strip_filename(path);
 
+    linear_images := NewArray(xx data.images_count, bool);
+    defer array_free(linear_images);
+    mark_linear :: (view: cgltf_texture_view) #expand {
+        if view.texture && view.texture.image  linear_images[cgltf_image_index(data, view.texture.image)] = true;
+    }
+    for material_index : 0..cast(s64) data.materials_count - 1 {
+        gltf_material := *data.materials[material_index];
+        mark_linear(gltf_material.normal_texture);
+        mark_linear(gltf_material.pbr_metallic_roughness.metallic_roughness_texture);
+    }
+
     image_textures := NewArray(xx data.images_count, Texture_Handle);
     defer array_free(image_textures);
     for image_index : 0..cast(s64) data.images_count - 1 {
-        image_textures[image_index] = load_gltf_image(*data.images[image_index], directory);
+        format := ifx linear_images[image_index] then VkFormat.R8G8B8A8_UNORM else .R8G8B8A8_SRGB;
+        image_textures[image_index] = load_gltf_image(*data.images[image_index], directory, format);
     }
 
     samplers := NewArray(xx data.samplers_count, Sampler_Handle);
@@ -36,9 +48,9 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle, white_textur
     material_indices := NewArray(xx data.materials_count, u32);
     defer array_free(material_indices);
     for material_index : 0..cast(s64) data.materials_count - 1 {
-        material_indices[material_index] = add_gltf_material(data, *data.materials[material_index], image_textures, samplers, sampler, white_texture);
+        material_indices[material_index] = add_gltf_material(data, *data.materials[material_index], image_textures, samplers, sampler);
     }
-    default_material := add_material(.{base_color = .{1, 1, 1, 1}, texture = white_texture, sampler = sampler});
+    default_material := add_material(.{base_color = .{1, 1, 1, 1}, sampler = sampler});
 
     Primitive_Mesh :: struct {
         mesh_index     : u32;
@@ -95,7 +107,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle, white_textur
 
 #scope_file
 
-load_gltf_image :: (image: *cgltf_image, directory: string) -> Texture_Handle {
+load_gltf_image :: (image: *cgltf_image, directory: string, format: VkFormat) -> Texture_Handle {
     width, height, channels : s32;
     pixels : *u8;
 
@@ -115,23 +127,33 @@ load_gltf_image :: (image: *cgltf_image, directory: string) -> Texture_Handle {
     assert(pixels != null, "Failed to load glTF image %.", name);
     defer stbi_image_free(pixels);
 
-    return add_texture(create_texture(command_buffers[0], pixels, xx width, xx height, .R8G8B8A8_SRGB, name));
+    return add_texture(create_texture(command_buffers[0], pixels, xx width, xx height, format, name));
 }
 
-add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, samplers: [] Sampler_Handle, sampler: Sampler_Handle, white_texture: Texture_Handle) -> u32 {
-    material := Material.{base_color = .{1, 1, 1, 1}, texture = white_texture, sampler = sampler};
+add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, samplers: [] Sampler_Handle, sampler: Sampler_Handle) -> u32 {
+    material := Material.{base_color = .{1, 1, 1, 1}, sampler = sampler};
+
+    image_of :: (view: cgltf_texture_view) -> Texture_Handle #expand {
+        if !view.texture || !view.texture.image  return .{};
+        return image_textures[cgltf_image_index(data, view.texture.image)];
+    }
 
     if gltf_material.has_pbr_metallic_roughness {
         pbr := *gltf_material.pbr_metallic_roughness;
         factor := pbr.base_color_factor;
         material.base_color = .{factor[0], factor[1], factor[2], factor[3]};
+        material.metallic   = pbr.metallic_factor;
+        material.roughness  = pbr.roughness_factor;
 
-        texture := pbr.base_color_texture.texture;
-        if texture && texture.image {
-            material.texture = image_textures[cgltf_image_index(data, texture.image)];
-            if texture.sampler  material.sampler = samplers[cgltf_sampler_index(data, texture.sampler)];
-        }
+        material.texture                    = image_of(pbr.base_color_texture);
+        material.metallic_roughness_texture = image_of(pbr.metallic_roughness_texture);
+
+        base_texture := pbr.base_color_texture.texture;
+        if base_texture && base_texture.sampler  material.sampler = samplers[cgltf_sampler_index(data, base_texture.sampler)];
     }
+
+    material.normal_texture = image_of(gltf_material.normal_texture);
+    if gltf_material.normal_texture.texture  material.normal_scale = gltf_material.normal_texture.scale;
 
     material.double_sided = xx gltf_material.double_sided;
 
@@ -179,11 +201,12 @@ gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
 }
 
 add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success: bool {
-    position_accessor, normal_accessor, uv_accessor : *cgltf_accessor;
+    position_accessor, normal_accessor, tangent_accessor, uv_accessor : *cgltf_accessor;
     for attribute_index : 0..cast(s64) primitive.attributes_count - 1 {
         attribute := *primitive.attributes[attribute_index];
         if attribute.type == .position                          position_accessor = attribute.data;
         if attribute.type == .normal                            normal_accessor   = attribute.data;
+        if attribute.type == .tangent                           tangent_accessor  = attribute.data;
         if attribute.type == .texcoord && attribute.index == 0  uv_accessor       = attribute.data;
     }
     if !position_accessor return 0, false;
@@ -207,6 +230,13 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
     attributes := NewArray(vertex_count, Vertex_Attributes);
     defer array_free(attributes);
 
+    if uv_accessor {
+        assert(cast(s64) uv_accessor.count == vertex_count);
+        uvs := NewArray(vertex_count, Vector2,, temp);
+        cgltf_accessor_unpack_floats(uv_accessor, cast(*float) uvs.data, xx (vertex_count * 2));
+        for uvs  attributes[it_index].uv = it;
+    }
+
     if normal_accessor {
         assert(cast(s64) normal_accessor.count == vertex_count);
         normals := NewArray(vertex_count, Vector3,, temp);
@@ -225,11 +255,13 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
         for * attributes  it.normal = unit_vector(it.normal);
     }
 
-    if uv_accessor {
-        assert(cast(s64) uv_accessor.count == vertex_count);
-        uvs := NewArray(vertex_count, Vector2,, temp);
-        cgltf_accessor_unpack_floats(uv_accessor, cast(*float) uvs.data, xx (vertex_count * 2));
-        for uvs  attributes[it_index].uv = it;
+    if tangent_accessor {
+        assert(cast(s64) tangent_accessor.count == vertex_count);
+        tangents := NewArray(vertex_count, Vector4,, temp);
+        cgltf_accessor_unpack_floats(tangent_accessor, cast(*float) tangents.data, xx (vertex_count * 4));
+        for tangents  attributes[it_index].tangent = it;
+    } else {
+        generate_tangents(positions, indices, attributes);
     }
 
     for triangle : 0..indices.count / 3 - 1 {
@@ -239,4 +271,41 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
     }
 
     return add_mesh(positions, attributes, indices), true;
+}
+
+generate_tangents :: (positions: [] Vector3, indices: [] u32, attributes: [] Vertex_Attributes) {
+    tangents   := NewArray(positions.count, Vector3,, temp);
+    bitangents := NewArray(positions.count, Vector3,, temp);
+
+    for triangle : 0..indices.count / 3 - 1 {
+        corners := u32.[indices[triangle * 3 + 0], indices[triangle * 3 + 1], indices[triangle * 3 + 2]];
+        a, b, c := corners[0], corners[1], corners[2];
+
+        edge1 := positions[b] - positions[a];
+        edge2 := positions[c] - positions[a];
+        duv1  := attributes[b].uv - attributes[a].uv;
+        duv2  := attributes[c].uv - attributes[a].uv;
+
+        determinant := duv1.x * duv2.y - duv2.x * duv1.y;
+        if abs(determinant) < 0.0000001 then continue;
+        r := 1.0 / determinant;
+
+        tangent   := (edge1 * duv2.y - edge2 * duv1.y) * r;
+        bitangent := (edge2 * duv1.x - edge1 * duv2.x) * r;
+        for corners {
+            tangents[it]   += tangent;
+            bitangents[it] += bitangent;
+        }
+    }
+
+    for * attributes {
+        n := it.normal;
+        t := tangents[it_index] - n * dot(n, tangents[it_index]);
+        if length(t) < 0.000001 {
+            t = ifx abs(n.x) < 0.9 then cross(n, .{1, 0, 0}) else cross(n, .{0, 1, 0});
+        }
+        t = unit_vector(t);
+        w := ifx dot(cross(n, t), bitangents[it_index]) < 0 then -1.0 else 1.0;
+        it.tangent = .{t.x, t.y, t.z, w};
+    }
 }

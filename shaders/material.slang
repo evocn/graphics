@@ -17,8 +17,10 @@ RaytracingAccelerationStructure acceleration_structure_from_address(uint64_t add
     };
 }
 
+
 struct Coarse_Vertex {
     float3 normal;
+    float4 tangent;
     float2 uv;
     float3 world_position;
 }
@@ -31,6 +33,14 @@ struct Vertex_Stage_Output {
     float4          sv_position     : SV_Position;
 }
 
+float3 transform_normal(float4x4 transform, float3 normal) {
+    float3 a = transform[0].xyz;
+    float3 b = transform[1].xyz;
+    float3 c = transform[2].xyz;
+    float3 n = float3(dot(cross(b, c), normal), dot(cross(c, a), normal), dot(cross(a, b), normal));
+    return dot(a, cross(b, c)) < 0.0 ? -n : n;
+}
+
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Draw_Data draw = push_data.draws[push_data.draw_index];
@@ -40,7 +50,8 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Vertex_Stage_Output output;
     {
         {
-            output.coarse_vertex.normal = mul((float3x3)draw.transform, attributes.normal);
+            output.coarse_vertex.normal = transform_normal(draw.transform, attributes.normal);
+            output.coarse_vertex.tangent = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
             output.coarse_vertex.uv = attributes.uv;
             output.coarse_vertex.world_position = position;
         }
@@ -77,49 +88,101 @@ bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentric
     }
 }
 
+static const float PI = 3.14159265;
+
+float distribution_ggx(float n_dot_h, float alpha) {
+    float alpha2 = alpha * alpha;
+    float d = n_dot_h * n_dot_h * (alpha2 - 1.0) + 1.0;
+    return alpha2 / (PI * d * d);
+}
+
+float visibility_smith_ggx_correlated(float n_dot_v, float n_dot_l, float alpha) {
+    float alpha2 = alpha * alpha;
+    float v = n_dot_l * sqrt(n_dot_v * n_dot_v * (1.0 - alpha2) + alpha2);
+    float l = n_dot_v * sqrt(n_dot_l * n_dot_l * (1.0 - alpha2) + alpha2);
+    return 0.5 / max(v + l, 1e-5);
+}
+
+float3 fresnel_schlick(float3 f0, float v_dot_h) {
+    return f0 + (1.0 - f0) * pow(1.0 - v_dot_h, 5.0);
+}
+
+bool sun_visible(float3 world_position, float3 geometric_normal, float3 to_light) {
+    RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
+    RayDesc ray;
+    ray.Origin      = world_position + geometric_normal * 0.01;
+    ray.Direction   = to_light;
+    ray.TMin        = 0.01;
+    ray.TMax        = 10000.0;
+
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+    query.TraceRayInline(tlas, RAY_FLAG_NONE, 0xFF, ray);
+    while (query.Proceed()) {
+        if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
+        if (shadow_alpha_test(query.CandidateInstanceID(), query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics())) {
+            query.CommitNonOpaqueTriangleHit();
+        }
+    }
+    return query.CommittedStatus() != COMMITTED_TRIANGLE_HIT;
+}
+
 [shader("fragment")]
 Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
-    float4 texture_color = material.texture.Sample(material.sampler, coarse_vertex.uv);
+    float2 uv = coarse_vertex.uv;
+    float4 texture_color = material.texture.Sample(material.sampler, uv);
     if (material.base_color.a * texture_color.a < material.alpha_cutoff) discard;
-    float3 color = material.base_color.rgb * texture_color.rgb;
+    float3 base_color = material.base_color.rgb * texture_color.rgb;
     float3 world_position = coarse_vertex.world_position;
 
-    float3 normal = normalize(coarse_vertex.normal);
-    if (!is_front_face) normal = -normal;
+    float3 geometric_normal = normalize(coarse_vertex.normal);
+    float3 tangent = normalize(coarse_vertex.tangent.xyz - geometric_normal * dot(geometric_normal, coarse_vertex.tangent.xyz));
+    float3 bitangent = cross(geometric_normal, tangent) * coarse_vertex.tangent.w;
+    if (!is_front_face) {
+        geometric_normal = -geometric_normal;
+        tangent = -tangent;
+        bitangent = -bitangent;
+    }
+
+    float3 normal_sample = material.normal_texture.Sample(material.sampler, uv).xyz * 2.0 - 1.0;
+    normal_sample.xy *= material.normal_scale;
+    float3 normal = normalize(tangent * normal_sample.x + bitangent * normal_sample.y + geometric_normal * normal_sample.z);
+
+    float4 metallic_roughness = material.metallic_roughness_texture.Sample(material.sampler, uv);
+    float metallic = saturate(material.metallic * metallic_roughness.b);
+    float roughness = clamp(material.roughness * metallic_roughness.g, 0.045, 1.0);
+    float alpha = roughness * roughness;
 
     float3 to_light = -push_data.frame.light_direction;
+    float3 to_camera = normalize(push_data.frame.camera_position - world_position);
+
+    float3 diffuse_color = base_color * (1.0 - metallic);
+    float3 f0 = lerp(float3(0.04), base_color, metallic);
+
+    float3 sun = float3(0.0);
     float n_dot_l = dot(normal, to_light);
+    if (n_dot_l > 0.0 && dot(geometric_normal, to_light) > 0.0 && sun_visible(world_position, geometric_normal, to_light)) {
+        float3 half_vector = normalize(to_light + to_camera);
+        float n_dot_v = max(dot(normal, to_camera), 1e-4);
+        float n_dot_h = saturate(dot(normal, half_vector));
+        float v_dot_h = saturate(dot(to_camera, half_vector));
 
-    float shadow = 0.0;
-    if (n_dot_l > 0.0) {
-        RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
-        RayDesc ray;
-        ray.Origin      = world_position + normal * 0.01;
-        ray.Direction   = to_light;
-        ray.TMin        = 0.01;
-        ray.TMax        = 10000.0;
+        float3 fresnel = fresnel_schlick(f0, v_dot_h);
+        float3 specular = fresnel * distribution_ggx(n_dot_h, alpha) * visibility_smith_ggx_correlated(n_dot_v, n_dot_l, alpha);
+        float3 diffuse = (1.0 - fresnel) * diffuse_color / PI;
 
-        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
-        query.TraceRayInline(tlas, RAY_FLAG_NONE, 0xFF, ray);
-        while (query.Proceed()) {
-            if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
-            if (shadow_alpha_test(query.CandidateInstanceID(), query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics())) {
-                query.CommitNonOpaqueTriangleHit();
-            }
-        }
-        shadow = (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.0 : 1.0;
+        float3 sun_irradiance = float3(1.0, 0.95, 0.85) * push_data.frame.sun_intensity * PI;
+        sun = (diffuse + specular) * sun_irradiance * n_dot_l;
     }
 
     float sky = saturate(0.5 - 0.5 * normal.y);
     float3 ambient = lerp(float3(0.12, 0.1, 0.08), float3(0.3, 0.34, 0.42), sky);
-    float3 sun = float3(1.0, 0.95, 0.85) * push_data.frame.sun_intensity * saturate(n_dot_l) * shadow;
 
     Fragment_Stage_Output output;
     {
-        output.color = color * (ambient + sun);
+        output.color = ambient * (diffuse_color + f0) + sun;
     }
     return output;
 }

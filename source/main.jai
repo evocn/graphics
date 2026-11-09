@@ -57,6 +57,9 @@ using scene_data : struct {
     materials        : [..] Material;
     materials_offset : VkDeviceSize;
 
+    white_texture       : Texture_Handle;
+    flat_normal_texture : Texture_Handle;
+
     meshes           : [..] Mesh;
     instances        : [..] Instance;
     draw_data_offset : VkDeviceSize;

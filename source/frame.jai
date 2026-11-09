@@ -7,6 +7,7 @@ Frame_Constants :: struct @Gpu {
     light_direction : Vector3;
     sun_intensity   : float;
     time            : float;
+    camera_position : Vector3;
 }
 
 Push_Data :: struct @Gpu {
@@ -517,6 +518,7 @@ draw_frame :: () {
             frame_constants.light_direction = world_state.light_direction;
             frame_constants.sun_intensity   = world_state.sun_intensity;
             frame_constants.time            = cast(float) seconds_since_init();
+            frame_constants.camera_position = camera.position;
 
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),
