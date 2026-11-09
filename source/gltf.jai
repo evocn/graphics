@@ -52,31 +52,27 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
     }
     default_material := add_material(.{base_color = .{1, 1, 1, 1}, sampler = sampler});
 
-    Primitive_Mesh :: struct {
-        mesh_index     : u32;
-        material_index : u32;
-    }
-    mesh_primitives := NewArray(xx data.meshes_count, [..] Primitive_Mesh);
+    mesh_primitives := NewArray(xx data.meshes_count, [..] Draw_Data);
     defer {
         for mesh_primitives  array_free(it);
         array_free(mesh_primitives);
     }
     for mesh_index : 0..cast(s64) data.meshes_count - 1 {
-        mesh := *data.meshes[mesh_index];
-        for primitive_index : 0..cast(s64) mesh.primitives_count - 1 {
-            primitive := *mesh.primitives[primitive_index];
+        gltf_mesh := *data.meshes[mesh_index];
+        for primitive_index : 0..cast(s64) gltf_mesh.primitives_count - 1 {
+            primitive := *gltf_mesh.primitives[primitive_index];
             if primitive.type != .triangles {
                 log("Skipping % primitive in %.", primitive.type, path);
                 continue;
             }
 
-            our_mesh, success := add_gltf_primitive(primitive);
+            mesh, success := add_gltf_primitive(primitive);
             if !success continue;
 
-            material_index := default_material;
-            if primitive.material  material_index = material_indices[cgltf_material_index(data, primitive.material)];
+            mesh.material_index = default_material;
+            if primitive.material  mesh.material_index = material_indices[cgltf_material_index(data, primitive.material)];
 
-            array_add(*mesh_primitives[mesh_index], .{our_mesh, material_index});
+            array_add(*mesh_primitives[mesh_index], mesh);
         }
     }
 
@@ -97,7 +93,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 
         transform := multiply(root_from_gltf, node_transform);
         for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
-            add_instance(it.mesh_index, it.material_index, transform);
+            add_draw(it, it.material_index, transform);
         }
     }
 
@@ -200,7 +196,7 @@ gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
     return info;
 }
 
-add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success: bool {
+add_gltf_primitive :: (primitive: *cgltf_primitive) -> Draw_Data, success: bool {
     position_accessor, normal_accessor, tangent_accessor, uv_accessor : *cgltf_accessor;
     for attribute_index : 0..cast(s64) primitive.attributes_count - 1 {
         attribute := *primitive.attributes[attribute_index];
@@ -209,7 +205,7 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
         if attribute.type == .tangent                           tangent_accessor  = attribute.data;
         if attribute.type == .texcoord && attribute.index == 0  uv_accessor       = attribute.data;
     }
-    if !position_accessor return 0, false;
+    if !position_accessor return .{}, false;
 
     vertex_count := cast(s64) position_accessor.count;
 

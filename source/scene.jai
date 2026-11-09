@@ -5,9 +5,8 @@ materials_offset : VkDeviceSize;
 white_texture       : Texture_Handle;
 flat_normal_texture : Texture_Handle;
 
-meshes           : [..] Mesh;
-instances        : [..] Instance;
-draw_data_offset : VkDeviceSize;
+draws            : [..] Draw_Data;
+draws_offset     : VkDeviceSize;
 
 scene_blas         : VkAccelerationStructureKHR;
 scene_blas_address : VkDeviceAddress;
@@ -74,20 +73,8 @@ Draw_Data :: struct @Gpu {
     attributes     : Gpu_Pointer(Vertex_Attributes);
     indices        : Gpu_Pointer(u32);
     material_index : u32;
-}
-
-Mesh :: struct {
-    position_offset  : VkDeviceSize;
-    attribute_offset : VkDeviceSize;
-    index_offset     : VkDeviceSize;
-    vertex_count     : u32;
-    index_count      : u32;
-}
-
-Instance :: struct {
-    mesh_index     : u32;
-    material_index : u32;
-    transform      : Matrix4;
+    vertex_count   : u32;
+    index_count    : u32;
 }
 
 init_data :: () {
@@ -134,8 +121,8 @@ init_data :: () {
     green_croc_material  := add_material(.{base_color = srgb(0.4, 0.9, 0.3), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5, double_sided = 1});
     orange_croc_material := add_material(.{base_color = srgb(1.0, 0.6, 0.2), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5, double_sided = 1});
 
-    ground_mesh := add_mesh(ground_positions, ground_attributes, ground_indices);
-    quad_mesh   := add_mesh(quad_positions,   quad_attributes,   quad_indices);
+    ground := add_mesh(ground_positions, ground_attributes, ground_indices);
+    quad   := add_mesh(quad_positions,   quad_attributes,   quad_indices);
 
     sponza_path := tprint("%/Sponza/Sponza.gltf", models_path);
     if file_exists(sponza_path) {
@@ -143,11 +130,11 @@ init_data :: () {
             log_error("Could not load Sponza.");
         }
     } else {
-        add_instance(ground_mesh, ground_material, Matrix4_Identity);
+        add_draw(ground, ground_material, Matrix4_Identity);
     }
 
-    add_instance(quad_mesh,   green_croc_material,  placement(.{-1.3, 0.0, 0.6},  0.4));
-    add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
+    add_draw(quad, green_croc_material,  placement(.{-1.3, 0.0, 0.6},  0.4));
+    add_draw(quad, orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
 
     box_first_material := materials.count;
     if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler) {
@@ -159,43 +146,32 @@ init_data :: () {
     }
 
     materials_offset = upload(materials);
+    draws_offset     = upload(draws);
 
     {
-        draw_datas : [..] Draw_Data;
-        defer array_free(draw_datas);
-        for instances {
-            mesh := meshes[it.mesh_index];
-            array_add(*draw_datas, .{
-                transform      = it.transform,
-                positions      = heap_gpu_pointer(*buffer_heap, Vector3, mesh.position_offset),
-                attributes     = heap_gpu_pointer(*buffer_heap, Vertex_Attributes, mesh.attribute_offset),
-                indices        = heap_gpu_pointer(*buffer_heap, u32, mesh.index_offset),
-                material_index = it.material_index,
-            });
-        }
-        draw_data_offset = upload(draw_datas);
-    }
-
-    {
-        transforms := NewArray(instances.count, VkTransformMatrixKHR,, temp);
-        for instances  for row : 0..2  for column : 0..3  transforms[it_index].matrix[row][column] = it.transform.v[row].component[column];
+        transforms := NewArray(draws.count, VkTransformMatrixKHR,, temp);
+        for draws  for row : 0..2  for column : 0..3  transforms[it_index].matrix[row][column] = it.transform.v[row].component[column];
         transforms_offset := upload(transforms);
 
-        geometries := NewArray(instances.count, Blas_Geometry,, temp);
-        for instances {
-            mesh := meshes[it.mesh_index];
-            geometries[it_index] = .{
-                vertex_address    = heap_address(*buffer_heap, mesh.position_offset),
-                vertex_stride     = size_of(Vector3),
-                vertex_count      = mesh.vertex_count,
-                index_address     = heap_address(*buffer_heap, mesh.index_offset),
-                index_count       = mesh.index_count,
-                transform_address = heap_address(*buffer_heap, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
-                opaque            = materials[it.material_index].alpha_cutoff == 0,
+        geometries       := NewArray(draws.count, VkAccelerationStructureGeometryKHR,, temp);
+        primitive_counts := NewArray(draws.count, u32,, temp);
+        for draws {
+            geometry := *geometries[it_index];
+            geometry.geometryType = .TRIANGLES;
+            if materials[it.material_index].alpha_cutoff == 0  geometry.flags = .OPAQUE;
+            geometry.geometry.triangles = .{
+                vertexFormat                = .R32G32B32_SFLOAT,
+                vertexData.deviceAddress    = it.positions.address,
+                vertexStride                = size_of(Vector3),
+                maxVertex                   = it.vertex_count - 1,
+                indexType                   = .UINT32,
+                indexData.deviceAddress     = it.indices.address,
+                transformData.deviceAddress = heap_address(*buffer_heap, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
             };
+            primitive_counts[it_index] = it.index_count / 3;
         }
 
-        scene_blas, scene_blas_address = build_blas(command_buffers[0], geometries);
+        scene_blas, scene_blas_address = build_acceleration_structure(command_buffers[0], .BOTTOM_LEVEL, geometries, primitive_counts);
     }
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
@@ -214,13 +190,11 @@ init_data :: () {
 deinit_data :: () {
     vkDestroyAccelerationStructureKHR(device, tlas, null);
     vkDestroyAccelerationStructureKHR(device, scene_blas, null);
-    array_free(meshes);
-    array_free(instances);
+    array_free(draws);
     array_free(materials);
     for textures  destroy_texture(it);
     array_free(textures);
 }
-
 
 add_texture :: (texture: Texture) -> Texture_Handle {
     array_add(*textures, texture);
@@ -236,21 +210,25 @@ add_material :: (material_in: Material) -> u32 {
     return xx (materials.count - 1);
 }
 
-add_mesh :: (positions: [] Vector3, attributes: [] Vertex_Attributes, indices: [] u32) -> u32 {
+add_mesh :: (positions: [] Vector3, attributes: [] Vertex_Attributes, indices: [] u32) -> Draw_Data {
     assert(positions.count == attributes.count);
     assert(indices.count % 3 == 0);
 
-    mesh := array_add(*meshes);
-    mesh.vertex_count     = xx positions.count;
-    mesh.index_count      = xx indices.count;
-    mesh.position_offset  = upload(positions);
-    mesh.attribute_offset = upload(attributes);
-    mesh.index_offset     = upload(indices);
-    return xx (meshes.count - 1);
+    return .{
+        transform    = Matrix4_Identity,
+        positions    = heap_gpu_pointer(*buffer_heap, Vector3,           upload(positions)),
+        attributes   = heap_gpu_pointer(*buffer_heap, Vertex_Attributes, upload(attributes)),
+        indices      = heap_gpu_pointer(*buffer_heap, u32,               upload(indices)),
+        vertex_count = xx positions.count,
+        index_count  = xx indices.count,
+    };
 }
 
-add_instance :: (mesh_index: u32, material_index: u32, transform: Matrix4) {
-    array_add(*instances, .{mesh_index = mesh_index, material_index = material_index, transform = transform});
+add_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
+    draw := mesh;
+    draw.material_index = material_index;
+    draw.transform      = transform;
+    array_add(*draws, draw);
 }
 
 #scope_file

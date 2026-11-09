@@ -1,36 +1,3 @@
-Blas_Geometry :: struct {
-    vertex_address   : VkDeviceAddress;
-    vertex_stride    : VkDeviceSize;
-    vertex_count     : u32;
-    index_address    : VkDeviceAddress;
-    index_count      : u32;
-    transform_address: VkDeviceAddress;
-    opaque           : bool;
-}
-
-build_blas ::(command_buffer: VkCommandBuffer, inputs: [] Blas_Geometry) -> VkAccelerationStructureKHR, VkDeviceAddress {
-    geometries := NewArray(inputs.count, VkAccelerationStructureGeometryKHR,, temp);
-    primitive_counts := NewArray(inputs.count, u32,, temp);
-    for inputs {
-        geometry := *geometries[it_index];
-        geometry.geometryType = .TRIANGLES;
-        if it.opaque  geometry.flags = .OPAQUE;
-        geometry.geometry.triangles = .{
-            vertexFormat = .R32G32B32_SFLOAT,
-            vertexData.deviceAddress = it.vertex_address,
-            vertexStride = it.vertex_stride,
-            maxVertex = it.vertex_count - 1,
-            indexType = .UINT32,
-            indexData.deviceAddress = it.index_address,
-            transformData.deviceAddress = it.transform_address,
-        };
-        primitive_counts[it_index] = it.index_count / 3;
-    }
-
-    blas, address := build_acceleration_structure(command_buffer, .BOTTOM_LEVEL, geometries, primitive_counts);
-    return blas, address;
-}
-
 build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerationStructureKHR, VkDeviceAddress {
     instances_size := cast(VkDeviceSize) (instances.count * size_of(VkAccelerationStructureInstanceKHR));
     instances_offset := heap_allocate(*scratch_heap, instances_size, 16);

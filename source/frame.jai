@@ -680,7 +680,7 @@ draw_frame :: () {
 
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
-                draws      = heap_gpu_pointer(*buffer_heap, Draw_Data, draw_data_offset),
+                draws      = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
                 materials  = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
             };
 
@@ -694,14 +694,14 @@ draw_frame :: () {
         no_components : VkColorComponentFlags;
         vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
         bind_graphics_shaders(command_buffers[index], depth_shaders);
-        draw_instances(command_buffers[index]);
+        draw_scene(command_buffers[index]);
 
         all_components := VkColorComponentFlags.R | .G | .B | .A;
         vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
         vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
         vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
         bind_graphics_shaders(command_buffers[index], material_shaders);
-        draw_instances(command_buffers[index]);
+        draw_scene(command_buffers[index]);
 
         vkCmdEndRendering(command_buffers[index]);
 
@@ -857,10 +857,9 @@ draw_frame :: () {
     }
 }
 
-draw_instances :: (command_buffer: VkCommandBuffer) {
+draw_scene :: (command_buffer: VkCommandBuffer) {
     culling_back_faces := true;
-    for instances {
-        mesh := meshes[it.mesh_index];
+    for draws {
         double_sided := materials[it.material_index].double_sided != 0;
         if double_sided == culling_back_faces {
             culling_back_faces = !double_sided;
@@ -876,15 +875,15 @@ draw_instances :: (command_buffer: VkCommandBuffer) {
 
         index_buffer_info := VkBindIndexBuffer3InfoKHR.{
             addressRange = .{
-                address = heap_address(*buffer_heap, mesh.index_offset),
-                size    = cast(VkDeviceSize) mesh.index_count * size_of(u32),
+                address = it.indices.address,
+                size    = cast(VkDeviceSize) it.index_count * size_of(u32),
             },
             addressFlags = .STORAGE_BUFFER_USAGE,
             indexType    = .UINT32,
         };
         vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
 
-        vkCmdDrawIndexed(command_buffer, indexCount = mesh.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
+        vkCmdDrawIndexed(command_buffer, indexCount = it.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
     }
     if !culling_back_faces  vkCmdSetCullMode(command_buffer, .BACK);
 }
