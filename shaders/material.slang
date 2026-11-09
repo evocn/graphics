@@ -129,30 +129,36 @@ bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction
     return query.CommittedStatus() != COMMITTED_TRIANGLE_HIT;
 }
 
-float interleaved_gradient_noise(float2 pixel) {
-    return frac(52.9829189 * frac(dot(pixel, float2(0.06711056, 0.00583715))));
+uint pcg_hash(uint value) {
+    uint state = value * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
 }
 
-float ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
+float next_random(inout uint seed) {
+    seed = pcg_hash(seed);
+    return float(seed >> 8) * (1.0 / 16777216.0);
+}
+
+uint ambient_hits(float3 world_position, float3 geometric_normal, float2 pixel, uint ray_count) {
     float3 tangent = normalize(cross(geometric_normal, abs(geometric_normal.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0)));
     float3 bitangent = cross(geometric_normal, tangent);
 
-    float frame = float(push_data.frame.frame_number % 1024);
-    float rotation = frac(interleaved_gradient_noise(pixel) + frame * 0.618034);
-    float offset = frac(interleaved_gradient_noise(pixel + float2(37.0, 17.0)) + frame * 0.754878);
+    uint2 texel = uint2(pixel);
+    uint seed = pcg_hash(texel.x + pcg_hash(texel.y + pcg_hash(push_data.frame.frame_number)));
 
     uint visible = 0;
-    for (uint i = 0; i < AMBIENT_RAY_COUNT; i++) {
-        float u = frac((i + offset) / AMBIENT_RAY_COUNT);
-        float phi = 2.0 * PI * frac(i * 0.618034 + rotation);
+    for (uint i = 0; i < ray_count; i++) {
+        float u = next_random(seed);
+        float phi = 2.0 * PI * next_random(seed);
         float radius = sqrt(u);
         float3 direction = tangent * (radius * cos(phi)) + bitangent * (radius * sin(phi)) + geometric_normal * sqrt(1.0 - u);
         if (unoccluded(world_position, geometric_normal, direction, AMBIENT_RAY_LENGTH)) visible++;
     }
-    return float(visible) / AMBIENT_RAY_COUNT;
+    return visible;
 }
 
-static const float AMBIENT_MAX_HISTORY = 64.0;
+static const float AMBIENT_MAX_HISTORY = 512.0;
 
 float accumulated_ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
     RWTexture2D<float4> history = push_data.frame.ambient_history;
@@ -205,9 +211,10 @@ float accumulated_ambient_visibility(float3 world_position, float3 geometric_nor
     float visibility = history_visibility;
     float count = history_count;
     if (!history_exact || history_count < AMBIENT_MAX_HISTORY) {
-        float current = ambient_visibility(world_position, geometric_normal, pixel);
-        count = min(history_count + 1.0, AMBIENT_MAX_HISTORY);
-        visibility = lerp(history_visibility, current, 1.0 / count);
+        uint ray_count = history_count < 32.0 ? 32 : history_count < 128.0 ? 8 : AMBIENT_RAY_COUNT;
+        uint hits = ambient_hits(world_position, geometric_normal, pixel, ray_count);
+        count = min(history_count + float(ray_count), AMBIENT_MAX_HISTORY);
+        visibility = lerp(history_visibility, float(hits) / float(ray_count), float(ray_count) / min(history_count + float(ray_count), AMBIENT_MAX_HISTORY));
     }
 
     output[uint2(pixel)] = float4(visibility, count, length(world_position - push_data.frame.camera_position), 0.0);
