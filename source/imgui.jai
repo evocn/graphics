@@ -24,7 +24,7 @@ imgui_state : struct {
 }
 
 Imgui_Push_Data :: struct @Gpu {
-    vertices  : Gpu_Pointer(ImGui.ImDrawVert); @ReadOnly
+    vertices  : Gpu_Pointer(ImGui.ImDrawVert);
     scale     : Vector2;
     translate : Vector2;
     texture   : Texture_Handle;

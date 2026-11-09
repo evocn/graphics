@@ -78,16 +78,6 @@ emit_struct :: (builder: *String_Builder, emitted: *[..] *Type_Info_Struct, info
             return false;
         }
 
-        if array_find(member.notes, "ReadOnly") {
-            pointer := cast(*Type_Info_Struct) member.type;
-            if member.type.type != .STRUCT || !is_gpu_pointer(pointer) {
-                log_error("%.% is @ReadOnly but is not a Gpu_Pointer.", info.name, member.name);
-                return false;
-            }
-            target := slang_type_of(gpu_pointer_target(pointer));
-            slang_type = tprint("ImmutablePtr<%>", target);
-        }
-
         print_to_builder(builder, "    % %%;\n", slang_type, member.name, array_suffix);
         array_add(*layout.fields, .{member.name, member.offset_in_bytes});
         cursor = member.offset_in_bytes + member.type.runtime_size;

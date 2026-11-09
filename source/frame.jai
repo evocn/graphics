@@ -9,9 +9,9 @@ Frame_Constants :: struct @Gpu {
 }
 
 Push_Data :: struct @Gpu {
-    frame      : Gpu_Pointer(Frame_Constants); @ReadOnly
-    draws      : Gpu_Pointer(Draw_Data); @ReadOnly
-    materials  : Gpu_Pointer(Material); @ReadOnly
+    frame      : Gpu_Pointer(Frame_Constants);
+    draws      : Gpu_Pointer(Draw_Data);
+    materials  : Gpu_Pointer(Material);
     draw_index : u32;
 }
 
