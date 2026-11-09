@@ -148,22 +148,11 @@ main :: () {
     init_instance();
     defer deinit_instance();
 
-    vk_load_instance_functions(instance);
-
-    init_surface(program_state.window);
+    init_surface();
     defer deinit_surface();
 
     init_device();
     defer deinit_device();
-
-    vk_load_device_functions(device);
-
-    // Get Queues
-    {
-        vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.graphics, queueIndex=0, *queue);
-        //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.compute, queueIndex=0, *compute_queue);
-        //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.transfer, queueIndex=0, *transfer_queue);
-    }
 
     init_heaps();
     defer deinit_heaps();

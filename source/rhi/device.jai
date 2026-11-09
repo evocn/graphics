@@ -1,143 +1,80 @@
-// Graphics
-// Device
+instance        : VkInstance;
+debug_messenger : VkDebugUtilsMessengerEXT;
+surface         : VkSurfaceKHR;
 
-using vulkan_device : struct {
-    instance                : VkInstance;
-    surface                 : VkSurfaceKHR;
-    debug_messenger         : VkDebugUtilsMessengerEXT;
+physical_device                   : VkPhysicalDevice;
+device_limits                     : VkPhysicalDeviceLimits;
+memory_properties                 : VkPhysicalDeviceMemoryProperties;
+descriptor_heap_properties        : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+acceleration_structure_properties : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
 
-    physical_device_context : struct {
-        physical_device : VkPhysicalDevice;
-        queue_family_indices : struct {
-            graphics : int = -1;
-            compute  : int = -1;
-            transfer : int = -1;
-        }
-
-        memory_properties : VkPhysicalDeviceMemoryProperties;
-
-        using properties : struct {
-            properties2 : VkPhysicalDeviceProperties2;
-            vulkan_1_1_properties   : VkPhysicalDeviceVulkan11Properties;
-            vulkan_1_2_properties   : VkPhysicalDeviceVulkan12Properties;
-            vulkan_1_3_properties   : VkPhysicalDeviceVulkan13Properties;
-            vulkan_1_4_properties   : VkPhysicalDeviceVulkan14Properties;
-            descriptor_heap_properties          : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
-            acceleration_structure_properties   : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
-        }
-
-        using features : struct {
-            features2           : VkPhysicalDeviceFeatures2;
-            vulkan_1_1_features : VkPhysicalDeviceVulkan11Features;
-            vulkan_1_2_features : VkPhysicalDeviceVulkan12Features;
-            vulkan_1_3_features : VkPhysicalDeviceVulkan13Features;
-            vulkan_1_4_features : VkPhysicalDeviceVulkan14Features;
-            shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
-            unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
-            descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
-            untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
-            address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
-            swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
-            acceleration_structure_features : VkPhysicalDeviceAccelerationStructureFeaturesKHR;
-            ray_query_features              : VkPhysicalDeviceRayQueryFeaturesKHR;
-        }
-    }
-
-    device  : VkDevice;
-    queue   : VkQueue;
-}
+device              : VkDevice;
+queue_family_index  : u32;
+queue               : VkQueue;
 
 init_instance :: () {
-    result : VkResult;
-
-    {
-        using instance_create_info : VkInstanceCreateInfo;
-        application_info := VkApplicationInfo.{apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 0)};
-        pApplicationInfo = *application_info;
-
-        instance_extensions : [..] *u8;
-        array_add(*instance_extensions, VK_KHR_SURFACE_EXTENSION_NAME.data);
-        array_add(*instance_extensions, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.data);
-        array_add(*instance_extensions, VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME.data);
-        #if OS == .WINDOWS {
-            array_add(*instance_extensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME.data);
-        } else {
-            #assert(false);
-        }
-
-        #if DEVELOPER_TOOLS {
-            array_add(*instance_extensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME.data);
-        }
-
-        enabledExtensionCount   = xx instance_extensions.count;
-        ppEnabledExtensionNames = instance_extensions.data;
-
-        enabled_layers: [..] *u8;
-
-        #if DEVELOPER_TOOLS {
-            array_add(*enabled_layers, "VK_LAYER_KHRONOS_validation");
-        }
-
-        enabledLayerCount = xx enabled_layers.count;
-        ppEnabledLayerNames = enabled_layers.data;
-
-        #if DEVELOPER_TOOLS {
-            validate_sync : VkBool32 = VK_TRUE;
-            layer_settings := VkLayerSettingEXT.[
-                .{
-                    pLayerName   = "VK_LAYER_KHRONOS_validation",
-                    pSettingName = "validate_sync",
-                    type         = .BOOL32,
-                    valueCount   = 1,
-                    pValues      = *validate_sync,
-                },
-            ];
-
-            layer_settings_create_info : VkLayerSettingsCreateInfoEXT;
-            layer_settings_create_info.settingCount = xx layer_settings.count;
-            layer_settings_create_info.pSettings    = layer_settings.data;
-
-            pNext = *layer_settings_create_info;
-        }
-
-        result = vkCreateInstance(*instance_create_info, null, *instance);
-        assert(result == .SUCCESS);
+    instance_extensions : [..] *u8;
+    array_add(*instance_extensions, VK_KHR_SURFACE_EXTENSION_NAME.data);
+    array_add(*instance_extensions, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME.data);
+    array_add(*instance_extensions, VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME.data);
+    #if OS == .WINDOWS {
+        array_add(*instance_extensions, VK_KHR_WIN32_SURFACE_EXTENSION_NAME.data);
+    } else {
+        #assert(false);
     }
+
+    enabled_layers : [..] *u8;
+
+    application_info := VkApplicationInfo.{apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 0)};
+    instance_create_info := VkInstanceCreateInfo.{pApplicationInfo = *application_info};
 
     #if DEVELOPER_TOOLS {
-        vkCreateDebugUtilsMessengerEXT : PFN_vkCreateDebugUtilsMessengerEXT = xx vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+        array_add(*instance_extensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME.data);
+        array_add(*enabled_layers, "VK_LAYER_KHRONOS_validation");
 
-        if vkCreateDebugUtilsMessengerEXT {
-            messenger_create_info : VkDebugUtilsMessengerCreateInfoEXT;
-            messenger_create_info.messageSeverity = .WARNING | .ERROR;
-            messenger_create_info.messageType     = .GENERAL | .VALIDATION | .PERFORMANCE;
-            messenger_create_info.pfnUserCallback = debug_utils_callback;
+        validate_sync : VkBool32 = VK_TRUE;
+        layer_setting := VkLayerSettingEXT.{
+            pLayerName   = "VK_LAYER_KHRONOS_validation",
+            pSettingName = "validate_sync",
+            type         = .BOOL32,
+            valueCount   = 1,
+            pValues      = *validate_sync,
+        };
+        layer_settings_create_info := VkLayerSettingsCreateInfoEXT.{settingCount = 1, pSettings = *layer_setting};
+        instance_create_info.pNext = *layer_settings_create_info;
+    }
 
-            result = vkCreateDebugUtilsMessengerEXT(instance, *messenger_create_info, null, *debug_messenger);
-            assert(result == .SUCCESS);
-        }
-        else {
-            log_error("Unable to load the debug messenger!");
-        }
+    instance_create_info.enabledExtensionCount   = xx instance_extensions.count;
+    instance_create_info.ppEnabledExtensionNames = instance_extensions.data;
+    instance_create_info.enabledLayerCount       = xx enabled_layers.count;
+    instance_create_info.ppEnabledLayerNames     = enabled_layers.data;
+
+    result := vkCreateInstance(*instance_create_info, null, *instance);
+    assert(result == .SUCCESS);
+
+    vk_load_instance_functions(instance);
+
+    #if DEVELOPER_TOOLS {
+        messenger_create_info := VkDebugUtilsMessengerCreateInfoEXT.{
+            messageSeverity = .WARNING | .ERROR,
+            messageType     = .GENERAL | .VALIDATION | .PERFORMANCE,
+            pfnUserCallback = debug_utils_callback,
+        };
+        result = vkCreateDebugUtilsMessengerEXT(instance, *messenger_create_info, null, *debug_messenger);
+        assert(result == .SUCCESS);
     }
 }
-
 
 deinit_instance :: () {
     #if DEVELOPER_TOOLS {
-        if debug_messenger {
-            vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
-        }
+        vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
     }
     vkDestroyInstance(instance, null);
 }
 
-init_surface :: (window: Window_Type) {
+init_surface :: () {
     #if OS == .WINDOWS {
-
-        using surface_create_info: VkWin32SurfaceCreateInfoKHR; 
-        hinstance = GetModuleHandleW(null);
-        hwnd      = window;
+        surface_create_info := VkWin32SurfaceCreateInfoKHR.{hinstance = GetModuleHandleW(null), hwnd = program_state.window};
         result := vkCreateWin32SurfaceKHR(instance, *surface_create_info, null, *surface);
         assert(result == .SUCCESS);
     } else {
@@ -150,312 +87,156 @@ deinit_surface :: () {
 }
 
 init_device :: () {
-    result : VkResult;
+    physical_device_count : u32;
+    vkEnumeratePhysicalDevices(instance, *physical_device_count, null);
+    physical_devices := NewArray(physical_device_count, VkPhysicalDevice,, temp);
+    vkEnumeratePhysicalDevices(instance, *physical_device_count, physical_devices.data);
 
-    physical_device_count : u32 = ---;
-    physical_devices : [..] VkPhysicalDevice;
+    chosen_is_discrete := false;
+    for candidate : physical_devices {
+        properties : VkPhysicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(candidate, *properties);
+        is_discrete := properties.deviceType == .DISCRETE_GPU;
+        log("GPU %: % (%).", it_index, to_string(properties.deviceName.data), properties.deviceType);
+
+        family_count : u32;
+        vkGetPhysicalDeviceQueueFamilyProperties(candidate, *family_count, null);
+        families := NewArray(family_count, VkQueueFamilyProperties,, temp);
+        vkGetPhysicalDeviceQueueFamilyProperties(candidate, *family_count, families.data);
+
+        for family : families {
+            supports_present : VkBool32;
+            vkGetPhysicalDeviceSurfaceSupportKHR(candidate, xx it_index, surface, *supports_present);
+            if !supports_present || !(family.queueFlags & .GRAPHICS) continue;
+
+            if !physical_device || (is_discrete && !chosen_is_discrete) {
+                physical_device    = candidate;
+                queue_family_index = xx it_index;
+                chosen_is_discrete = is_discrete;
+            }
+            break;
+        }
+    }
+    assert(physical_device != null, "No GPU has a queue family that supports both graphics and present.");
+
+    acceleration_structure_properties = .{};
+    descriptor_heap_properties = .{pNext = *acceleration_structure_properties};
+    properties2 := VkPhysicalDeviceProperties2.{pNext = *descriptor_heap_properties};
+    vkGetPhysicalDeviceProperties2(physical_device, *properties2);
+    device_limits = properties2.properties.limits;
+    log("Using %, queue family %.", to_string(properties2.properties.deviceName.data), queue_family_index);
+
+    vkGetPhysicalDeviceMemoryProperties(physical_device, *memory_properties);
+
+    Features :: struct {
+        features2                       : VkPhysicalDeviceFeatures2;
+        vulkan_1_1_features             : VkPhysicalDeviceVulkan11Features;
+        vulkan_1_2_features             : VkPhysicalDeviceVulkan12Features;
+        vulkan_1_3_features             : VkPhysicalDeviceVulkan13Features;
+        vulkan_1_4_features             : VkPhysicalDeviceVulkan14Features;
+        shader_object_features          : VkPhysicalDeviceShaderObjectFeaturesEXT;
+        unified_image_layout_features   : VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
+        descriptor_heap_features        : VkPhysicalDeviceDescriptorHeapFeaturesEXT;
+        untyped_pointers_features       : VkPhysicalDeviceShaderUntypedPointersFeaturesKHR;
+        address_commands_features       : VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR;
+        swapchain_maintenance_features  : VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR;
+        acceleration_structure_features : VkPhysicalDeviceAccelerationStructureFeaturesKHR;
+        ray_query_features              : VkPhysicalDeviceRayQueryFeaturesKHR;
+    }
+
+    chain :: (using features: *Features) {
+        features2.pNext                       = *vulkan_1_1_features;
+        vulkan_1_1_features.pNext             = *vulkan_1_2_features;
+        vulkan_1_2_features.pNext             = *vulkan_1_3_features;
+        vulkan_1_3_features.pNext             = *vulkan_1_4_features;
+        vulkan_1_4_features.pNext             = *shader_object_features;
+        shader_object_features.pNext          = *unified_image_layout_features;
+        unified_image_layout_features.pNext   = *descriptor_heap_features;
+        descriptor_heap_features.pNext        = *untyped_pointers_features;
+        untyped_pointers_features.pNext       = *address_commands_features;
+        address_commands_features.pNext       = *swapchain_maintenance_features;
+        swapchain_maintenance_features.pNext  = *acceleration_structure_features;
+        acceleration_structure_features.pNext = *ray_query_features;
+    }
+
+    supported : Features;
+    chain(*supported);
+    vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
+
+    enabled : Features;
+    chain(*enabled);
+    enabled.features2.features.shaderInt64                        = VK_TRUE;
+    enabled.features2.features.fragmentStoresAndAtomics           = VK_TRUE;
+    enabled.features2.features.samplerAnisotropy                  = VK_TRUE;
+    enabled.vulkan_1_1_features.shaderDrawParameters              = VK_TRUE;
+    enabled.vulkan_1_2_features.timelineSemaphore                 = VK_TRUE;
+    enabled.vulkan_1_2_features.bufferDeviceAddress               = VK_TRUE;
+    enabled.vulkan_1_2_features.runtimeDescriptorArray            = VK_TRUE;
+    enabled.vulkan_1_2_features.scalarBlockLayout                 = VK_TRUE;
+    enabled.vulkan_1_3_features.dynamicRendering                  = VK_TRUE;
+    enabled.vulkan_1_3_features.synchronization2                  = VK_TRUE;
+    enabled.vulkan_1_3_features.shaderDemoteToHelperInvocation    = VK_TRUE;
+    enabled.vulkan_1_4_features.maintenance5                      = VK_TRUE;
+    enabled.shader_object_features.shaderObject                   = VK_TRUE;
+    enabled.unified_image_layout_features.unifiedImageLayouts     = VK_TRUE;
+    enabled.descriptor_heap_features.descriptorHeap               = VK_TRUE;
+    enabled.untyped_pointers_features.shaderUntypedPointers       = VK_TRUE;
+    enabled.address_commands_features.deviceAddressCommands       = VK_TRUE;
+    enabled.swapchain_maintenance_features.swapchainMaintenance1  = VK_TRUE;
+    enabled.acceleration_structure_features.accelerationStructure = VK_TRUE;
+    enabled.ray_query_features.rayQuery                           = VK_TRUE;
+
     {
-        result = vkEnumeratePhysicalDevices(instance, *physical_device_count, null);
-        assert(result == .SUCCESS);
-        assert(physical_device_count != 0, "You're running this on a machine which does not have any Vulkan-compatible drivers!");
-
-        array_resize(*physical_devices, physical_device_count, initialize=false);
-        result = vkEnumeratePhysicalDevices(instance, *physical_device_count, physical_devices.data);
-        assert(result == .SUCCESS);
-    }
-
-    log("Vulkan sees % Physical device%.", physical_device_count, ifx physical_device_count == 1 then "" else "s");
-
-    favorite_device_index : int = -1; // This is where we'll choose the physical device we want to use.
-    for physical_device, device_index : physical_devices {
-        log("\n");
-        log("    Physical Device %:", device_index);
-
-        is_discrete : bool;
-        {
-            physical_device_properties : VkPhysicalDeviceProperties;
-            vkGetPhysicalDeviceProperties(physical_device, *physical_device_properties);
-            log_physical_device_properties(physical_device_properties);
-            is_discrete = physical_device_properties.deviceType == .DISCRETE_GPU;
-        }
-
-        queue_family_index_which_supports_present := -1;
-        {
-            queue_family_count: u32 = ---;
-            queue_families : [..] VkQueueFamilyProperties;
-            vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, null);
-            array_resize(*queue_families, queue_family_count, initialize=false);
-            vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, queue_families.data);
-            log("    Physical device % supports % queues families.", device_index, queue_family_count);
-
-            for queue_family, queue_family_index : queue_families {
-                supports_present := VK_FALSE;
-                vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, xx queue_family_index, surface, *supports_present);
-
-                log("        %: %", queue_family_index, queue_family);
-
-                if supports_present && (queue_family.queueFlags & .GRAPHICS) {
-                    queue_family_index_which_supports_present = queue_family_index;
-                }
-            }
-        }
-
-        if is_discrete {
-            log("    It's a discrete GPU.");
-        }
-        has_graphics_queue_which_supports_present := queue_family_index_which_supports_present != -1;
-        if has_graphics_queue_which_supports_present {
-            log("    Queue family % supports present and graphics.", queue_family_index_which_supports_present);
-        }
-
-        if has_graphics_queue_which_supports_present && is_discrete {
-            favorite_device_index = device_index;
+        supported_bytes := cast(*VkBool32) *supported;
+        enabled_bytes   := cast(*VkBool32) *enabled;
+        for 0..size_of(Features) / size_of(VkBool32) - 1 {
+            if enabled_bytes[it] == VK_TRUE  assert(supported_bytes[it] == VK_TRUE, "The GPU lacks a required feature (Features word %).", it);
         }
     }
 
-    assert(favorite_device_index != -1);
+    device_extensions :: *u8.[
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME.data,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data,
+        VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data,
+        VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data,
+        VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data,
+        VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data,
+        VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME.data,
+        VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.data,
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME.data,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME.data,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME.data,
+    ];
 
-    log("\n");
+    queue_priority : float = 1.0;
+    queue_create_info := VkDeviceQueueCreateInfo.{
+        queueFamilyIndex = queue_family_index,
+        queueCount       = 1,
+        pQueuePriorities = *queue_priority,
+    };
 
-    log("Alright. We've seen enough. We're choosing device %!", favorite_device_index);
-    physical_device_context.physical_device = physical_devices[favorite_device_index];
+    device_create_info := VkDeviceCreateInfo.{
+        pNext                   = *enabled.features2,
+        queueCreateInfoCount    = 1,
+        pQueueCreateInfos       = *queue_create_info,
+        enabledExtensionCount   = device_extensions.count,
+        ppEnabledExtensionNames = device_extensions.data,
+    };
+    result := vkCreateDevice(physical_device, *device_create_info, null, *device);
+    assert(result == .SUCCESS);
 
-    log("\n");
-
-    {
-        using physical_device_context;
-
-        // Select Queue Family Indices for the program.
-        {
-            queue_family_count: u32 = ---;
-            queue_families : [..] VkQueueFamilyProperties;
-            vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, null);
-            array_resize(*queue_families, queue_family_count, initialize=false);
-            vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, queue_families.data);
-
-            using queue_family_indices;
-            for queue_family, queue_family_index : queue_families {
-                supports_present := VK_FALSE;
-                vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, xx queue_family_index, surface, *supports_present);
-
-                flags := queue_family.queueFlags;
-
-                if graphics == -1 && supports_present && (flags & .GRAPHICS) {
-                    graphics = queue_family_index;
-                }
-
-                if compute == -1 && (flags & (.COMPUTE | .GRAPHICS)) == .COMPUTE {
-                    compute = queue_family_index;
-                }
-
-                if transfer == -1 && (flags & (.TRANSFER | .GRAPHICS | .COMPUTE)) == .TRANSFER {
-                    transfer = queue_family_index;
-                }
-            }
-
-            assert(graphics != -1, "This GPU exposes no queue family that supports both graphics and present.");
-
-            if compute  == -1 then compute  = graphics;
-            if transfer == -1 then transfer = graphics;
-
-            {
-                using queue_family_indices;
-                log("Using the following queue family indices with this GPU:");
-                log("    %: Graphics", graphics);
-                log("    %: Compute", compute);
-                log("    %: Transfer", transfer);
-                log("\n");
-            }
-        }
-
-        vkGetPhysicalDeviceMemoryProperties(physical_device, *memory_properties);
-        {
-            using memory_properties;
-            log("Physical Device Memory types:");
-            for 0..memoryTypeCount-1 {
-                log("    %: %", it, memoryTypes[it]);
-            }
-            log("\n");
-        }
-
-        // Create Device
-        {
-            using device_create_info: VkDeviceCreateInfo;
-
-            queue_priority : float = 1.0;
-            queue_create_infos : [3] VkDeviceQueueCreateInfo;
-            queue_create_info_count := 0;
-
-            requested_families := int.[
-                queue_family_indices.graphics,
-                queue_family_indices.compute,
-                queue_family_indices.transfer,
-            ];
-
-            for family : requested_families {
-                already_requested := false;
-                for 0..queue_create_info_count-1 {
-                    if queue_create_infos[it].queueFamilyIndex == cast(u32) family {
-                        already_requested = true;
-                        break;
-                    }
-                }
-                if already_requested continue;
-
-                queue_create_infos[queue_create_info_count].queueFamilyIndex = xx family;
-                queue_create_infos[queue_create_info_count].queueCount       = 1;
-                queue_create_infos[queue_create_info_count].pQueuePriorities = *queue_priority;
-                queue_create_info_count += 1;
-            }
-
-            queueCreateInfoCount    = xx queue_create_info_count;
-            pQueueCreateInfos       = queue_create_infos.data;
-
-            // Device Extensions
-            device_extensions :: *u8.[
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME.data,
-                VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME.data,
-                VK_EXT_SHADER_OBJECT_EXTENSION_NAME.data,
-                VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME.data,
-                VK_KHR_UNIFIED_IMAGE_LAYOUTS_EXTENSION_NAME.data,
-                VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME.data,
-                VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME.data,
-                VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME.data,
-
-                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME.data,
-                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME.data,
-                VK_KHR_RAY_QUERY_EXTENSION_NAME.data,
-            ];
-
-            enabledExtensionCount   = xx device_extensions.count;
-            ppEnabledExtensionNames = device_extensions.data;
-
-            // Properties
-            {
-                acceleration_structure_properties = .{pNext = null};
-                descriptor_heap_properties = .{pNext = *acceleration_structure_properties};
-                vulkan_1_4_properties = .{pNext = *descriptor_heap_properties};
-                vulkan_1_3_properties = .{pNext = *vulkan_1_4_properties};
-                vulkan_1_2_properties = .{pNext = *vulkan_1_3_properties};
-                vulkan_1_1_properties = .{pNext = *vulkan_1_2_properties};
-
-                properties2 = .{pNext = *vulkan_1_1_properties};
-                vkGetPhysicalDeviceProperties2(physical_device, *properties2);
-            }
-
-            // Features
-            {
-                supported : type_of(features);
-                {
-                    supported.acceleration_structure_features.pNext = *supported.ray_query_features;
-                    supported.swapchain_maintenance_features.pNext  = *supported.acceleration_structure_features;
-                    supported.address_commands_features.pNext       = *supported.swapchain_maintenance_features;
-                    supported.untyped_pointers_features.pNext       = *supported.address_commands_features;
-                    supported.descriptor_heap_features.pNext        = *supported.untyped_pointers_features;
-                    supported.unified_image_layout_features.pNext   = *supported.descriptor_heap_features;
-                    supported.shader_object_features.pNext          = *supported.unified_image_layout_features;
-                    supported.vulkan_1_4_features.pNext             = *supported.shader_object_features;
-                    supported.vulkan_1_3_features.pNext             = *supported.vulkan_1_4_features;
-                    supported.vulkan_1_2_features.pNext             = *supported.vulkan_1_3_features;
-                    supported.vulkan_1_1_features.pNext             = *supported.vulkan_1_2_features;
-                    supported.features2.pNext                       = *supported.vulkan_1_1_features;
-
-                    vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
-                }
-
-                assert(VK_TRUE == supported.features2.features.shaderInt64);
-                assert(VK_TRUE == supported.features2.features.fragmentStoresAndAtomics);
-                assert(VK_TRUE == supported.features2.features.samplerAnisotropy);
-                assert(VK_TRUE == supported.vulkan_1_1_features.shaderDrawParameters);
-                assert(VK_TRUE == supported.vulkan_1_2_features.timelineSemaphore);
-                assert(VK_TRUE == supported.vulkan_1_2_features.bufferDeviceAddress);
-                assert(VK_TRUE == supported.vulkan_1_2_features.runtimeDescriptorArray);
-                assert(VK_TRUE == supported.vulkan_1_2_features.scalarBlockLayout);
-                assert(VK_TRUE == supported.vulkan_1_3_features.dynamicRendering);
-                assert(VK_TRUE == supported.vulkan_1_3_features.synchronization2);
-                assert(VK_TRUE == supported.vulkan_1_3_features.shaderDemoteToHelperInvocation);
-                assert(VK_TRUE == supported.vulkan_1_4_features.maintenance5);
-                assert(VK_TRUE == supported.shader_object_features.shaderObject);
-                assert(VK_TRUE == supported.unified_image_layout_features.unifiedImageLayouts);
-                assert(VK_TRUE == supported.descriptor_heap_features.descriptorHeap);
-                assert(VK_TRUE == supported.untyped_pointers_features.shaderUntypedPointers);
-                assert(VK_TRUE == supported.address_commands_features.deviceAddressCommands);
-                assert(VK_TRUE == supported.swapchain_maintenance_features.swapchainMaintenance1);
-
-                assert(VK_TRUE == supported.acceleration_structure_features.accelerationStructure);
-                assert(VK_TRUE == supported.ray_query_features.rayQuery);
-
-                ray_query_features = .{rayQuery = VK_TRUE, pNext = null};
-                acceleration_structure_features = .{accelerationStructure = VK_TRUE, pNext = *ray_query_features};
-                swapchain_maintenance_features = .{swapchainMaintenance1 = VK_TRUE, pNext = *acceleration_structure_features};
-                address_commands_features = .{deviceAddressCommands = VK_TRUE, pNext = *swapchain_maintenance_features};
-                untyped_pointers_features = .{shaderUntypedPointers = VK_TRUE, pNext = *address_commands_features};
-                descriptor_heap_features = .{descriptorHeap = VK_TRUE, pNext = *untyped_pointers_features};
-                unified_image_layout_features = .{unifiedImageLayouts = VK_TRUE, pNext = *descriptor_heap_features};
-                shader_object_features = .{shaderObject = VK_TRUE, pNext = *unified_image_layout_features};
-                vulkan_1_4_features = .{pNext = *shader_object_features};
-                {
-                    using vulkan_1_4_features;
-                    maintenance5 = VK_TRUE;
-
-                    hostImageCopy = supported.vulkan_1_4_features.hostImageCopy;
-                }
-                vulkan_1_3_features = .{pNext = *vulkan_1_4_features};
-                {
-                    using vulkan_1_3_features;
-                    dynamicRendering = VK_TRUE;
-                    synchronization2 = VK_TRUE;
-                    shaderDemoteToHelperInvocation = VK_TRUE;
-                }
-                vulkan_1_2_features = .{pNext = *vulkan_1_3_features};
-                {
-                    using vulkan_1_2_features;
-                    timelineSemaphore = VK_TRUE;
-                    bufferDeviceAddress = VK_TRUE;
-                    runtimeDescriptorArray = VK_TRUE;
-                    scalarBlockLayout = VK_TRUE;
-                }
-                vulkan_1_1_features = .{pNext = *vulkan_1_2_features};
-                {
-                    using vulkan_1_1_features;
-                    shaderDrawParameters = VK_TRUE;
-                }
-                features2 = .{pNext = *vulkan_1_1_features};
-                {
-                    using features2.features;
-                    shaderInt64 = VK_TRUE;
-                    fragmentStoresAndAtomics = VK_TRUE;
-                    samplerAnisotropy = VK_TRUE;
-                }
-            }
-
-            pNext = *features2;
-
-            result = vkCreateDevice(physical_device, *device_create_info, null, *device);
-            assert(result == .SUCCESS);
-        }
-    }
+    vk_load_device_functions(device);
+    vkGetDeviceQueue(device, queue_family_index, 0, *queue);
 }
 
 deinit_device :: () {
     vkDestroyDevice(device, null);
 }
 
-log_physical_device_properties :: (using physical_device_properties : VkPhysicalDeviceProperties) {
-    log("================================================");
-    log("Name: %", cast(string, deviceName));
-    //log("Vendor: %", vendorID);
-    //log("Device: %", deviceID);
-    log("Type: %", deviceType);
-    log("API Version: %.%.%", VK_API_VERSION_MAJOR(apiVersion), VK_API_VERSION_MINOR(apiVersion), VK_API_VERSION_PATCH(apiVersion));
-    log("================================================");
-}
-
 debug_utils_callback :: (severity: VkDebugUtilsMessageSeverityFlagBitsEXT, types: VkDebugUtilsMessageTypeFlagsEXT, callback_data: *VkDebugUtilsMessengerCallbackDataEXT, user_data: *void) -> VkBool32 #c_call {
     push_context {
         print("VULKAN %: %\n\n", severity, to_string(callback_data.pMessage));
     }
-
     return VK_FALSE;
 }
 
@@ -463,11 +244,11 @@ set_debug_name :: (object_type: VkObjectType, handle: *void, name: string) {
     #if DEVELOPER_TOOLS {
         if handle == null return;
 
-        name_info : VkDebugUtilsObjectNameInfoEXT;
-        name_info.objectType   = object_type;
-        name_info.objectHandle = cast(u64) handle;
-        name_info.pObjectName  = temp_c_string(name);
-
+        name_info := VkDebugUtilsObjectNameInfoEXT.{
+            objectType   = object_type,
+            objectHandle = cast(u64) handle,
+            pObjectName  = temp_c_string(name),
+        };
         vkSetDebugUtilsObjectNameEXT(device, *name_info);
     }
 }

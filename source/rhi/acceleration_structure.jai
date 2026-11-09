@@ -73,7 +73,7 @@ build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccele
     storage_offset := heap_allocate(*heaps.buffer, build_sizes.accelerationStructureSize, 256);
     scratch_offset := heap_allocate(*heaps.scratch,
         build_sizes.buildScratchSize,
-        physical_device_context.acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment
+        acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment
     );
 
     acceleration_structure : VkAccelerationStructureKHR;

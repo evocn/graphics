@@ -163,7 +163,7 @@ init_image_heap :: (heap: *Heap, name: string, size: VkDeviceSize, representativ
 }
 
 allocate_heap_memory :: (heap: *Heap, size: VkDeviceSize, memory_type_bits: u32, properties: VkMemoryPropertyFlagBits, device_address: bool) {
-    success, memory_type_index := select_memory_type(physical_device_context.memory_properties, memory_type_bits, properties);
+    success, memory_type_index := select_memory_type(memory_properties, memory_type_bits, properties);
     assert(success, "No memory type for the % has %.", heap.name, properties);
     heap.memory_type_index = memory_type_index;
 

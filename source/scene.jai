@@ -112,7 +112,7 @@ init_data :: () {
         addressModeV     = .REPEAT,
         addressModeW     = .REPEAT,
         anisotropyEnable = VK_TRUE,
-        maxAnisotropy    = min(16.0, physical_device_context.properties2.properties.limits.maxSamplerAnisotropy),
+        maxAnisotropy    = min(16.0, device_limits.maxSamplerAnisotropy),
         maxLod           = VK_LOD_CLAMP_NONE,
     });
 

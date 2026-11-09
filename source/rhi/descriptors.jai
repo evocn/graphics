@@ -19,7 +19,6 @@ using descriptor_heaps : struct {
 }
 
 init_descriptor_heaps :: () {
-    using physical_device_context;
 
     image_descriptor_stride   = descriptor_heap_properties.imageDescriptorSize;
     sampler_descriptor_stride = descriptor_heap_properties.samplerDescriptorSize;

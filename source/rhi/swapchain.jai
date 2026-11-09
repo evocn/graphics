@@ -32,7 +32,6 @@ swapchain_context : struct {
 
 init_swapchain :: (width: u32, height: u32) {
     result : VkResult;
-    using physical_device_context;
 
     surface_format_count : u32 = ---;
     surface_formats : [..] VkSurfaceFormatKHR;
@@ -300,7 +299,7 @@ deinit_swapchain :: () {
 
 recreate_swapchain :: (width: u32, height: u32, present_fences: [] VkFence) -> ready: bool {
     surface_capabilities : VkSurfaceCapabilitiesKHR;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_context.physical_device, surface, *surface_capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, *surface_capabilities);
 
     if surface_capabilities.currentExtent.width == 0 || surface_capabilities.currentExtent.height == 0 {
         return false;

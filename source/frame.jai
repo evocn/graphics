@@ -56,7 +56,7 @@ init_render :: () {
         {
             using command_pool_create_info: VkCommandPoolCreateInfo;
             flags = .RESET_COMMAND_BUFFER;
-            queueFamilyIndex = xx physical_device_context.queue_family_indices.graphics;
+            queueFamilyIndex = queue_family_index;
             result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
             assert(result == .SUCCESS);
         }
@@ -360,7 +360,7 @@ draw_frame :: () {
         result = vkGetQueryPoolResults(device, timestamp_pool, xx (index * 2), 2, size_of(type_of(timestamps)), timestamps.data, size_of(u64), .e64);
         assert(result == .SUCCESS);
 
-        period := physical_device_context.properties2.properties.limits.timestampPeriod;
+        period := device_limits.timestampPeriod;
         gpu_frame_ms = cast(float) (timestamps[1] - timestamps[0]) * period / 1_000_000.0;
     }
 
