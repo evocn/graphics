@@ -35,6 +35,9 @@ using render_context : struct {
 
     frame_constants_offset      : VkDeviceSize;
 
+    timestamp_pool : VkQueryPool;
+    gpu_frame_ms   : float;
+
     shaders                 : [2] VkShaderEXT;
 
     screenshot : struct {

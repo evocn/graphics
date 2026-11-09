@@ -273,6 +273,7 @@ imgui_debug_ui :: () {
         ImGui.Text("% ms (% FPS)",
             formatFloat(frame_ms,     trailing_width = 2, zero_removal = .NO),
             formatFloat(io.Framerate, trailing_width = 1, zero_removal = .NO));
+        ImGui.Text("GPU % ms", formatFloat(gpu_frame_ms, trailing_width = 2, zero_removal = .NO));
     }
     ImGui.End();
 }

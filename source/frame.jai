@@ -87,6 +87,16 @@ init_render :: () {
         }
     }
 
+    {
+        query_pool_create_info := VkQueryPoolCreateInfo.{
+            queryType  = .TIMESTAMP,
+            queryCount = FRAMES_IN_FLIGHT * 2,
+        };
+        result := vkCreateQueryPool(device, *query_pool_create_info, null, *timestamp_pool);
+        assert(result == .SUCCESS);
+        set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
+    }
+
     // Shaders
     {
         // Read spirv from file
@@ -173,6 +183,7 @@ deinit_render :: () {
         vkDestroySemaphore(device, image_available_semaphores[index], null);
     }
     vkDestroySemaphore(device, timeline_semaphore, null);
+    vkDestroyQueryPool(device, timestamp_pool, null);
     vkDestroyCommandPool(device, command_pool, null);
 }
 
@@ -411,6 +422,15 @@ draw_frame :: () {
         assert(result == .SUCCESS);
     }
 
+    if frame_index > FRAMES_IN_FLIGHT {
+        timestamps : [2] u64;
+        result = vkGetQueryPoolResults(device, timestamp_pool, xx (index * 2), 2, size_of(type_of(timestamps)), timestamps.data, size_of(u64), .e64);
+        assert(result == .SUCCESS);
+
+        period := physical_device_context.properties2.properties.limits.timestampPeriod;
+        gpu_frame_ms = cast(float) (timestamps[1] - timestamps[0]) * period / 1_000_000.0;
+    }
+
     image_index: u32;
     result = vkAcquireNextImageKHR(device, swapchain_context.swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
     if result == .ERROR_OUT_OF_DATE_KHR {
@@ -436,6 +456,9 @@ draw_frame :: () {
         result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
         assert(result == .SUCCESS);
     }
+
+    vkCmdResetQueryPool(command_buffers[index], timestamp_pool, xx (index * 2), 2);
+    vkCmdWriteTimestamp2(command_buffers[index], .NONE, timestamp_pool, xx (index * 2));
 
     {
         swapchain_image_subresource_range : VkImageSubresourceRange;
@@ -612,6 +635,8 @@ draw_frame :: () {
             vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
         }
     }
+
+    vkCmdWriteTimestamp2(command_buffers[index], .ALL_COMMANDS, timestamp_pool, xx (index * 2 + 1));
 
     result = vkEndCommandBuffer(command_buffers[index]);
     assert(result == .SUCCESS);
