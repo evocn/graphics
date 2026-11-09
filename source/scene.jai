@@ -21,7 +21,6 @@ Vertex_Attributes :: struct @Gpu {
 }
 
 ground_positions := Vector3.[
-    // Ground plane at y = +1 (+Y is down), facing up toward the camera.
     .{-15.0,  1.0,  15.0},
     .{ 15.0,  1.0, -15.0},
     .{-15.0,  1.0, -15.0},

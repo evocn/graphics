@@ -1,6 +1,3 @@
-// Graphics
-// Main
-
 DEVELOPER_TOOLS :: #run BUILD_TYPE == .DEBUG;
 
 window        : Window_Type;
@@ -64,7 +61,6 @@ main :: () {
         vk_load_global_functions(vkGIPA);
     }
 
-    // Load Texture Data
     {
         log("Loading our textures...");
         for texture_name : textures_to_load {
@@ -134,7 +130,6 @@ main :: () {
 
             if it.type == {
                 case .KEYBOARD;
-                    // Alt binds
                     if it.alt_pressed {
                         if it.key_pressed && it.key_code == .F4 {
                             running = false;
@@ -146,7 +141,6 @@ main :: () {
                         set_mouse_look(true);
                     }
 
-                    // Debug inputs
                     if it.key_pressed && it.key_code == .ESCAPE {
                         if mouse_look_active  set_mouse_look(false);
                         else                         running = false;
@@ -186,9 +180,7 @@ main :: () {
             update_camera(dt);
             if flying  shimmer_camera_path(cast(float) now);
 
-            // Update Light
             {
-                // The sun orbits the scene.
                 sun_angle := cast(float) now * 0.4;
                 light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
             }
@@ -242,8 +234,6 @@ submit_init_commands :: () {
     heap_reset(*scratch_heap);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 #import "Basic";
 #import "String";
 #import "Math";
@@ -268,8 +258,6 @@ Clipboard :: #import "Clipboard";
     #import "Windows";
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 #load "utils.jai";
 #load "camera.jai";
 #load "rhi/device.jai";
@@ -286,8 +274,6 @@ Clipboard :: #import "Clipboard";
 #load "frame.jai";
 #load "imgui.jai";
 #load "shimmer.jai";
-
-////////////////////////////////////////////////////////////////////////////////
 
 textures_path   :: "assets/textures";
 models_path     :: "assets/models";

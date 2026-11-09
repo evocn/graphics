@@ -1,9 +1,3 @@
-// Graphics
-// ImGui Shader
-
-////////////////////////////////////////////////////////////////////////////////
-// Structs
-
 #include "generated/shared.slang"
 
 [[vk::push_constant]] Imgui_Push_Data push_data;
@@ -12,9 +6,6 @@ struct Coarse_Vertex {
     float4 color;
     float2 uv;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// Vertex Shader
 
 struct Vertex_Stage_Output {
     Coarse_Vertex   coarse_vertex   : CoarseVertex;
@@ -43,9 +34,6 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
 
     return output;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// Fragment Shader
 
 struct Fragment_Stage_Output {
     float4 color;

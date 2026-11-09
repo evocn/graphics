@@ -1,22 +1,12 @@
-// Graphics
-// Material Shader
-
-////////////////////////////////////////////////////////////////////////////////
-// Structs
-
 #include "generated/shared.slang"
 
 [[vk::push_constant]] Push_Data push_data;
 
-// RaytracingAccelerationStructure makes Slang declare SPV_KHR_ray_tracing,
-// which requires the ray-tracing-pipeline device extension...
-// Doing this only emits SPV_KHR_ray_query. So dumb...
 RaytracingAccelerationStructure acceleration_structure_from_address(uint64_t address) {
     return spirv_asm {
         result : $$RaytracingAccelerationStructure = OpConvertUToAccelerationStructureKHR $address
     };
 }
-
 
 struct Coarse_Vertex {
     float3 normal;
@@ -24,9 +14,6 @@ struct Coarse_Vertex {
     float2 uv;
     float3 world_position;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// Vertex Shader
 
 struct Vertex_Stage_Output {
     Coarse_Vertex   coarse_vertex   : CoarseVertex;
@@ -61,10 +48,6 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
 
     return output;
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-// Fragment Shader
 
 struct Fragment_Stage_Output {
     float3 color;

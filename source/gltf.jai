@@ -1,6 +1,3 @@
-// Graphics
-// glTF
-
 load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
     options : cgltf_options;
     data : *cgltf_data;

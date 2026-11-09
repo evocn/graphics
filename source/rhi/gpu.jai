@@ -12,7 +12,6 @@ Sampler_Handle :: struct {
     padding : u32;
 }
 
-
 Storage_Image_Handle :: struct {
     id      : u32;
     padding : u32;

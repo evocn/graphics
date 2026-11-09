@@ -1,7 +1,3 @@
-// Graphics
-// Compile Shaders
-// Alex Hartford
-
 #import "Process";
 #if OS == .WINDOWS {
     #import "Windows";
@@ -31,9 +27,6 @@ slangc :: (output_filename: string, filename: string, entry_point: string) -> su
             "-capability spvGroupNonUniformBallot",
         ],
         working_directory = #filepath,
-        //capture_and_return_output = false,
-        //print_captured_output = false,
-        //timeout_ms = -1,
         arg_quoting = Process_Argument_Quoting.NEVER_QUOTE
     );
 
