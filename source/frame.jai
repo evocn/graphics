@@ -2,15 +2,18 @@
 // Frame
 
 Frame_Constants :: struct @Gpu {
-    view_projection : Matrix4;
+    view_projection          : Matrix4;
+    previous_view_projection : Matrix4;
     tlas_address    : u64;
     light_direction : Vector3;
     sun_intensity   : float;
     time            : float;
-    camera_position : Vector3;
-    ambient                : Storage_Image_Handle;
-    ambient_history_frames : u32;
-    frame_number           : u32;
+    camera_position          : Vector3;
+    previous_camera_position : Vector3;
+    ambient               : Storage_Image_Handle;
+    ambient_history       : Storage_Image_Handle;
+    ambient_history_valid : u32;
+    frame_number          : u32;
 }
 
 Push_Data :: struct @Gpu {
@@ -419,17 +422,29 @@ draw_frame :: () {
         swapchain_context.ambient_initialized = true;
 
         {
-            image_memory_barriers : [4] VkImageMemoryBarrier2;
+            image_memory_barriers : [5] VkImageMemoryBarrier2;
             image_memory_barriers[3] = .{
                 srcStageMask        = .FRAGMENT_SHADER,
                 srcAccessMask       = .SHADER_STORAGE_WRITE,
                 dstStageMask        = .FRAGMENT_SHADER,
-                dstAccessMask       = .SHADER_STORAGE_READ | .SHADER_STORAGE_WRITE,
+                dstAccessMask       = .SHADER_STORAGE_READ,
                 oldLayout           = ifx ambient_history_valid then VkImageLayout.GENERAL else .UNDEFINED,
                 newLayout           = .GENERAL,
                 srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = swapchain_context.ambient_image,
+                image               = swapchain_context.ambient_images[1 - ambient_write_index],
+                subresourceRange    = swapchain_image_subresource_range,
+            };
+            image_memory_barriers[4] = .{
+                srcStageMask        = .FRAGMENT_SHADER,
+                srcAccessMask       = .NONE,
+                dstStageMask        = .FRAGMENT_SHADER,
+                dstAccessMask       = .SHADER_STORAGE_WRITE,
+                oldLayout           = .UNDEFINED,
+                newLayout           = .GENERAL,
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                image               = swapchain_context.ambient_images[ambient_write_index],
                 subresourceRange    = swapchain_image_subresource_range,
             };
             {
@@ -537,16 +552,16 @@ draw_frame :: () {
             frame_constants.time            = cast(float) seconds_since_init();
             frame_constants.camera_position = camera.position;
 
-            if !ambient_history_valid || memcmp(*frame_constants.view_projection, *last_view_projection, size_of(Matrix4)) != 0 {
-                ambient_history_frames = 0;
-            } else {
-                ambient_history_frames = min(ambient_history_frames + 1, 255);
-            }
-            last_view_projection = frame_constants.view_projection;
+            frame_constants.previous_view_projection = previous_view_projection;
+            frame_constants.previous_camera_position = previous_camera_position;
+            previous_view_projection = frame_constants.view_projection;
+            previous_camera_position = frame_constants.camera_position;
 
-            frame_constants.ambient                = swapchain_context.ambient_storage;
-            frame_constants.ambient_history_frames = ambient_history_frames;
-            frame_constants.frame_number           = cast(u32) frame_index;
+            frame_constants.ambient               = swapchain_context.ambient_storages[ambient_write_index];
+            frame_constants.ambient_history       = swapchain_context.ambient_storages[1 - ambient_write_index];
+            frame_constants.ambient_history_valid = xx ambient_history_valid;
+            frame_constants.frame_number          = cast(u32) frame_index;
+            ambient_write_index = 1 - ambient_write_index;
 
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),

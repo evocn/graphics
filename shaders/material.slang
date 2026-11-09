@@ -152,19 +152,66 @@ float ambient_visibility(float3 world_position, float3 geometric_normal, float2 
     return float(visible) / AMBIENT_RAY_COUNT;
 }
 
-static const uint AMBIENT_CONVERGED_FRAMES = 64;
+static const float AMBIENT_MAX_HISTORY = 64.0;
 
 float accumulated_ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
-    uint history_frames = push_data.frame.ambient_history_frames;
-    RWTexture2D<float> history = push_data.frame.ambient;
-    uint2 texel = uint2(pixel);
-    if (history_frames >= AMBIENT_CONVERGED_FRAMES) return history[texel];
+    RWTexture2D<float4> history = push_data.frame.ambient_history;
+    RWTexture2D<float4> output = push_data.frame.ambient;
+    uint2 size;
+    output.GetDimensions(size.x, size.y);
 
-    float current = ambient_visibility(world_position, geometric_normal, pixel);
+    float history_visibility = 0.0;
+    float history_count = 0.0;
+    bool history_exact = false;
+    if (push_data.frame.ambient_history_valid != 0) {
+        float4 previous_clip = mul(push_data.frame.previous_view_projection, float4(world_position, 1.0));
+        if (previous_clip.w > 0.0) {
+            float2 previous_pixel = (previous_clip.xy / previous_clip.w * 0.5 + 0.5) * float2(size) - 0.5;
+            float previous_distance = length(world_position - push_data.frame.previous_camera_position);
 
-    float result = history_frames == 0 ? current : lerp(history[texel], current, 1.0 / float(history_frames + 1));
-    history[texel] = result;
-    return result;
+            float2 base = floor(previous_pixel);
+            float2 fraction = previous_pixel - base;
+            history_exact = all(min(fraction, 1.0 - fraction) < 0.01);
+            if (history_exact) {
+                base = round(previous_pixel);
+                fraction = float2(0.0);
+            }
+
+            float total_weight = 0.0;
+            for (uint i = 0; i < 4; i++) {
+                int2 offset = int2(i & 1, i >> 1);
+                int2 tap = int2(base) + offset;
+                float weight = (offset.x == 1 ? fraction.x : 1.0 - fraction.x) * (offset.y == 1 ? fraction.y : 1.0 - fraction.y);
+                if (weight <= 0.0 || any(tap < 0) || any(tap >= int2(size))) continue;
+
+                float4 stored = history[uint2(tap)];
+                if (abs(stored.z - previous_distance) > 0.02 * previous_distance + 0.01) continue;
+
+                history_visibility += stored.x * weight;
+                history_count += stored.y * weight;
+                total_weight += weight;
+            }
+
+            if (total_weight > 0.01) {
+                history_visibility /= total_weight;
+                history_count /= total_weight;
+            } else {
+                history_count = 0.0;
+            }
+            history_exact = history_exact && total_weight > 0.99;
+        }
+    }
+
+    float visibility = history_visibility;
+    float count = history_count;
+    if (!history_exact || history_count < AMBIENT_MAX_HISTORY) {
+        float current = ambient_visibility(world_position, geometric_normal, pixel);
+        count = min(history_count + 1.0, AMBIENT_MAX_HISTORY);
+        visibility = lerp(history_visibility, current, 1.0 / count);
+    }
+
+    output[uint2(pixel)] = float4(visibility, count, length(world_position - push_data.frame.camera_position), 0.0);
+    return visibility;
 }
 
 [shader("fragment")]

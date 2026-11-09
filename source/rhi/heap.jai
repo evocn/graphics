@@ -54,7 +54,7 @@ init_heaps :: () {
             tiling      = .OPTIMAL;
             usage       = .DEPTH_STENCIL_ATTACHMENT;
         }
-        init_image_heap(*heaps.render_target, "render target heap", 160 * MiB, depth_info);
+        init_image_heap(*heaps.render_target, "render target heap", 256 * MiB, depth_info);
     }
 }
 
