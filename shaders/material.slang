@@ -114,8 +114,8 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, 
     }
 
     float sky = saturate(0.5 - 0.5 * normal.y);
-    float3 ambient = lerp(float3(0.06, 0.05, 0.04), float3(0.16, 0.18, 0.22), sky);
-    float3 sun = float3(1.0, 0.95, 0.85) * saturate(n_dot_l) * shadow;
+    float3 ambient = lerp(float3(0.12, 0.1, 0.08), float3(0.3, 0.34, 0.42), sky);
+    float3 sun = float3(1.0, 0.95, 0.85) * push_data.frame.sun_intensity * saturate(n_dot_l) * shadow;
 
     Fragment_Stage_Output output;
     {

@@ -5,6 +5,7 @@ Frame_Constants :: struct @Gpu {
     view_projection : Matrix4;
     tlas_address    : u64;
     light_direction : Vector3;
+    sun_intensity   : float;
     time            : float;
 }
 
@@ -13,6 +14,11 @@ Push_Data :: struct @Gpu {
     draws      : Gpu_Pointer(Draw_Data);
     materials  : Gpu_Pointer(Material);
     draw_index : u32;
+}
+
+Tonemap_Push_Data :: struct @Gpu {
+    hdr      : Texture_Handle;
+    exposure : float;
 }
 
 FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
@@ -97,11 +103,13 @@ init_render :: () {
         set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
     }
 
-    shaders = create_graphics_shaders("material");
+    shaders         = create_graphics_shaders("material");
+    tonemap_shaders = create_graphics_shaders("tonemap");
 }
 
 deinit_render :: () {
     destroy_graphics_shaders(shaders);
+    destroy_graphics_shaders(tonemap_shaders);
     result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
     assert(result == .SUCCESS);
 
@@ -402,7 +410,7 @@ draw_frame :: () {
         }
 
         {
-            image_memory_barriers : [2] VkImageMemoryBarrier2;
+            image_memory_barriers : [3] VkImageMemoryBarrier2;
             {
                 using image_memory_barriers[0];
                 srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
@@ -432,6 +440,19 @@ draw_frame :: () {
                 subresourceRange.aspectMask = .DEPTH;
             }
 
+            image_memory_barriers[2] = .{
+                srcStageMask        = .FRAGMENT_SHADER,
+                srcAccessMask       = .NONE,
+                dstStageMask        = .COLOR_ATTACHMENT_OUTPUT,
+                dstAccessMask       = .COLOR_ATTACHMENT_WRITE,
+                oldLayout           = .UNDEFINED,
+                newLayout           = .GENERAL,
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                image               = swapchain_context.hdr_image,
+                subresourceRange    = swapchain_image_subresource_range,
+            };
+
             dependency_info : VkDependencyInfo;
             {
                 using dependency_info;
@@ -445,7 +466,7 @@ draw_frame :: () {
         color_attachment : VkRenderingAttachmentInfoKHR;
         {
             using color_attachment;
-            imageView = swapchain_context.views[image_index];
+            imageView = swapchain_context.hdr_view;
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
             storeOp = .STORE;
@@ -494,6 +515,7 @@ draw_frame :: () {
             frame_constants.view_projection = camera_view_projection(aspect);
             frame_constants.tlas_address    = tlas_address;
             frame_constants.light_direction = world_state.light_direction;
+            frame_constants.sun_intensity   = world_state.sun_intensity;
             frame_constants.time            = cast(float) seconds_since_init();
 
             push_data := Push_Data.{
@@ -538,6 +560,60 @@ draw_frame :: () {
             vkCmdDrawIndexed(command_buffers[index], indexCount = mesh.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
         }
         if !culling_back_faces  vkCmdSetCullMode(command_buffers[index], .BACK);
+
+        vkCmdEndRendering(command_buffers[index]);
+
+        {
+            hdr_barrier := VkImageMemoryBarrier2.{
+                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT,
+                srcAccessMask       = .COLOR_ATTACHMENT_WRITE,
+                dstStageMask        = .FRAGMENT_SHADER,
+                dstAccessMask       = .SHADER_SAMPLED_READ,
+                oldLayout           = .GENERAL,
+                newLayout           = .GENERAL,
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                image               = swapchain_context.hdr_image,
+                subresourceRange    = swapchain_image_subresource_range,
+            };
+            dependency_info := VkDependencyInfo.{imageMemoryBarrierCount = 1, pImageMemoryBarriers = *hdr_barrier};
+            vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
+        }
+
+        {
+            swapchain_attachment := VkRenderingAttachmentInfoKHR.{
+                imageView   = swapchain_context.views[image_index],
+                imageLayout = .GENERAL,
+                loadOp      = .DONT_CARE,
+                storeOp     = .STORE,
+            };
+            rendering_info := VkRenderingInfo.{
+                renderArea           = .{extent = swapchain_context.extent},
+                layerCount           = 1,
+                colorAttachmentCount = 1,
+                pColorAttachments    = *swapchain_attachment,
+            };
+            vkCmdBeginRendering(command_buffers[index], *rendering_info);
+        }
+
+        {
+            vkCmdSetDepthTestEnable(command_buffers[index],  VK_FALSE);
+            vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
+            vkCmdSetCullMode(command_buffers[index], .NONE);
+            bind_graphics_shaders(command_buffers[index], tonemap_shaders);
+
+            push_data := Tonemap_Push_Data.{
+                hdr      = swapchain_context.hdr_texture,
+                exposure = world_state.exposure,
+            };
+            push_data_info := VkPushDataInfoEXT.{
+                offset = 0,
+                data   = .{address = *push_data, size = size_of(Tonemap_Push_Data)},
+            };
+            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
+
+            vkCmdDraw(command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
+        }
 
         render_imgui(command_buffers[index], index);
 

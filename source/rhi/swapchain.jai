@@ -11,9 +11,14 @@ swapchain_context : struct {
     images      : [MAX_SWAPCHAIN_IMAGES] VkImage;
     views       : [MAX_SWAPCHAIN_IMAGES] VkImageView;
 
-    // One depth image shared by all frames; sized with the swapchain extent.
     depth_image     : VkImage;
     depth_view      : VkImageView;
+
+    HDR_FORMAT : VkFormat : .R16G16B16A16_SFLOAT;
+    hdr_image             : VkImage;
+    hdr_view              : VkImageView;
+    hdr_texture           : Texture_Handle;
+    hdr_texture_allocated : bool;
 
     needs_recreation : bool;
 }
@@ -190,9 +195,49 @@ init_swapchain :: (width: u32, height: u32) {
         set_debug_name(.IMAGE,      swapchain_context.depth_image, "depth image");
         set_debug_name(.IMAGE_VIEW, swapchain_context.depth_view,  "depth view");
     }
+
+    {
+        image_create_info := VkImageCreateInfo.{
+            imageType     = .e2D,
+            format        = swapchain_context.HDR_FORMAT,
+            extent        = .{width = swapchain_context.extent.width, height = swapchain_context.extent.height, depth = 1},
+            mipLevels     = 1,
+            arrayLayers   = 1,
+            samples       = .e1,
+            tiling        = .OPTIMAL,
+            usage         = .COLOR_ATTACHMENT | .SAMPLED,
+            sharingMode   = .EXCLUSIVE,
+            initialLayout = .UNDEFINED,
+        };
+        result = vkCreateImage(device, *image_create_info, null, *swapchain_context.hdr_image);
+        assert(result == .SUCCESS);
+
+        heap_bind_image(*heaps.render_target, swapchain_context.hdr_image);
+
+        view_create_info := VkImageViewCreateInfo.{
+            image            = swapchain_context.hdr_image,
+            viewType         = .e2D,
+            format           = swapchain_context.HDR_FORMAT,
+            subresourceRange = .{aspectMask = .COLOR, levelCount = 1, layerCount = 1},
+        };
+        result = vkCreateImageView(device, *view_create_info, null, *swapchain_context.hdr_view);
+        assert(result == .SUCCESS);
+
+        if !swapchain_context.hdr_texture_allocated {
+            swapchain_context.hdr_texture = create_image_descriptor(view_create_info);
+            swapchain_context.hdr_texture_allocated = true;
+        } else {
+            write_image_descriptor(swapchain_context.hdr_texture, view_create_info);
+        }
+
+        set_debug_name(.IMAGE,      swapchain_context.hdr_image, "hdr image");
+        set_debug_name(.IMAGE_VIEW, swapchain_context.hdr_view,  "hdr view");
+    }
 }
 
 deinit_swapchain :: () {
+    vkDestroyImageView(device, swapchain_context.hdr_view, null);
+    vkDestroyImage(device, swapchain_context.hdr_image, null);
     vkDestroyImageView(device, swapchain_context.depth_view, null);
     vkDestroyImage(device, swapchain_context.depth_image, null);
     heap_reset(*heaps.render_target);

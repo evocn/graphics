@@ -21,6 +21,8 @@ program_state : struct {
 
 world_state : struct {
     light_direction : Vector3;
+    sun_intensity   : float = 3.0;
+    exposure        : float = 1.0;
 }
 
 using render_context : struct {
@@ -39,6 +41,7 @@ using render_context : struct {
     gpu_frame_ms   : float;
 
     shaders                 : [2] VkShaderEXT;
+    tonemap_shaders         : [2] VkShaderEXT;
 
     screenshot : struct {
         requested   : bool;

@@ -72,8 +72,12 @@ bind_descriptor_heaps :: (command_buffer: VkCommandBuffer) {
 }
 
 create_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Texture_Handle {
-    id := take_image_id();
+    handle := Texture_Handle.{id = take_image_id()};
+    write_image_descriptor(handle, view_create_info);
+    return handle;
+}
 
+write_image_descriptor :: (handle: Texture_Handle, view_create_info: VkImageViewCreateInfo) {
     view_info := view_create_info;
 
     image_descriptor_info : VkImageDescriptorInfoEXT;
@@ -91,14 +95,12 @@ create_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Texture_
     }
 
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heaps.buffer, resource_heap_offset + id * image_descriptor_stride),
+        address = heap_pointer(*heaps.buffer, resource_heap_offset + handle.id * image_descriptor_stride),
         size    = image_descriptor_stride,
     };
 
     result := vkWriteResourceDescriptorsEXT(device, 1, *resource_descriptor_info, *destination);
     assert(result == .SUCCESS);
-
-    return .{id = id};
 }
 
 create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {

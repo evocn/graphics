@@ -219,6 +219,13 @@ imgui_debug_ui :: () {
         ImGui.Text("GPU % ms", formatFloat(gpu_frame_ms, trailing_width = 2, zero_removal = .NO));
     }
     ImGui.End();
+
+    ImGui.SetNextWindowPos(.{MARGIN, 90}, .FirstUseEver);
+    if ImGui.Begin("Lighting", null, .AlwaysAutoResize | .NoSavedSettings) {
+        ImGui.SliderFloat("Sun", *world_state.sun_intensity, 0, 10);
+        ImGui.SliderFloat("Exposure", *world_state.exposure, 0.1, 4);
+    }
+    ImGui.End();
 }
 
 render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {

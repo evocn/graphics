@@ -55,6 +55,9 @@ compile_shaders :: () {
     assert(slangc("material-vertex",   "material", "vertex_main"));
     assert(slangc("material-fragment", "material", "fragment_main"));
 
+    assert(slangc("tonemap-vertex",   "tonemap", "vertex_main"));
+    assert(slangc("tonemap-fragment", "tonemap", "fragment_main"));
+
     assert(slangc("imgui-vertex",   "imgui", "vertex_main"));
     assert(slangc("imgui-fragment", "imgui", "fragment_main"));
 
