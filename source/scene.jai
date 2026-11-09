@@ -105,6 +105,10 @@ init_data :: () {
     add_instance(quad_mesh,   green_croc_material,  placement(.{-2.5, 0.0, 2.5},  0.4));
     add_instance(quad_mesh,   orange_croc_material, placement(.{ 2.5, 0.0, 2.0}, -0.4));
 
+    if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), sampler, white_texture) {
+        log_error("Could not load BoxTextured.");
+    }
+
     materials_offset = upload(materials);
 
     {
@@ -159,7 +163,6 @@ deinit_data :: () {
     array_free(textures);
 }
 
-#scope_file
 
 add_texture :: (texture: Texture) -> Texture_Handle {
     array_add(*textures, texture);
@@ -187,6 +190,8 @@ add_mesh :: (positions: [] Vector3, attributes: [] Vertex_Attributes, indices: [
 add_instance :: (mesh_index: u32, material_index: u32, transform: Matrix4) {
     array_add(*instances, .{mesh_index = mesh_index, material_index = material_index, transform = transform});
 }
+
+#scope_file
 
 placement :: (translation: Vector3, yaw: float) -> Matrix4 {
     c := cos(yaw);

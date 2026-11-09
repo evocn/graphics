@@ -282,6 +282,7 @@ main :: () {
 
 #import "Vulkan";
 #import "stb_image";
+#import "cgltf";
 #import "stb_image_write";
 
 ImGui     :: #import "ImGui";
@@ -304,6 +305,7 @@ Clipboard :: #import "Clipboard";
 #load "rhi/texture.jai";
 #load "rhi/acceleration_structure.jai";
 #load "scene.jai";
+#load "gltf.jai";
 #load "frame.jai";
 #load "imgui.jai";
 
