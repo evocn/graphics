@@ -139,7 +139,6 @@ main :: () {
         //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.transfer, queueIndex=0, *transfer_queue);
     }
 
-
     init_heaps();
     defer deinit_heaps();
 
@@ -278,6 +277,7 @@ submit_init_commands :: () {
 #import "Math";
 
 #import "File";
+#import "File_Utilities";
 #import "Command_Line";
 
 #import "Window_Creation";

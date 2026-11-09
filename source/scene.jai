@@ -101,7 +101,15 @@ init_data :: () {
     ground_mesh := add_mesh(ground_positions, ground_attributes, ground_indices);
     quad_mesh   := add_mesh(quad_positions,   quad_attributes,   quad_indices);
 
-    add_instance(ground_mesh, ground_material,      Matrix4_Identity);
+    sponza_path := tprint("%/Sponza/Sponza.gltf", models_path);
+    if file_exists(sponza_path) {
+        if !load_gltf(sponza_path, placement(.{0.0, 1.0, 0.0}, PI / 2), sampler, white_texture) {
+            log_error("Could not load Sponza.");
+        }
+    } else {
+        add_instance(ground_mesh, ground_material, Matrix4_Identity);
+    }
+
     add_instance(quad_mesh,   green_croc_material,  placement(.{-2.5, 0.0, 2.5},  0.4));
     add_instance(quad_mesh,   orange_croc_material, placement(.{ 2.5, 0.0, 2.0}, -0.4));
 

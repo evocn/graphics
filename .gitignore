@@ -12,3 +12,4 @@ bin/packages/
 *.build
 shaders/compiled/
 shaders/generated/
+assets/models/Sponza/
