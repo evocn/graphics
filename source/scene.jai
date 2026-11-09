@@ -127,8 +127,13 @@ init_data :: () {
     add_instance(quad_mesh,   green_croc_material,  placement(.{-1.3, 0.0, 0.6},  0.4));
     add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
 
+    box_first_material := materials.count;
     if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler, white_texture) {
         log_error("Could not load BoxTextured.");
+    }
+    for box_first_material..materials.count - 1 {
+        materials[it].texture = croc_texture;
+        materials[it].sampler = sampler;
     }
 
     materials_offset = upload(materials);
