@@ -13,6 +13,7 @@ struct Coarse_Vertex {
     float4 tangent;
     float2 uv;
     float3 world_position;
+    nointerpolation uint draw_index;
 }
 
 struct Vertex_Stage_Output {
@@ -29,8 +30,8 @@ float3 transform_normal(float4x4 transform, float3 normal) {
 }
 
 [shader("vertex")]
-Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
-    Draw_Data draw = push_data.draws[push_data.draw_index];
+Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID, uint draw_index : SV_StartInstanceLocation) {
+    Draw_Data draw = push_data.draws[draw_index];
     float3 position = mul(draw.transform, float4(draw.positions[vertex_id], 1.0)).xyz;
     Vertex_Attributes attributes = draw.attributes[vertex_id];
 
@@ -39,6 +40,7 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     output.coarse_vertex.tangent        = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
     output.coarse_vertex.uv             = attributes.uv;
     output.coarse_vertex.world_position = position;
+    output.coarse_vertex.draw_index     = draw_index;
     output.sv_position                  = mul(push_data.frame.view_projection, float4(position, 1.0));
     return output;
 }
@@ -196,7 +198,7 @@ float accumulated_ambient_visibility(float3 world_position, float3 geometric_nor
 
 [shader("fragment")]
 void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
-    Draw_Data draw = push_data.draws[push_data.draw_index];
+    Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
     Material material = push_data.materials[draw.material_index];
     if (material.alpha_cutoff == 0.0) return;
     float alpha = material.base_color.a * material.texture.Sample(material.sampler, coarse_vertex.uv).a;
@@ -206,7 +208,7 @@ void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
 [earlydepthstencil]
 [shader("fragment")]
 float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
-    Draw_Data draw = push_data.draws[push_data.draw_index];
+    Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
 
     Material material = push_data.materials[draw.material_index];
     float2 uv = coarse_vertex.uv;

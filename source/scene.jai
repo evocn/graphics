@@ -5,8 +5,9 @@ materials_offset : VkDeviceSize;
 white_texture       : Texture_Handle;
 flat_normal_texture : Texture_Handle;
 
-draws            : [..] Draw_Data;
-draws_offset     : VkDeviceSize;
+draws                : [..] Draw_Data;
+draws_offset         : VkDeviceSize;
+draw_commands_offset : VkDeviceSize;
 
 scene_blas         : VkAccelerationStructureKHR;
 scene_blas_address : VkDeviceAddress;
@@ -140,6 +141,17 @@ init_data :: () {
 
     materials_offset = upload(materials);
     draws_offset     = upload(draws);
+
+    draw_commands := NewArray(draws.count, VkDrawIndexedIndirectCommand,, temp);
+    for draws {
+        draw_commands[it_index] = .{
+            indexCount    = it.index_count,
+            instanceCount = 1,
+            firstIndex    = xx ((it.indices.address - buffer_heap.address) / size_of(u32)),
+            firstInstance = xx it_index,
+        };
+    }
+    draw_commands_offset = upload(draw_commands);
 
     {
         transforms := NewArray(draws.count, VkTransformMatrixKHR,, temp);

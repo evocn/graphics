@@ -87,7 +87,7 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties :
 
     buffer_create_info := VkBufferCreateInfo.{
         size  = heap.size,
-        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .INDEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR | .ACCELERATION_STRUCTURE_STORAGE_KHR,
+        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .INDEX_BUFFER | .INDIRECT_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR | .ACCELERATION_STRUCTURE_STORAGE_KHR,
     };
     result = vkCreateBuffer(device, *buffer_create_info, null, *heap.buffer);
     assert(result == .SUCCESS);

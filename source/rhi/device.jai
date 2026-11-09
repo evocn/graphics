@@ -168,6 +168,8 @@ init_device :: () {
     enabled.features2.features.shaderInt64                        = VK_TRUE;
     enabled.features2.features.fragmentStoresAndAtomics           = VK_TRUE;
     enabled.features2.features.samplerAnisotropy                  = VK_TRUE;
+    enabled.features2.features.multiDrawIndirect                  = VK_TRUE;
+    enabled.features2.features.drawIndirectFirstInstance          = VK_TRUE;
     enabled.vulkan_1_1_features.shaderDrawParameters              = VK_TRUE;
     enabled.vulkan_1_2_features.timelineSemaphore                 = VK_TRUE;
     enabled.vulkan_1_2_features.bufferDeviceAddress               = VK_TRUE;

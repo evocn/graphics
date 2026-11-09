@@ -148,7 +148,6 @@ Push_Data :: struct @Gpu {
     frame      : Gpu_Pointer(Frame_Constants);
     draws      : Gpu_Pointer(Draw_Data);
     materials  : Gpu_Pointer(Material);
-    draw_index : u32;
 }
 
 Tonemap_Push_Data :: struct @Gpu {
@@ -475,17 +474,37 @@ draw_frame :: () {
         materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
     };
 
+    push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
+    vkCmdPushDataEXT(command_buffers[index], *push_data_info);
+
+    index_buffer_info := VkBindIndexBuffer3InfoKHR.{
+        addressRange = .{address = buffer_heap.address, size = buffer_heap.size},
+        addressFlags = .STORAGE_BUFFER_USAGE,
+        indexType    = .UINT32,
+    };
+    vkCmdBindIndexBuffer3KHR(command_buffers[index], *index_buffer_info);
+
+    draw_info := VkDrawIndirect2InfoKHR.{
+        addressRange = .{
+            address = heap_address(*buffer_heap, draw_commands_offset),
+            size    = xx (draws.count * size_of(VkDrawIndexedIndirectCommand)),
+            stride  = size_of(VkDrawIndexedIndirectCommand),
+        },
+        addressFlags = .STORAGE_BUFFER_USAGE,
+        drawCount    = xx draws.count,
+    };
+
     no_components : VkColorComponentFlags;
     vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
     bind_graphics_shaders(command_buffers[index], depth_shaders);
-    draw_scene(command_buffers[index], push_data);
+    vkCmdDrawIndexedIndirect2KHR(command_buffers[index], *draw_info);
 
     all_components := VkColorComponentFlags.R | .G | .B | .A;
     vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
     vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
     vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
     bind_graphics_shaders(command_buffers[index], material_shaders);
-    draw_scene(command_buffers[index], push_data);
+    vkCmdDrawIndexedIndirect2KHR(command_buffers[index], *draw_info);
 
     vkCmdEndRendering(command_buffers[index]);
 
@@ -561,26 +580,5 @@ draw_frame :: () {
         swapchain_needs_recreation = true;
     } else {
         assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
-    }
-}
-
-draw_scene :: (command_buffer: VkCommandBuffer, push_data_in: Push_Data) {
-    push_data := push_data_in;
-    for draws {
-        push_data.draw_index = xx it_index;
-        push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
-        vkCmdPushDataEXT(command_buffer, *push_data_info);
-
-        index_buffer_info := VkBindIndexBuffer3InfoKHR.{
-            addressRange = .{
-                address = it.indices.address,
-                size    = cast(VkDeviceSize) it.index_count * size_of(u32),
-            },
-            addressFlags = .STORAGE_BUFFER_USAGE,
-            indexType    = .UINT32,
-        };
-        vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
-
-        vkCmdDrawIndexed(command_buffer, indexCount = it.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
     }
 }
