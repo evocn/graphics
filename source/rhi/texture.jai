@@ -38,18 +38,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     staging_offset := heap_allocate(*scratch_heap, size, 256);
     memcpy(heap_pointer(*scratch_heap, staging_offset), pixels, xx size);
 
-    image_barrier := VkImageMemoryBarrier2.{
-        dstStageMask        = .ALL_TRANSFER,
-        dstAccessMask       = .TRANSFER_WRITE,
-        oldLayout           = .UNDEFINED,
-        newLayout           = .GENERAL,
-        srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        image               = texture.image,
-        subresourceRange    = subresource_range,
-    };
-    dependency_info := VkDependencyInfo.{imageMemoryBarrierCount = 1, pImageMemoryBarriers = *image_barrier};
-    vkCmdPipelineBarrier2(command_buffer, *dependency_info);
+    pipeline_barrier(command_buffer, .[image_barrier(texture.image, .NONE, .NONE, .ALL_TRANSFER, .TRANSFER_WRITE)]);
 
     region := VkDeviceMemoryImageCopyKHR.{
         addressRange     = .{address = heap_address(*scratch_heap, staging_offset), size = size},

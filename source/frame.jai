@@ -351,7 +351,7 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
     vkCmdSetVertexInputEXT(command_buffer, 0, null, 0, null);
 }
 
-record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkImage, subresource_range: VkImageSubresourceRange) {
+record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkImage) {
     screenshot_requested = false;
     screenshot_extent    = swapchain_extent;
     screenshot_format    = surface_format.format;
@@ -513,104 +513,27 @@ draw_frame :: () {
     vkCmdWriteTimestamp2(command_buffers[index], .NONE, timestamp_pool, xx (index * 2));
 
     {
-        swapchain_image_subresource_range : VkImageSubresourceRange;
-        {
-            using swapchain_image_subresource_range;
-            aspectMask     = .COLOR;
-            baseMipLevel   = 0;
-            levelCount     = VK_REMAINING_MIP_LEVELS;
-            baseArrayLayer = 0;
-            layerCount     = VK_REMAINING_ARRAY_LAYERS;
-        }
-
         ambient_history_valid := ambient_initialized;
         ambient_initialized = true;
 
         {
+            image_barriers := VkImageMemoryBarrier2.[
+                image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+                image_barrier(depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
+                image_barrier(hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+                image_barrier(ambient_images[ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_WRITE),
+                image_barrier(ambient_images[1 - ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_READ),
+            ];
+            barriers : [] VkImageMemoryBarrier2 = image_barriers;
+            if ambient_history_valid  barriers.count -= 1;
+
             history_barrier := VkMemoryBarrier2.{
                 srcStageMask  = .FRAGMENT_SHADER,
                 srcAccessMask = .SHADER_STORAGE_WRITE,
                 dstStageMask  = .FRAGMENT_SHADER,
                 dstAccessMask = .SHADER_STORAGE_READ,
             };
-
-            image_memory_barriers : [5] VkImageMemoryBarrier2;
-            image_memory_barriers[3] = .{
-                srcStageMask        = .FRAGMENT_SHADER,
-                srcAccessMask       = .NONE,
-                dstStageMask        = .FRAGMENT_SHADER,
-                dstAccessMask       = .SHADER_STORAGE_WRITE,
-                oldLayout           = .UNDEFINED,
-                newLayout           = .GENERAL,
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = ambient_images[ambient_write_index],
-                subresourceRange    = swapchain_image_subresource_range,
-            };
-            image_memory_barriers[4] = .{
-                srcStageMask        = .FRAGMENT_SHADER,
-                srcAccessMask       = .NONE,
-                dstStageMask        = .FRAGMENT_SHADER,
-                dstAccessMask       = .SHADER_STORAGE_READ,
-                oldLayout           = .UNDEFINED,
-                newLayout           = .GENERAL,
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = ambient_images[1 - ambient_write_index],
-                subresourceRange    = swapchain_image_subresource_range,
-            };
-            {
-                using image_memory_barriers[0];
-                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
-                srcAccessMask       = .NONE;
-                dstStageMask        = .COLOR_ATTACHMENT_OUTPUT;
-                dstAccessMask       = .COLOR_ATTACHMENT_WRITE;
-                oldLayout           = .UNDEFINED;
-                newLayout           = .GENERAL;
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = swapchain_images[image_index];
-                subresourceRange    = swapchain_image_subresource_range;
-            }
-
-            {
-                using image_memory_barriers[1];
-                srcStageMask        = .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS;
-                srcAccessMask       = .NONE;
-                dstStageMask        = .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS;
-                dstAccessMask       = .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE;
-                oldLayout           = .UNDEFINED;
-                newLayout           = .GENERAL;
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = depth_image;
-                subresourceRange    = swapchain_image_subresource_range;
-                subresourceRange.aspectMask = .DEPTH;
-            }
-
-            image_memory_barriers[2] = .{
-                srcStageMask        = .FRAGMENT_SHADER,
-                srcAccessMask       = .NONE,
-                dstStageMask        = .COLOR_ATTACHMENT_OUTPUT,
-                dstAccessMask       = .COLOR_ATTACHMENT_WRITE,
-                oldLayout           = .UNDEFINED,
-                newLayout           = .GENERAL,
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                image               = hdr_image,
-                subresourceRange    = swapchain_image_subresource_range,
-            };
-
-            dependency_info : VkDependencyInfo;
-            {
-                using dependency_info;
-                memoryBarrierCount      = 1;
-                pMemoryBarriers         = *history_barrier;
-                imageMemoryBarrierCount = xx ifx ambient_history_valid then image_memory_barriers.count - 1 else image_memory_barriers.count;
-                pImageMemoryBarriers    = image_memory_barriers.data;
-            }
-
-            vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
+            pipeline_barrier(command_buffers[index], barriers, .[history_barrier]);
         }
 
         color_attachment : VkRenderingAttachmentInfoKHR;
@@ -748,34 +671,10 @@ draw_frame :: () {
         vkCmdEndRendering(command_buffers[index]);
 
         if screenshot_requested {
-            record_screenshot_copy(command_buffers[index], swapchain_images[image_index], swapchain_image_subresource_range);
+            record_screenshot_copy(command_buffers[index], swapchain_images[image_index]);
         }
 
-        {
-            image_memory_barrier : VkImageMemoryBarrier2;
-            {
-                using image_memory_barrier;
-                srcStageMask        = .COLOR_ATTACHMENT_OUTPUT | .COPY;
-                srcAccessMask       = .COLOR_ATTACHMENT_WRITE;
-                dstStageMask        = .NONE;
-                dstAccessMask       = .NONE;
-                oldLayout           = .GENERAL;
-                newLayout           = .PRESENT_SRC_KHR;
-                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                image               = swapchain_images[image_index];
-                subresourceRange    = swapchain_image_subresource_range;
-            }
-
-            dependency_info : VkDependencyInfo;
-            {
-                using dependency_info;
-                imageMemoryBarrierCount = 1;
-                pImageMemoryBarriers    = *image_memory_barrier;
-            }
-
-            vkCmdPipelineBarrier2(command_buffers[index], *dependency_info);
-        }
+        pipeline_barrier(command_buffers[index], .[image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT | .COPY, .COLOR_ATTACHMENT_WRITE, .NONE, .NONE, old_layout = .GENERAL, new_layout = .PRESENT_SRC_KHR)]);
     }
 
     vkCmdWriteTimestamp2(command_buffers[index], .ALL_COMMANDS, timestamp_pool, xx (index * 2 + 1));
