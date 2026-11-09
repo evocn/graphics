@@ -72,11 +72,9 @@ main :: () {
     init_render();
     defer deinit_render();
 
-    begin_init_commands();
-    scratch_heap.on_full = (heap: *Heap) {
-        submit_init_commands();
-        begin_init_commands();
-    };
+    begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
+    result := vkBeginCommandBuffer(init_command_buffer, *begin_info);
+    assert(result == .SUCCESS);
 
     init_data();
     defer deinit_data();
@@ -84,8 +82,13 @@ main :: () {
     init_imgui();
     defer deinit_imgui();
 
-    submit_init_commands();
-    scratch_heap.on_full = null;
+    result = vkEndCommandBuffer(init_command_buffer);
+    assert(result == .SUCCESS);
+    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *init_command_buffer};
+    result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
+    assert(result == .SUCCESS);
+    vkDeviceWaitIdle(device);
+    heap_reset(*scratch_heap);
 
     running := true;
     last_time := seconds_since_init();
@@ -177,24 +180,6 @@ main :: () {
     if screenshot_captured then save_screenshot();
     if args.shimmer > 0 then shimmer_finish();
     if benchmark_count > 0 then print("BENCHMARK % ms average GPU frame time over % frames\n", formatFloat(benchmark_total / benchmark_count, trailing_width = 3), benchmark_count);
-}
-
-begin_init_commands :: () {
-    begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
-    result := vkBeginCommandBuffer(init_command_buffer, *begin_info);
-    assert(result == .SUCCESS);
-}
-
-submit_init_commands :: () {
-    result := vkEndCommandBuffer(init_command_buffer);
-    assert(result == .SUCCESS);
-
-    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *init_command_buffer};
-    result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
-    assert(result == .SUCCESS);
-
-    vkDeviceWaitIdle(device);
-    heap_reset(*scratch_heap);
 }
 
 #import "Basic";

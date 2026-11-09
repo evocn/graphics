@@ -8,8 +8,6 @@ Heap :: struct {
     buffer  : VkBuffer;
     address : VkDeviceAddress;
     cpu_map : *void;
-
-    on_full : #type (heap: *Heap);
 }
 
 buffer_heap        : Heap;
@@ -22,7 +20,7 @@ MiB :: 1024 * 1024;
 
 init_heaps :: () {
     init_buffer_heap(*buffer_heap,  "buffer heap",  128 * MiB);
-    init_buffer_heap(*scratch_heap, "scratch heap", 64 * MiB);
+    init_buffer_heap(*scratch_heap, "scratch heap", 512 * MiB);
     init_buffer_heap(*readback_heap, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
 
     init_image_heap(*image_heap,         "image heap",         512 * MiB, .R8G8B8A8_UNORM, .SAMPLED | .TRANSFER_DST);
@@ -38,10 +36,6 @@ deinit_heaps :: () {
 
 heap_allocate :: (heap: *Heap, size: VkDeviceSize, alignment: VkDeviceSize) -> offset: VkDeviceSize {
     offset := align_up(heap.used, alignment);
-    if offset + size > heap.size && heap.on_full {
-        heap.on_full(heap);
-        offset = align_up(heap.used, alignment);
-    }
     assert(offset + size <= heap.size, "The % is out of space: % MiB used of %, % MiB requested.", heap.name, heap.used / MiB, heap.size / MiB, size / MiB);
     heap.used = offset + size;
     return offset;
