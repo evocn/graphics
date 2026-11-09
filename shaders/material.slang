@@ -18,6 +18,7 @@ RaytracingAccelerationStructure acceleration_structure_from_address(uint64_t add
 }
 
 struct Coarse_Vertex {
+    float3 normal;
     float2 uv;
     float3 world_position;
 }
@@ -39,6 +40,7 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Vertex_Stage_Output output;
     {
         {
+            output.coarse_vertex.normal = mul((float3x3)draw.transform, attributes.normal);
             output.coarse_vertex.uv = attributes.uv;
             output.coarse_vertex.world_position = position;
         }
@@ -76,7 +78,7 @@ bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentric
 }
 
 [shader("fragment")]
-Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
+Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
@@ -85,13 +87,18 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) 
     float3 color = material.base_color.rgb * texture_color.rgb;
     float3 world_position = coarse_vertex.world_position;
 
-    // Shadows
-    float shadow;
-    {
+    float3 normal = normalize(coarse_vertex.normal);
+    if (!is_front_face) normal = -normal;
+
+    float3 to_light = -push_data.frame.light_direction;
+    float n_dot_l = dot(normal, to_light);
+
+    float shadow = 0.0;
+    if (n_dot_l > 0.0) {
         RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
         RayDesc ray;
-        ray.Origin      = world_position;
-        ray.Direction   = -push_data.frame.light_direction;
+        ray.Origin      = world_position + normal * 0.01;
+        ray.Direction   = to_light;
         ray.TMin        = 0.01;
         ray.TMax        = 10000.0;
 
@@ -103,12 +110,16 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) 
                 query.CommitNonOpaqueTriangleHit();
             }
         }
-        shadow = (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.2 : 1.0;
+        shadow = (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.0 : 1.0;
     }
+
+    float sky = saturate(0.5 - 0.5 * normal.y);
+    float3 ambient = lerp(float3(0.06, 0.05, 0.04), float3(0.16, 0.18, 0.22), sky);
+    float3 sun = float3(1.0, 0.95, 0.85) * saturate(n_dot_l) * shadow;
 
     Fragment_Stage_Output output;
     {
-        output.color = color * shadow;
+        output.color = color * (ambient + sun);
     }
     return output;
 }

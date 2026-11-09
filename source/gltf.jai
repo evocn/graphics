@@ -179,10 +179,11 @@ gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
 }
 
 add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success: bool {
-    position_accessor, uv_accessor : *cgltf_accessor;
+    position_accessor, normal_accessor, uv_accessor : *cgltf_accessor;
     for attribute_index : 0..cast(s64) primitive.attributes_count - 1 {
         attribute := *primitive.attributes[attribute_index];
         if attribute.type == .position                          position_accessor = attribute.data;
+        if attribute.type == .normal                            normal_accessor   = attribute.data;
         if attribute.type == .texcoord && attribute.index == 0  uv_accessor       = attribute.data;
     }
     if !position_accessor return 0, false;
@@ -193,13 +194,6 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
     defer array_free(positions);
     cgltf_accessor_unpack_floats(position_accessor, cast(*float) positions.data, xx (vertex_count * 3));
 
-    attributes := NewArray(vertex_count, Vertex_Attributes);
-    defer array_free(attributes);
-    if uv_accessor {
-        assert(cast(s64) uv_accessor.count == vertex_count);
-        cgltf_accessor_unpack_floats(uv_accessor, cast(*float) attributes.data, xx (vertex_count * 2));
-    }
-
     indices : [] u32;
     defer array_free(indices);
     if primitive.indices {
@@ -208,6 +202,34 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success:
     } else {
         indices = NewArray(vertex_count, u32);
         for * indices  it.* = xx it_index;
+    }
+
+    attributes := NewArray(vertex_count, Vertex_Attributes);
+    defer array_free(attributes);
+
+    if normal_accessor {
+        assert(cast(s64) normal_accessor.count == vertex_count);
+        normals := NewArray(vertex_count, Vector3,, temp);
+        cgltf_accessor_unpack_floats(normal_accessor, cast(*float) normals.data, xx (vertex_count * 3));
+        for normals  attributes[it_index].normal = it;
+    } else {
+        for triangle : 0..indices.count / 3 - 1 {
+            a := indices[triangle * 3 + 0];
+            b := indices[triangle * 3 + 1];
+            c := indices[triangle * 3 + 2];
+            face_normal := cross(positions[b] - positions[a], positions[c] - positions[a]);
+            attributes[a].normal += face_normal;
+            attributes[b].normal += face_normal;
+            attributes[c].normal += face_normal;
+        }
+        for * attributes  it.normal = unit_vector(it.normal);
+    }
+
+    if uv_accessor {
+        assert(cast(s64) uv_accessor.count == vertex_count);
+        uvs := NewArray(vertex_count, Vector2,, temp);
+        cgltf_accessor_unpack_floats(uv_accessor, cast(*float) uvs.data, xx (vertex_count * 2));
+        for uvs  attributes[it_index].uv = it;
     }
 
     for triangle : 0..indices.count / 3 - 1 {

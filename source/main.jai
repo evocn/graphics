@@ -232,7 +232,7 @@ main :: () {
 
                 // The sun orbits the scene.
                 sun_angle := cast(float) now * 0.4;
-                light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.7, 1.0, sin(sun_angle) * 0.7});
+                light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
             }
         }
 

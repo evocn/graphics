@@ -2,7 +2,8 @@
 // Scene
 
 Vertex_Attributes :: struct @Gpu {
-    uv : Vector2;
+    normal : Vector3;
+    uv     : Vector2;
 }
 
 ground_positions := Vector3.[
@@ -14,10 +15,10 @@ ground_positions := Vector3.[
 ];
 
 ground_attributes := Vertex_Attributes.[
-    .{uv = .{0.0, 0.0}},
-    .{uv = .{6.0, 6.0}},
-    .{uv = .{0.0, 6.0}},
-    .{uv = .{6.0, 0.0}},
+    .{normal = .{0, -1, 0}, uv = .{0.0, 0.0}},
+    .{normal = .{0, -1, 0}, uv = .{6.0, 6.0}},
+    .{normal = .{0, -1, 0}, uv = .{0.0, 6.0}},
+    .{normal = .{0, -1, 0}, uv = .{6.0, 0.0}},
 ];
 
 ground_indices := u32.[0, 1, 2, 0, 3, 1];
@@ -30,10 +31,10 @@ quad_positions := Vector3.[
 ];
 
 quad_attributes := Vertex_Attributes.[
-    .{uv = .{0.0, 1.0}},
-    .{uv = .{0.0, 0.0}},
-    .{uv = .{1.0, 0.0}},
-    .{uv = .{1.0, 1.0}},
+    .{normal = .{0, 0, -1}, uv = .{0.0, 1.0}},
+    .{normal = .{0, 0, -1}, uv = .{0.0, 0.0}},
+    .{normal = .{0, 0, -1}, uv = .{1.0, 0.0}},
+    .{normal = .{0, 0, -1}, uv = .{1.0, 1.0}},
 ];
 
 quad_indices := u32.[0, 1, 2, 0, 2, 3];
@@ -123,8 +124,8 @@ init_data :: () {
         add_instance(ground_mesh, ground_material, Matrix4_Identity);
     }
 
-    add_instance(quad_mesh,   green_croc_material,  placement(.{-2.5, 0.0, 2.5},  0.4));
-    add_instance(quad_mesh,   orange_croc_material, placement(.{ 2.5, 0.0, 2.0}, -0.4));
+    add_instance(quad_mesh,   green_croc_material,  placement(.{-1.6, 0.0, 3.5},  0.4));
+    add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.6, 0.0, 3.0}, -0.4));
 
     if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler, white_texture) {
         log_error("Could not load BoxTextured.");
