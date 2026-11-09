@@ -598,7 +598,17 @@ draw_frame :: () {
             };
             vkCmdPushDataEXT(command_buffers[index], *push_data_info);
 
-            vkCmdDraw(command_buffers[index], vertexCount = it.vertex_count, instanceCount = 1, firstVertex = 0, firstInstance = 0);
+            index_buffer_info := VkBindIndexBuffer3InfoKHR.{
+                addressRange = .{
+                    address = heap_address(*heaps.buffer, it.index_offset),
+                    size    = cast(VkDeviceSize) it.index_count * size_of(u32),
+                },
+                addressFlags = .STORAGE_BUFFER_USAGE,
+                indexType    = .UINT32,
+            };
+            vkCmdBindIndexBuffer3KHR(command_buffers[index], *index_buffer_info);
+
+            vkCmdDrawIndexed(command_buffers[index], indexCount = it.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
         }
 
         render_imgui(command_buffers[index], index);

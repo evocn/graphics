@@ -60,9 +60,9 @@ struct Fragment_Stage_Output {
 bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentrics) {
     Draw_Data draw = push_data.draws[draw_index];
 
-    float2 uv0 = draw.attributes[primitive_index * 3 + 0].uv;
-    float2 uv1 = draw.attributes[primitive_index * 3 + 1].uv;
-    float2 uv2 = draw.attributes[primitive_index * 3 + 2].uv;
+    float2 uv0 = draw.attributes[draw.indices[primitive_index * 3 + 0]].uv;
+    float2 uv1 = draw.attributes[draw.indices[primitive_index * 3 + 1]].uv;
+    float2 uv2 = draw.attributes[draw.indices[primitive_index * 3 + 2]].uv;
     float2 uv = uv0 * (1.0 - barycentrics.x - barycentrics.y) + uv1 * barycentrics.x + uv2 * barycentrics.y;
 
     for (;;) {
