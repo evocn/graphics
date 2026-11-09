@@ -371,7 +371,17 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         vkCmdBindShadersEXT(command_buffer, stages.count, stages.data, shaders.data);
     }
 
-    vkCmdBindIndexBuffer(command_buffer, heaps.buffer.buffer, index_slot_offset, .UINT16);
+    {
+        index_buffer_info := VkBindIndexBuffer3InfoKHR.{
+            addressRange = .{
+                address = heap_address(*heaps.buffer, index_slot_offset),
+                size    = cast(VkDeviceSize) draw_data.TotalIdxCount * size_of(ImGui.ImDrawIdx),
+            },
+            addressFlags = .STORAGE_BUFFER_USAGE,
+            indexType    = .UINT16,
+        };
+        vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
+    }
 
     push_data := Imgui_Push_Data.{
         scale     = .{2.0 / io.DisplaySize.x, 2.0 / io.DisplaySize.y},

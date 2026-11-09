@@ -111,7 +111,6 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize) {
         buffer_create_info.size  = heap.size;
         buffer_create_info.usage = .DESCRIPTOR_HEAP_EXT
               | .SHADER_DEVICE_ADDRESS
-              | .VERTEX_BUFFER
               | .INDEX_BUFFER
               | .TRANSFER_SRC
               | .TRANSFER_DST
