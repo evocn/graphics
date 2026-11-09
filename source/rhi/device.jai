@@ -371,6 +371,7 @@ init_device :: () {
                 assert(VK_TRUE == supported.vulkan_1_2_features.scalarBlockLayout);
                 assert(VK_TRUE == supported.vulkan_1_3_features.dynamicRendering);
                 assert(VK_TRUE == supported.vulkan_1_3_features.synchronization2);
+                assert(VK_TRUE == supported.vulkan_1_3_features.shaderDemoteToHelperInvocation);
                 assert(VK_TRUE == supported.vulkan_1_4_features.maintenance5);
                 assert(VK_TRUE == supported.shader_object_features.shaderObject);
                 assert(VK_TRUE == supported.unified_image_layout_features.unifiedImageLayouts);
@@ -402,6 +403,7 @@ init_device :: () {
                     using vulkan_1_3_features;
                     dynamicRendering = VK_TRUE;
                     synchronization2 = VK_TRUE;
+                    shaderDemoteToHelperInvocation = VK_TRUE;
                 }
                 vulkan_1_2_features = .{pNext = *vulkan_1_3_features};
                 {

@@ -64,6 +64,7 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) 
 
     Material material = push_data.materials[draw.material_index];
     float4 texture_color = material.texture.Sample(material.sampler, coarse_vertex.uv);
+    if (material.base_color.a * texture_color.a < 0.5) discard;
     float3 color = material.base_color.rgb * texture_color.rgb;
     float3 world_position = coarse_vertex.world_position;
 
