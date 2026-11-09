@@ -1,6 +1,7 @@
-create_graphics_shaders :: (name: string) -> [2] VkShaderEXT {
+create_graphics_shaders :: (name: string, fragment_override := "") -> [2] VkShaderEXT {
     vertex_spirv   := read_spirv(tprint("%-vertex", name));
-    fragment_spirv := read_spirv(tprint("%-fragment", name));
+    fragment_name := ifx fragment_override then fragment_override else tprint("%-fragment", name);
+    fragment_spirv := read_spirv(fragment_name);
     defer free(vertex_spirv);
     defer free(fragment_spirv);
 
@@ -28,7 +29,7 @@ create_graphics_shaders :: (name: string) -> [2] VkShaderEXT {
     assert(result == .SUCCESS);
 
     set_debug_name(.SHADER_EXT, shaders[0], tprint("% vertex", name));
-    set_debug_name(.SHADER_EXT, shaders[1], tprint("% fragment", name));
+    set_debug_name(.SHADER_EXT, shaders[1], fragment_name);
     return shaders;
 }
 

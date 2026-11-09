@@ -42,6 +42,7 @@ using render_context : struct {
 
     shaders                 : [2] VkShaderEXT;
     tonemap_shaders         : [2] VkShaderEXT;
+    depth_shaders           : [2] VkShaderEXT;
 
     screenshot : struct {
         requested   : bool;

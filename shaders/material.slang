@@ -127,13 +127,22 @@ bool sun_visible(float3 world_position, float3 geometric_normal, float3 to_light
 }
 
 [shader("fragment")]
+void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
+    Draw_Data draw = push_data.draws[push_data.draw_index];
+    Material material = push_data.materials[draw.material_index];
+    if (material.alpha_cutoff == 0.0) return;
+    float alpha = material.base_color.a * material.texture.Sample(material.sampler, coarse_vertex.uv).a;
+    if (alpha < material.alpha_cutoff) discard;
+}
+
+[earlydepthstencil]
+[shader("fragment")]
 Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
     float2 uv = coarse_vertex.uv;
     float4 texture_color = material.texture.Sample(material.sampler, uv);
-    if (material.base_color.a * texture_color.a < material.alpha_cutoff) discard;
     float3 base_color = material.base_color.rgb * texture_color.rgb;
     float3 world_position = coarse_vertex.world_position;
 
