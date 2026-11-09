@@ -97,81 +97,11 @@ init_render :: () {
         set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
     }
 
-    // Shaders
-    {
-        // Read spirv from file
-        spirv : [2] string;
-        {
-            read_shader_file :: (name: string) -> spirv: string
-            {
-                shader_file_path := tprint("%/%", compiled_shaders_directory, tprint("%.spv", name));
-
-                spirv, success := read_entire_file(shader_file_path);
-                assert(success, "Unable to read shader file %", shader_file_path);
-
-                return spirv;
-            }
-            spirv[0] = read_shader_file("material-vertex");
-            spirv[1] = read_shader_file("material-fragment");
-        }
-
-        // Shader Object Create Infos
-        {
-            shader_create_infos : [2] VkShaderCreateInfoEXT;
-
-            {
-                using shader_create_infos[0];
-                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
-
-                stage       = .VERTEX;
-                nextStage   = .FRAGMENT;
-
-                codeType    = .SPIRV;
-                codeSize    = xx spirv[0].count;
-                pCode       = spirv[0].data;
-
-                pName       = "main";
-
-                pushConstantRangeCount = 0;
-                pPushConstantRanges = null;
-                pSpecializationInfo = null;
-            }
-
-            {
-                using shader_create_infos[1];
-                flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
-
-                stage       = .FRAGMENT;
-                nextStage   = 0;
-
-                codeType    = .SPIRV;
-                codeSize    = xx spirv[1].count;
-                pCode       = spirv[1].data;
-
-                pName       = "main";
-
-                pushConstantRangeCount = 0;
-                pPushConstantRanges = null;
-                pSpecializationInfo = null;
-            }
-
-            result = vkCreateShadersEXT(device,
-                shader_create_infos.count, shader_create_infos.data,
-                null,
-                shaders.data
-            );
-            assert(result == .SUCCESS);
-
-            set_debug_name(.SHADER_EXT, shaders[0], "material vertex");
-            set_debug_name(.SHADER_EXT, shaders[1], "material fragment");
-        }
-    }
+    shaders = create_graphics_shaders("material");
 }
 
 deinit_render :: () {
-    for shader : shaders {
-        vkDestroyShaderEXT(device, shader, null);
-    }
+    destroy_graphics_shaders(shaders);
     result := vkWaitForFences(device, swapchain_context.MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
     assert(result == .SUCCESS);
 
@@ -552,18 +482,7 @@ draw_frame :: () {
         bind_descriptor_heaps(command_buffers[index]);
         set_draw_state(command_buffers[index]);
 
-        // Bind Shaders
-        {
-            stages := VkShaderStageFlagBits.[
-                .VERTEX,
-                .FRAGMENT,
-            ];
-
-            vkCmdBindShadersEXT(
-                command_buffers[index],
-                stages.count, stages.data, shaders.data
-            );
-        }
+        bind_graphics_shaders(command_buffers[index], shaders);
 
         // Push Descriptor Data
         {

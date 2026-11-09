@@ -73,62 +73,7 @@ init_imgui :: () {
         index_offset  = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * index_slot_stride,  256);
     }
 
-    {
-        spirv : [2] string;
-        {
-            read_shader_file :: (name: string) -> spirv: string
-            {
-                shader_file_path := tprint("%/%", compiled_shaders_directory, tprint("%.spv", name));
-
-                spirv, success := read_entire_file(shader_file_path);
-                assert(success, "Unable to read shader file %", shader_file_path);
-
-                return spirv;
-            }
-            spirv[0] = read_shader_file("imgui-vertex");
-            spirv[1] = read_shader_file("imgui-fragment");
-        }
-
-        shader_create_infos : [2] VkShaderCreateInfoEXT;
-
-        {
-            using shader_create_infos[0];
-            flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
-
-            stage       = .VERTEX;
-            nextStage   = .FRAGMENT;
-
-            codeType    = .SPIRV;
-            codeSize    = xx spirv[0].count;
-            pCode       = spirv[0].data;
-
-            pName       = "main";
-        }
-
-        {
-            using shader_create_infos[1];
-            flags = .LINK_STAGE | .DESCRIPTOR_HEAP;
-
-            stage       = .FRAGMENT;
-            nextStage   = 0;
-
-            codeType    = .SPIRV;
-            codeSize    = xx spirv[1].count;
-            pCode       = spirv[1].data;
-
-            pName       = "main";
-        }
-
-        result = vkCreateShadersEXT(device,
-            shader_create_infos.count, shader_create_infos.data,
-            null,
-            shaders.data
-        );
-        assert(result == .SUCCESS);
-
-        set_debug_name(.SHADER_EXT, shaders[0], "imgui vertex");
-        set_debug_name(.SHADER_EXT, shaders[1], "imgui fragment");
-    }
+    shaders = create_graphics_shaders("imgui");
 
     {
         font_size := cast(float) program_state.window_height / 50.0;
@@ -166,9 +111,7 @@ init_imgui :: () {
 deinit_imgui :: () {
     using imgui_state;
 
-    for shader : shaders {
-        vkDestroyShaderEXT(device, shader, null);
-    }
+    destroy_graphics_shaders(shaders);
     destroy_texture(font_texture);
 
     free(clipboard_cstring);
@@ -333,14 +276,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
     }
 
-    {
-        stages := VkShaderStageFlagBits.[
-            .VERTEX,
-            .FRAGMENT,
-        ];
-
-        vkCmdBindShadersEXT(command_buffer, stages.count, stages.data, shaders.data);
-    }
+    bind_graphics_shaders(command_buffer, shaders);
 
     {
         index_buffer_info := VkBindIndexBuffer3InfoKHR.{
