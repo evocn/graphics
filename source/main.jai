@@ -44,15 +44,13 @@ main :: () {
         activate = !args.automation,
     );
 
-    {
-        #if OS == .WINDOWS {
-            vulkan_library := LoadLibraryA("vulkan-1.dll");
-            assert(vulkan_library != null, "Unable to find vulkan-1.dll.");
-        }
-
-        vkGIPA := GetProcAddress(vulkan_library, "vkGetInstanceProcAddr");
-        vk_load_global_functions(vkGIPA);
+    #if OS == .WINDOWS {
+        vulkan_library := LoadLibraryA("vulkan-1.dll");
+        assert(vulkan_library != null, "Unable to find vulkan-1.dll.");
     }
+
+    vkGIPA := GetProcAddress(vulkan_library, "vkGetInstanceProcAddr");
+    vk_load_global_functions(vkGIPA);
 
     init_instance();
     defer deinit_instance();
@@ -112,7 +110,7 @@ main :: () {
 
                     if it.key_pressed && it.key_code == .ESCAPE {
                         if mouse_look_active  set_mouse_look(false);
-                        else                         running = false;
+                        else                running = false;
                     }
             }
 
@@ -145,15 +143,11 @@ main :: () {
             dt  = SHIMMER_TIME_STEP;
         }
 
-        {
-            update_camera(dt);
-            if flying  shimmer_camera_path(cast(float) now);
+        update_camera(dt);
+        if flying  shimmer_camera_path(cast(float) now);
 
-            {
-                sun_angle := cast(float) now * 0.4;
-                light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
-            }
-        }
+        sun_angle := cast(float) now * 0.4;
+        light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
 
         imgui_new_frame();
         if !flying  imgui_debug_ui();

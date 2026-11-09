@@ -410,139 +410,126 @@ draw_frame :: () {
     vkCmdResetQueryPool(command_buffers[index], timestamp_pool, xx (index * 2), 2);
     vkCmdWriteTimestamp2(command_buffers[index], .NONE, timestamp_pool, xx (index * 2));
 
+    ambient_history_valid := ambient_initialized;
+    ambient_initialized = true;
+
     {
-        ambient_history_valid := ambient_initialized;
-        ambient_initialized = true;
+        image_barriers := VkImageMemoryBarrier2.[
+            image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+            image_barrier(depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
+            image_barrier(hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+            image_barrier(ambient_images[ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_WRITE),
+            image_barrier(ambient_images[1 - ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_READ),
+        ];
+        barriers : [] VkImageMemoryBarrier2 = image_barriers;
+        if ambient_history_valid  barriers.count -= 1;
 
-        {
-            image_barriers := VkImageMemoryBarrier2.[
-                image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
-                image_barrier(depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
-                image_barrier(hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
-                image_barrier(ambient_images[ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_WRITE),
-                image_barrier(ambient_images[1 - ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_READ),
-            ];
-            barriers : [] VkImageMemoryBarrier2 = image_barriers;
-            if ambient_history_valid  barriers.count -= 1;
-
-            history_barrier := VkMemoryBarrier2.{
-                srcStageMask  = .FRAGMENT_SHADER,
-                srcAccessMask = .SHADER_STORAGE_WRITE,
-                dstStageMask  = .FRAGMENT_SHADER,
-                dstAccessMask = .SHADER_STORAGE_READ,
-            };
-            pipeline_barrier(command_buffers[index], barriers, .[history_barrier]);
-        }
-
-        color_attachment := VkRenderingAttachmentInfoKHR.{imageView = hdr_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .STORE};
-        color_attachment.clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
-
-        depth_attachment := VkRenderingAttachmentInfoKHR.{imageView = depth_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .DONT_CARE};
-        depth_attachment.clearValue.depthStencil = .{depth = 1};
-
-        rendering_info := VkRenderingInfo.{
-            renderArea           = .{extent = swapchain_extent},
-            layerCount           = 1,
-            colorAttachmentCount = 1,
-            pColorAttachments    = *color_attachment,
-            pDepthAttachment     = *depth_attachment,
+        history_barrier := VkMemoryBarrier2.{
+            srcStageMask  = .FRAGMENT_SHADER,
+            srcAccessMask = .SHADER_STORAGE_WRITE,
+            dstStageMask  = .FRAGMENT_SHADER,
+            dstAccessMask = .SHADER_STORAGE_READ,
         };
-        vkCmdBeginRendering(command_buffers[index], *rendering_info);
-
-        bind_descriptor_heaps(command_buffers[index]);
-        set_draw_state(command_buffers[index]);
-
-
-        frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
-        aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
-
-        frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
-        frame_constants.view_projection = camera_view_projection(aspect);
-        frame_constants.tlas_address    = tlas_address;
-        frame_constants.light_direction = light_direction;
-        frame_constants.sun_intensity   = sun_intensity;
-        frame_constants.camera_position = camera_position;
-
-        frame_constants.previous_view_projection = previous_view_projection;
-        frame_constants.previous_camera_position = previous_camera_position;
-        previous_view_projection = frame_constants.view_projection;
-        previous_camera_position = frame_constants.camera_position;
-
-        frame_constants.ambient               = ambient_storages[ambient_write_index];
-        frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
-        frame_constants.ambient_history_valid = xx ambient_history_valid;
-        frame_constants.frame_number          = cast(u32) frame_index;
-        frame_constants.debug_view            = cast(u32) debug_view;
-            ambient_write_index = 1 - ambient_write_index;
-
-        push_data := Push_Data.{
-            frame     = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
-            draws     = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
-            materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
-        };
-
-        no_components : VkColorComponentFlags;
-        vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
-        bind_graphics_shaders(command_buffers[index], depth_shaders);
-        draw_scene(command_buffers[index], push_data);
-
-        all_components := VkColorComponentFlags.R | .G | .B | .A;
-        vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
-        vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
-        vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
-        bind_graphics_shaders(command_buffers[index], material_shaders);
-        draw_scene(command_buffers[index], push_data);
-
-        vkCmdEndRendering(command_buffers[index]);
-
-        memory_barrier(command_buffers[index], .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
-
-        {
-            swapchain_attachment := VkRenderingAttachmentInfoKHR.{
-                imageView   = swapchain_views[image_index],
-                imageLayout = .GENERAL,
-                loadOp      = .DONT_CARE,
-                storeOp     = .STORE,
-            };
-            rendering_info := VkRenderingInfo.{
-                renderArea           = .{extent = swapchain_extent},
-                layerCount           = 1,
-                colorAttachmentCount = 1,
-                pColorAttachments    = *swapchain_attachment,
-            };
-            vkCmdBeginRendering(command_buffers[index], *rendering_info);
-        }
-
-        {
-            vkCmdSetDepthTestEnable(command_buffers[index],  VK_FALSE);
-            vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
-            vkCmdSetCullMode(command_buffers[index], .NONE);
-            bind_graphics_shaders(command_buffers[index], tonemap_shaders);
-
-            push_data := Tonemap_Push_Data.{
-                hdr      = hdr_texture,
-                exposure = exposure,
-                raw      = xx (debug_view != .LIT),
-            };
-            push_data_info := VkPushDataInfoEXT.{
-                offset = 0,
-                data   = .{address = *push_data, size = size_of(Tonemap_Push_Data)},
-            };
-            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
-
-            vkCmdDraw(command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
-        }
-
-        render_imgui(command_buffers[index], index);
-
-        vkCmdEndRendering(command_buffers[index]);
-
-        if screenshot_requested {
-            record_screenshot_copy(command_buffers[index], swapchain_images[image_index]);
-        }
-
-        pipeline_barrier(command_buffers[index], .[image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT | .COPY, .COLOR_ATTACHMENT_WRITE, .NONE, .NONE, old_layout = .GENERAL, new_layout = .PRESENT_SRC_KHR)]);
+        pipeline_barrier(command_buffers[index], barriers, .[history_barrier]);
     }
+
+    color_attachment := VkRenderingAttachmentInfoKHR.{imageView = hdr_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .STORE};
+    color_attachment.clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
+
+    depth_attachment := VkRenderingAttachmentInfoKHR.{imageView = depth_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .DONT_CARE};
+    depth_attachment.clearValue.depthStencil = .{depth = 1};
+
+    rendering_info := VkRenderingInfo.{
+        renderArea           = .{extent = swapchain_extent},
+        layerCount           = 1,
+        colorAttachmentCount = 1,
+        pColorAttachments    = *color_attachment,
+        pDepthAttachment     = *depth_attachment,
+    };
+    vkCmdBeginRendering(command_buffers[index], *rendering_info);
+
+    bind_descriptor_heaps(command_buffers[index]);
+    set_draw_state(command_buffers[index]);
+
+
+    frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
+    aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
+
+    frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
+    frame_constants.view_projection = camera_view_projection(aspect);
+    frame_constants.tlas_address    = tlas_address;
+    frame_constants.light_direction = light_direction;
+    frame_constants.sun_intensity   = sun_intensity;
+    frame_constants.camera_position = camera_position;
+
+    frame_constants.previous_view_projection = previous_view_projection;
+    frame_constants.previous_camera_position = previous_camera_position;
+    previous_view_projection = frame_constants.view_projection;
+    previous_camera_position = frame_constants.camera_position;
+
+    frame_constants.ambient               = ambient_storages[ambient_write_index];
+    frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
+    frame_constants.ambient_history_valid = xx ambient_history_valid;
+    frame_constants.frame_number          = cast(u32) frame_index;
+    frame_constants.debug_view            = cast(u32) debug_view;
+        ambient_write_index = 1 - ambient_write_index;
+
+    push_data := Push_Data.{
+        frame     = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
+        draws     = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
+        materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
+    };
+
+    no_components : VkColorComponentFlags;
+    vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
+    bind_graphics_shaders(command_buffers[index], depth_shaders);
+    draw_scene(command_buffers[index], push_data);
+
+    all_components := VkColorComponentFlags.R | .G | .B | .A;
+    vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
+    vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
+    vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
+    bind_graphics_shaders(command_buffers[index], material_shaders);
+    draw_scene(command_buffers[index], push_data);
+
+    vkCmdEndRendering(command_buffers[index]);
+
+    memory_barrier(command_buffers[index], .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+
+    swapchain_attachment := VkRenderingAttachmentInfoKHR.{
+        imageView   = swapchain_views[image_index],
+        imageLayout = .GENERAL,
+        loadOp      = .DONT_CARE,
+        storeOp     = .STORE,
+    };
+    tonemap_rendering_info := VkRenderingInfo.{
+        renderArea           = .{extent = swapchain_extent},
+        layerCount           = 1,
+        colorAttachmentCount = 1,
+        pColorAttachments    = *swapchain_attachment,
+    };
+    vkCmdBeginRendering(command_buffers[index], *tonemap_rendering_info);
+
+    vkCmdSetDepthTestEnable(command_buffers[index],  VK_FALSE);
+    vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
+    vkCmdSetCullMode(command_buffers[index], .NONE);
+    bind_graphics_shaders(command_buffers[index], tonemap_shaders);
+
+    tonemap_push_data := Tonemap_Push_Data.{hdr = hdr_texture, exposure = exposure, raw = xx (debug_view != .LIT)};
+    tonemap_push_data_info := VkPushDataInfoEXT.{data = .{address = *tonemap_push_data, size = size_of(Tonemap_Push_Data)}};
+    vkCmdPushDataEXT(command_buffers[index], *tonemap_push_data_info);
+
+    vkCmdDraw(command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
+
+    render_imgui(command_buffers[index], index);
+
+    vkCmdEndRendering(command_buffers[index]);
+
+    if screenshot_requested {
+        record_screenshot_copy(command_buffers[index], swapchain_images[image_index]);
+    }
+
+    pipeline_barrier(command_buffers[index], .[image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT | .COPY, .COLOR_ATTACHMENT_WRITE, .NONE, .NONE, old_layout = .GENERAL, new_layout = .PRESENT_SRC_KHR)]);
 
     vkCmdWriteTimestamp2(command_buffers[index], .ALL_COMMANDS, timestamp_pool, xx (index * 2 + 1));
 

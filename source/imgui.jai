@@ -31,55 +31,47 @@ init_imgui :: () {
     io := ImGui.GetIO();
     io.IniFilename = null;
 
-    {
-        io.KeyMap[ImGui.Key.Tab]        = xx Key_Code.TAB;
-        io.KeyMap[ImGui.Key.LeftArrow]  = xx Key_Code.ARROW_LEFT;
-        io.KeyMap[ImGui.Key.RightArrow] = xx Key_Code.ARROW_RIGHT;
-        io.KeyMap[ImGui.Key.UpArrow]    = xx Key_Code.ARROW_UP;
-        io.KeyMap[ImGui.Key.DownArrow]  = xx Key_Code.ARROW_DOWN;
-        io.KeyMap[ImGui.Key.PageUp]     = xx Key_Code.PAGE_UP;
-        io.KeyMap[ImGui.Key.PageDown]   = xx Key_Code.PAGE_DOWN;
-        io.KeyMap[ImGui.Key.Home]       = xx Key_Code.HOME;
-        io.KeyMap[ImGui.Key.End]        = xx Key_Code.END;
-        io.KeyMap[ImGui.Key.Delete]     = xx Key_Code.DELETE;
-        io.KeyMap[ImGui.Key.Backspace]  = xx Key_Code.BACKSPACE;
-        io.KeyMap[ImGui.Key.Enter]      = xx Key_Code.ENTER;
-        io.KeyMap[ImGui.Key.Escape]     = xx Key_Code.ESCAPE;
-        io.KeyMap[ImGui.Key.A]          = #char "A";
-        io.KeyMap[ImGui.Key.C]          = #char "C";
-        io.KeyMap[ImGui.Key.V]          = #char "V";
-        io.KeyMap[ImGui.Key.X]          = #char "X";
-        io.KeyMap[ImGui.Key.Y]          = #char "Y";
-        io.KeyMap[ImGui.Key.Z]          = #char "Z";
+    io.KeyMap[ImGui.Key.Tab]        = xx Key_Code.TAB;
+    io.KeyMap[ImGui.Key.LeftArrow]  = xx Key_Code.ARROW_LEFT;
+    io.KeyMap[ImGui.Key.RightArrow] = xx Key_Code.ARROW_RIGHT;
+    io.KeyMap[ImGui.Key.UpArrow]    = xx Key_Code.ARROW_UP;
+    io.KeyMap[ImGui.Key.DownArrow]  = xx Key_Code.ARROW_DOWN;
+    io.KeyMap[ImGui.Key.PageUp]     = xx Key_Code.PAGE_UP;
+    io.KeyMap[ImGui.Key.PageDown]   = xx Key_Code.PAGE_DOWN;
+    io.KeyMap[ImGui.Key.Home]       = xx Key_Code.HOME;
+    io.KeyMap[ImGui.Key.End]        = xx Key_Code.END;
+    io.KeyMap[ImGui.Key.Delete]     = xx Key_Code.DELETE;
+    io.KeyMap[ImGui.Key.Backspace]  = xx Key_Code.BACKSPACE;
+    io.KeyMap[ImGui.Key.Enter]      = xx Key_Code.ENTER;
+    io.KeyMap[ImGui.Key.Escape]     = xx Key_Code.ESCAPE;
+    io.KeyMap[ImGui.Key.A]          = #char "A";
+    io.KeyMap[ImGui.Key.C]          = #char "C";
+    io.KeyMap[ImGui.Key.V]          = #char "V";
+    io.KeyMap[ImGui.Key.X]          = #char "X";
+    io.KeyMap[ImGui.Key.Y]          = #char "Y";
+    io.KeyMap[ImGui.Key.Z]          = #char "Z";
 
-        io.SetClipboardTextFn = imgui_set_clipboard_text;
-        io.GetClipboardTextFn = imgui_get_clipboard_text;
-        io.ClipboardUserData = null;
+    io.SetClipboardTextFn = imgui_set_clipboard_text;
+    io.GetClipboardTextFn = imgui_get_clipboard_text;
+    io.ClipboardUserData = null;
 
-        #if OS == .WINDOWS { io.ImeWindowHandle = window; }
-    }
+    #if OS == .WINDOWS { io.ImeWindowHandle = window; }
 
-    {
-        imgui_vertex_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_VERTEX_SLOT_STRIDE, 256);
-        imgui_index_offset  = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_INDEX_SLOT_STRIDE,  256);
-    }
+    imgui_vertex_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_VERTEX_SLOT_STRIDE, 256);
+    imgui_index_offset  = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * IMGUI_INDEX_SLOT_STRIDE,  256);
 
     imgui_shaders = create_graphics_shaders("imgui");
 
-    {
-        font_size := cast(float) window_height / 50.0;
-        font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
-        assert(font != null, "Unable to load the ImGui font.");
-    }
+    font_size := cast(float) window_height / 50.0;
+    font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
+    assert(font != null, "Unable to load the ImGui font.");
 
-    {
-        pixels : *u8;
-        width, height, bpp : s32;
-        io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
+    pixels : *u8;
+    width, height, bpp : s32;
+    io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
 
-        imgui_font_texture = create_texture(pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
-        io.Fonts.TexID = cast(*void) imgui_font_texture.handle.id;
-    }
+    imgui_font_texture = create_texture(pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
+    io.Fonts.TexID = cast(*void) imgui_font_texture.handle.id;
 
     imgui_sampler = create_sampler(.{
         magFilter    = .LINEAR,
@@ -93,7 +85,6 @@ init_imgui :: () {
 }
 
 deinit_imgui :: () {
-
     destroy_graphics_shaders(imgui_shaders);
     destroy_texture(imgui_font_texture);
 
@@ -213,7 +204,6 @@ imgui_debug_ui :: () {
 }
 
 render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
-
     draw_data := ImGui.GetDrawData();
     if !draw_data || draw_data.CmdListsCount == 0  return;
 
@@ -243,39 +233,35 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         }
     }
 
-    {
-        vkCmdSetCullMode(command_buffer, .NONE);
+    vkCmdSetCullMode(command_buffer, .NONE);
 
-        vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
-        vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
+    vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
+    vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
 
-        color_blend_enable : VkBool32 = VK_TRUE;
-        vkCmdSetColorBlendEnableEXT(command_buffer, 0, 1, *color_blend_enable);
+    color_blend_enable : VkBool32 = VK_TRUE;
+    vkCmdSetColorBlendEnableEXT(command_buffer, 0, 1, *color_blend_enable);
 
-        blend_equation := VkColorBlendEquationEXT.{
-            srcColorBlendFactor = .SRC_ALPHA,
-            dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA,
-            colorBlendOp        = .ADD,
-            srcAlphaBlendFactor = .ONE,
-            dstAlphaBlendFactor = .ONE_MINUS_SRC_ALPHA,
-            alphaBlendOp        = .ADD,
-        };
-        vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
-    }
+    blend_equation := VkColorBlendEquationEXT.{
+        srcColorBlendFactor = .SRC_ALPHA,
+        dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA,
+        colorBlendOp        = .ADD,
+        srcAlphaBlendFactor = .ONE,
+        dstAlphaBlendFactor = .ONE_MINUS_SRC_ALPHA,
+        alphaBlendOp        = .ADD,
+    };
+    vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
 
     bind_graphics_shaders(command_buffer, imgui_shaders);
 
-    {
-        index_buffer_info := VkBindIndexBuffer3InfoKHR.{
-            addressRange = .{
-                address = heap_address(*buffer_heap, index_slot_offset),
-                size    = cast(VkDeviceSize) draw_data.TotalIdxCount * size_of(ImGui.ImDrawIdx),
-            },
-            addressFlags = .STORAGE_BUFFER_USAGE,
-            indexType    = .UINT16,
-        };
-        vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
-    }
+    index_buffer_info := VkBindIndexBuffer3InfoKHR.{
+        addressRange = .{
+            address = heap_address(*buffer_heap, index_slot_offset),
+            size    = cast(VkDeviceSize) draw_data.TotalIdxCount * size_of(ImGui.ImDrawIdx),
+        },
+        addressFlags = .STORAGE_BUFFER_USAGE,
+        indexType    = .UINT16,
+    };
+    vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
 
     push_data := Imgui_Push_Data.{
         scale     = .{2.0 / io.DisplaySize.x, 2.0 / io.DisplaySize.y},
