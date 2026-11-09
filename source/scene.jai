@@ -1,46 +1,63 @@
 // Graphics
 // Scene
 
-Vertex :: struct @Gpu {
-    position    : Vector3;
-    uv          : Vector2;
+Vertex_Attributes :: struct @Gpu {
+    uv : Vector2;
 }
 
-ground_vertices := Vertex.[
+ground_positions := Vector3.[
     // Ground plane at y = +1 (+Y is down), facing up toward the camera.
-    .{position = .{-15.0,  1.0,  15.0}, uv = .{0.0, 0.0}},
-    .{position = .{ 15.0,  1.0, -15.0}, uv = .{6.0, 6.0}},
-    .{position = .{-15.0,  1.0, -15.0}, uv = .{0.0, 6.0}},
+    .{-15.0,  1.0,  15.0},
+    .{ 15.0,  1.0, -15.0},
+    .{-15.0,  1.0, -15.0},
 
-    .{position = .{-15.0,  1.0,  15.0}, uv = .{0.0, 0.0}},
-    .{position = .{ 15.0,  1.0,  15.0}, uv = .{6.0, 0.0}},
-    .{position = .{ 15.0,  1.0, -15.0}, uv = .{6.0, 6.0}},
+    .{-15.0,  1.0,  15.0},
+    .{ 15.0,  1.0,  15.0},
+    .{ 15.0,  1.0, -15.0},
 ];
 
-triangle_vertices := Vertex.[
-    .{position = .{-2.0,  1.0, 0.0}, uv = .{0.0, 1.0}},
-    .{position = .{ 0.0, -2.0, 0.0}, uv = .{0.5, 0.0}},
-    .{position = .{ 2.0,  1.0, 0.0}, uv = .{1.0, 1.0}},
+ground_attributes := Vertex_Attributes.[
+    .{uv = .{0.0, 0.0}},
+    .{uv = .{6.0, 6.0}},
+    .{uv = .{0.0, 6.0}},
+
+    .{uv = .{0.0, 0.0}},
+    .{uv = .{6.0, 0.0}},
+    .{uv = .{6.0, 6.0}},
+];
+
+triangle_positions := Vector3.[
+    .{-2.0,  1.0, 0.0},
+    .{ 0.0, -2.0, 0.0},
+    .{ 2.0,  1.0, 0.0},
+];
+
+triangle_attributes := Vertex_Attributes.[
+    .{uv = .{0.0, 1.0}},
+    .{uv = .{0.5, 0.0}},
+    .{uv = .{1.0, 1.0}},
 ];
 
 Material :: struct @Gpu {
-    base_color : Vector4;
-    texture    : Texture_Handle;
+    base_color   : Vector4;
+    texture      : Texture_Handle;
     sampler      : Sampler_Handle;
     alpha_cutoff : float;
 }
 
 Draw_Data :: struct @Gpu {
-    vertices       : Gpu_Pointer(Vertex);
+    positions      : Gpu_Pointer(Vector3);
+    attributes     : Gpu_Pointer(Vertex_Attributes);
     material_index : u32;
 }
 
 Draw :: struct {
-    vertex_offset  : VkDeviceSize;
-    vertex_count   : u32;
-    material_index : u32;
-    blas           : VkAccelerationStructureKHR;
-    blas_address   : VkDeviceAddress;
+    position_offset  : VkDeviceSize;
+    attribute_offset : VkDeviceSize;
+    vertex_count     : u32;
+    material_index   : u32;
+    blas             : VkAccelerationStructureKHR;
+    blas_address     : VkDeviceAddress;
 }
 
 init_data :: () {
@@ -71,8 +88,8 @@ init_data :: () {
     ground_material := add_material(.{base_color = srgb(0.5, 0.5, 0.5), texture = white_texture, sampler = sampler});
     croc_material   := add_material(.{base_color = srgb(1.0, 1.0, 1.0), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
 
-    add_draw(ground_vertices,   ground_material);
-    add_draw(triangle_vertices, croc_material);
+    add_draw(ground_positions,   ground_attributes,   ground_material);
+    add_draw(triangle_positions, triangle_attributes, croc_material);
 
     materials_offset = upload(materials);
 
@@ -81,7 +98,8 @@ init_data :: () {
         defer array_free(draw_datas);
         for draws {
             array_add(*draw_datas, .{
-                vertices       = heap_gpu_pointer(*heaps.buffer, Vertex, it.vertex_offset),
+                positions      = heap_gpu_pointer(*heaps.buffer, Vector3, it.position_offset),
+                attributes     = heap_gpu_pointer(*heaps.buffer, Vertex_Attributes, it.attribute_offset),
                 material_index = it.material_index,
             });
         }
@@ -89,7 +107,7 @@ init_data :: () {
     }
 
     for * draws {
-        it.blas, it.blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, it.vertex_offset), size_of(Vertex), it.vertex_count, materials[it.material_index].alpha_cutoff == 0);
+        it.blas, it.blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, it.position_offset), size_of(Vector3), it.vertex_count, materials[it.material_index].alpha_cutoff == 0);
     }
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
@@ -132,11 +150,14 @@ add_material :: (material: Material) -> u32 {
     return xx (materials.count - 1);
 }
 
-add_draw :: (vertices: [] Vertex, material_index: u32) {
+add_draw :: (positions: [] Vector3, attributes: [] Vertex_Attributes, material_index: u32) {
+    assert(positions.count == attributes.count);
+
     draw := array_add(*draws);
-    draw.vertex_count   = xx vertices.count;
-    draw.material_index = material_index;
-    draw.vertex_offset  = upload(vertices);
+    draw.vertex_count     = xx positions.count;
+    draw.material_index   = material_index;
+    draw.position_offset  = upload(positions);
+    draw.attribute_offset = upload(attributes);
 }
 
 upload :: (array: [] $T) -> VkDeviceSize {

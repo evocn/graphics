@@ -33,14 +33,13 @@ struct Vertex_Stage_Output {
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Draw_Data draw = push_data.draws[push_data.draw_index];
-    Vertex vertex = draw.vertices[vertex_id];
-
-    float3 position = vertex.position;
+    float3 position = draw.positions[vertex_id];
+    Vertex_Attributes attributes = draw.attributes[vertex_id];
 
     Vertex_Stage_Output output;
     {
         {
-            output.coarse_vertex.uv = vertex.uv;
+            output.coarse_vertex.uv = attributes.uv;
             output.coarse_vertex.world_position = position;
         }
 
@@ -61,9 +60,9 @@ struct Fragment_Stage_Output {
 bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentrics) {
     Draw_Data draw = push_data.draws[draw_index];
 
-    float2 uv0 = draw.vertices[primitive_index * 3 + 0].uv;
-    float2 uv1 = draw.vertices[primitive_index * 3 + 1].uv;
-    float2 uv2 = draw.vertices[primitive_index * 3 + 2].uv;
+    float2 uv0 = draw.attributes[primitive_index * 3 + 0].uv;
+    float2 uv1 = draw.attributes[primitive_index * 3 + 1].uv;
+    float2 uv2 = draw.attributes[primitive_index * 3 + 2].uv;
     float2 uv = uv0 * (1.0 - barycentrics.x - barycentrics.y) + uv1 * barycentrics.x + uv2 * barycentrics.y;
 
     for (;;) {
