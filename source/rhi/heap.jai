@@ -25,37 +25,8 @@ init_heaps :: () {
     init_buffer_heap(*scratch_heap, "scratch heap", 64 * MiB);
     init_buffer_heap(*readback_heap, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
 
-    {
-        texture_info : VkImageCreateInfo;
-        {
-            using texture_info;
-            imageType   = .e2D;
-            format      = .R8G8B8A8_UNORM;
-            extent      = .{width = 1, height = 1, depth = 1};
-            mipLevels   = 1;
-            arrayLayers = 1;
-            samples     = .e1;
-            tiling      = .OPTIMAL;
-            usage       = .SAMPLED | .TRANSFER_DST;
-        }
-        init_image_heap(*image_heap, "image heap", 512 * MiB, texture_info);
-    }
-
-    {
-        depth_info : VkImageCreateInfo;
-        {
-            using depth_info;
-            imageType   = .e2D;
-            format      = DEPTH_FORMAT;
-            extent      = .{width = 1, height = 1, depth = 1};
-            mipLevels   = 1;
-            arrayLayers = 1;
-            samples     = .e1;
-            tiling      = .OPTIMAL;
-            usage       = .DEPTH_STENCIL_ATTACHMENT;
-        }
-        init_image_heap(*render_target_heap, "render target heap", 256 * MiB, depth_info);
-    }
+    init_image_heap(*image_heap,         "image heap",         512 * MiB, .R8G8B8A8_UNORM, .SAMPLED | .TRANSFER_DST);
+    init_image_heap(*render_target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT,    .DEPTH_STENCIL_ATTACHMENT);
 }
 
 deinit_heaps :: () {
@@ -112,22 +83,12 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties :
     heap.name = name;
     heap.size = size;
 
-    {
-        buffer_create_info : VkBufferCreateInfo;
-        buffer_create_info.size  = heap.size;
-        buffer_create_info.usage = .DESCRIPTOR_HEAP_EXT
-              | .SHADER_DEVICE_ADDRESS
-              | .INDEX_BUFFER
-              | .TRANSFER_SRC
-              | .TRANSFER_DST
-              | .STORAGE_BUFFER
-              | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-              | .ACCELERATION_STRUCTURE_STORAGE_KHR
-        ;
-
-        result = vkCreateBuffer(device, *buffer_create_info, null, *heap.buffer);
-        assert(result == .SUCCESS);
-    }
+    buffer_create_info := VkBufferCreateInfo.{
+        size  = heap.size,
+        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .INDEX_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR | .ACCELERATION_STRUCTURE_STORAGE_KHR,
+    };
+    result = vkCreateBuffer(device, *buffer_create_info, null, *heap.buffer);
+    assert(result == .SUCCESS);
 
     memory_requirements : VkMemoryRequirements;
     vkGetBufferMemoryRequirements(device, heap.buffer, *memory_requirements);
@@ -148,11 +109,20 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties :
     set_debug_name(.BUFFER, heap.buffer, name);
 }
 
-init_image_heap :: (heap: *Heap, name: string, size: VkDeviceSize, representative_image: VkImageCreateInfo) {
+init_image_heap :: (heap: *Heap, name: string, size: VkDeviceSize, format: VkFormat, usage: VkImageUsageFlags) {
     heap.name = name;
     heap.size = size;
 
-    image_info := representative_image;
+    image_info := VkImageCreateInfo.{
+        imageType   = .e2D,
+        format      = format,
+        extent      = .{width = 1, height = 1, depth = 1},
+        mipLevels   = 1,
+        arrayLayers = 1,
+        samples     = .e1,
+        tiling      = .OPTIMAL,
+        usage       = usage,
+    };
     requirements_info := VkDeviceImageMemoryRequirements.{pCreateInfo = *image_info};
     memory_requirements : VkMemoryRequirements2;
     vkGetDeviceImageMemoryRequirements(device, *requirements_info, *memory_requirements);
@@ -167,13 +137,8 @@ allocate_heap_memory :: (heap: *Heap, size: VkDeviceSize, memory_type_bits: u32,
 
     memory_allocate_flags_info := VkMemoryAllocateFlagsInfo.{flags = .DEVICE_ADDRESS};
 
-    allocate_info : VkMemoryAllocateInfo;
-    {
-        using allocate_info;
-        if device_address then pNext = *memory_allocate_flags_info;
-        allocationSize  = size;
-        memoryTypeIndex = memory_type_index;
-    }
+    allocate_info := VkMemoryAllocateInfo.{allocationSize = size, memoryTypeIndex = memory_type_index};
+    if device_address  allocate_info.pNext = *memory_allocate_flags_info;
 
     result := vkAllocateMemory(device, *allocate_info, null, *heap.memory);
     assert(result == .SUCCESS, "Unable to allocate % bytes for the %.", size, heap.name);

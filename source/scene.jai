@@ -87,23 +87,15 @@ init_data :: () {
     croc_data := texture_datas[0];
     croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
 
-    sampler : Sampler_Handle;
-    {
-        sampler_create_info : VkSamplerCreateInfo;
-        {
-            using sampler_create_info;
-            magFilter    = .NEAREST;
-            minFilter    = .NEAREST;
-            mipmapMode   = .NEAREST;
-            addressModeU = .REPEAT;
-            addressModeV = .REPEAT;
-            addressModeW = .REPEAT;
-            maxLod       = VK_LOD_CLAMP_NONE;
-            borderColor  = .INT_OPAQUE_BLACK;
-        }
-
-        sampler = create_sampler(sampler_create_info);
-    }
+    sampler := create_sampler(.{
+        magFilter    = .NEAREST,
+        minFilter    = .NEAREST,
+        mipmapMode   = .NEAREST,
+        addressModeU = .REPEAT,
+        addressModeV = .REPEAT,
+        addressModeW = .REPEAT,
+        maxLod       = VK_LOD_CLAMP_NONE,
+    });
 
     trilinear_sampler := create_sampler(.{
         magFilter        = .LINEAR,

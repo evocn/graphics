@@ -167,79 +167,37 @@ init_render :: () {
 
     frame_constants_offset = heap_allocate(*buffer_heap, FRAMES_IN_FLIGHT * FRAME_CONSTANTS_STRIDE, 256);
 
-    // Command Buffers
-    {
-        // Pool
-        {
-            using command_pool_create_info: VkCommandPoolCreateInfo;
-            flags = .RESET_COMMAND_BUFFER;
-            queueFamilyIndex = queue_family_index;
-            result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
-            assert(result == .SUCCESS);
-        }
+    command_pool_create_info := VkCommandPoolCreateInfo.{flags = .RESET_COMMAND_BUFFER, queueFamilyIndex = queue_family_index};
+    result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
+    assert(result == .SUCCESS);
 
-        {
-            using command_buffer_allocate_info: VkCommandBufferAllocateInfo;
-            commandPool        = command_pool;
-            level              = .PRIMARY;
-            commandBufferCount = FRAMES_IN_FLIGHT;
-            result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
-            assert(result == .SUCCESS);
+    command_buffer_allocate_info := VkCommandBufferAllocateInfo.{commandPool = command_pool, level = .PRIMARY, commandBufferCount = FRAMES_IN_FLIGHT};
+    result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
+    assert(result == .SUCCESS);
+    for command_buffers  set_debug_name(.COMMAND_BUFFER, it, tprint("frame command buffer %", it_index));
 
-            for index : 0..FRAMES_IN_FLIGHT-1 {
-                set_debug_name(.COMMAND_BUFFER, command_buffers[index], tprint("frame command buffer %", index));
-            }
-        }
+    semaphore_create_info : VkSemaphoreCreateInfo;
+    fence_create_info := VkFenceCreateInfo.{flags = .SIGNALED};
+    for 0..MAX_SWAPCHAIN_IMAGES-1 {
+        vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[it]);
+        set_debug_name(.SEMAPHORE, present_ready_semaphores[it], tprint("present ready semaphore %", it));
+        vkCreateFence(device, *fence_create_info, null, *present_fences[it]);
+        set_debug_name(.FENCE, present_fences[it], tprint("present fence %", it));
+    }
+    for 0..FRAMES_IN_FLIGHT-1 {
+        vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[it]);
+        set_debug_name(.SEMAPHORE, image_available_semaphores[it], tprint("image available semaphore %", it));
     }
 
-    // Semaphores
-    {
-        // Render / Present
-        {
-            using semaphore_create_info: VkSemaphoreCreateInfo;
+    semaphore_type_create_info := VkSemaphoreTypeCreateInfo.{semaphoreType = .TIMELINE};
+    timeline_semaphore_create_info := VkSemaphoreCreateInfo.{pNext = *semaphore_type_create_info};
+    vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
+    set_debug_name(.SEMAPHORE, timeline_semaphore, "frame timeline semaphore");
 
-            fence_create_info : VkFenceCreateInfo;
-            fence_create_info.flags = .SIGNALED;
-
-            for image_index : 0..MAX_SWAPCHAIN_IMAGES-1 {
-                vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[image_index]);
-                set_debug_name(.SEMAPHORE, present_ready_semaphores[image_index], tprint("present ready semaphore %", image_index));
-
-                vkCreateFence(device, *fence_create_info, null, *present_fences[image_index]);
-                set_debug_name(.FENCE, present_fences[image_index], tprint("present fence %", image_index));
-            }
-            for index : 0..FRAMES_IN_FLIGHT-1 {
-                vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[index]);
-                set_debug_name(.SEMAPHORE, image_available_semaphores[index], tprint("image available semaphore %", index));
-            }
-        }
-
-        // Timeline
-        {
-            semaphore_type_create_info : VkSemaphoreTypeCreateInfo;
-            {
-                using semaphore_type_create_info;
-                semaphoreType = .TIMELINE;
-                initialValue = 0;
-            }
-
-            using timeline_semaphore_create_info: VkSemaphoreCreateInfo;
-            pNext = *semaphore_type_create_info;
-
-            vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
-            set_debug_name(.SEMAPHORE, timeline_semaphore, "frame timeline semaphore");
-        }
-    }
-
-    {
-        query_pool_create_info := VkQueryPoolCreateInfo.{
-            queryType  = .TIMESTAMP,
-            queryCount = FRAMES_IN_FLIGHT * 2,
-        };
-        result := vkCreateQueryPool(device, *query_pool_create_info, null, *timestamp_pool);
-        assert(result == .SUCCESS);
-        set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
-    }
+    query_pool_create_info := VkQueryPoolCreateInfo.{queryType = .TIMESTAMP, queryCount = FRAMES_IN_FLIGHT * 2};
+    result = vkCreateQueryPool(device, *query_pool_create_info, null, *timestamp_pool);
+    assert(result == .SUCCESS);
+    set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
 
     material_shaders = create_graphics_shaders("material");
     tonemap_shaders  = create_graphics_shaders("tonemap");
@@ -256,7 +214,7 @@ deinit_render :: () {
     destroy_graphics_shaders(material_shaders);
     destroy_graphics_shaders(tonemap_shaders);
     destroy_graphics_shaders(depth_shaders);
-    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, u64_max);
+    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, U64_MAX);
     assert(result == .SUCCESS);
 
     for image_index : 0..MAX_SWAPCHAIN_IMAGES-1 {
@@ -294,59 +252,21 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
     vkCmdSetAlphaToCoverageEnableEXT(command_buffer,VK_FALSE);
     vkCmdSetLogicOpEnableEXT(command_buffer,        VK_FALSE);
 
-    color_blend_enables : [1] VkBool32;
-    {
-        color_blend_enables[0] = VK_FALSE;
-    }
+    color_blend_enable : VkBool32 = VK_FALSE;
+    vkCmdSetColorBlendEnableEXT(command_buffer, 0, 1, *color_blend_enable);
 
-    vkCmdSetColorBlendEnableEXT(command_buffer,
-        firstAttachment = 0,
-        attachmentCount = color_blend_enables.count,
-        pColorBlendEnables = color_blend_enables.data,
-    );
-
-    color_write_masks : [1] VkColorComponentFlags;
-    {
-        color_write_masks[0] = .R | .G | .B | .A;
-    }
-    vkCmdSetColorWriteMaskEXT(command_buffer,
-        firstAttachment = 0,
-        attachmentCount = color_write_masks.count,
-        pColorWriteMasks = color_write_masks.data
-    );
+    color_write_mask := VkColorComponentFlags.R | .G | .B | .A;
+    vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *color_write_mask);
 
     vkCmdSetRasterizationSamplesEXT(command_buffer, .e1);
     sample_mask : VkSampleMask = 1;
     vkCmdSetSampleMaskEXT(command_buffer, .e1, *sample_mask);
 
+    viewport := VkViewport.{width = xx swapchain_extent.width, height = xx swapchain_extent.height, maxDepth = 1};
+    vkCmdSetViewportWithCount(command_buffer, 1, *viewport);
 
-    {
-        viewports : [1] VkViewport;
-        {
-            {
-                using viewports[0];
-                x = 0;                    
-                y = 0;
-                width       = xx swapchain_extent.width;
-                height      = xx swapchain_extent.height;
-                minDepth = 0;
-                maxDepth = 1;
-            }
-        }
-        vkCmdSetViewportWithCount(command_buffer, viewports.count, viewports.data);
-    }
-
-    {
-        scissors : [1] VkRect2D;
-        {
-            {
-                using scissors[0];
-                offset = .{0, 0};
-                extent = swapchain_extent;
-            }
-        }
-        vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
-    }
+    scissor := VkRect2D.{extent = swapchain_extent};
+    vkCmdSetScissorWithCount(command_buffer, 1, *scissor);
 
     vkCmdSetVertexInputEXT(command_buffer, 0, null, 0, null);
 }
@@ -364,30 +284,15 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
 
     memory_barrier(command_buffer, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .COPY, .TRANSFER_READ);
 
-    {
-        region : VkDeviceMemoryImageCopyKHR;
-        {
-            using region;
-            addressRange = .{
-                address = heap_address(*readback_heap, screenshot_offset),
-                size    = size,
-            };
-            addressFlags = .STORAGE_BUFFER_USAGE;
-            imageSubresource = .{
-                aspectMask = .COLOR,
-                layerCount = 1,
-            };
-            imageLayout = .GENERAL;
-            imageExtent = .{screenshot_extent.width, screenshot_extent.height, 1};
-        }
-
-        using copy_info : VkCopyDeviceMemoryImageInfoKHR;
-        image = swapchain_image;
-        regionCount = 1;
-        pRegions = *region;
-
-        vkCmdCopyImageToMemoryKHR(command_buffer, *copy_info);
-    }
+    region := VkDeviceMemoryImageCopyKHR.{
+        addressRange     = .{address = heap_address(*readback_heap, screenshot_offset), size = size},
+        addressFlags     = .STORAGE_BUFFER_USAGE,
+        imageSubresource = .{aspectMask = .COLOR, layerCount = 1},
+        imageLayout      = .GENERAL,
+        imageExtent      = .{screenshot_extent.width, screenshot_extent.height, 1},
+    };
+    copy_info := VkCopyDeviceMemoryImageInfoKHR.{image = swapchain_image, regionCount = 1, pRegions = *region};
+    vkCmdCopyImageToMemoryKHR(command_buffer, *copy_info);
 
     memory_barrier(command_buffer, .COPY, .TRANSFER_WRITE, .HOST, .HOST_READ);
 
@@ -454,8 +359,6 @@ read_screenshot_pixels :: () -> *u32 {
     return pixels;
 }
 
-u64_min, u64_max :: #run get_integer_range(u64);
-
 draw_frame :: () {
     result : VkResult;
 
@@ -463,16 +366,9 @@ draw_frame :: () {
     index := frame_index % FRAMES_IN_FLIGHT;
 
     wait_value : u64 = ifx frame_index > FRAMES_IN_FLIGHT then frame_index - FRAMES_IN_FLIGHT else 0;
-    {
-        using semaphore_wait_info : VkSemaphoreWaitInfo;
-
-        semaphoreCount = 1;
-        pSemaphores = *timeline_semaphore;
-        pValues = *wait_value;
-
-        result = vkWaitSemaphores(device, *semaphore_wait_info, u64_max);
-        assert(result == .SUCCESS);
-    }
+    semaphore_wait_info := VkSemaphoreWaitInfo.{semaphoreCount = 1, pSemaphores = *timeline_semaphore, pValues = *wait_value};
+    result = vkWaitSemaphores(device, *semaphore_wait_info, U64_MAX);
+    assert(result == .SUCCESS);
 
     if frame_index > FRAMES_IN_FLIGHT {
         timestamps : [2] u64;
@@ -484,7 +380,7 @@ draw_frame :: () {
     }
 
     image_index: u32;
-    result = vkAcquireNextImageKHR(device, swapchain, u64_max, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
+    result = vkAcquireNextImageKHR(device, swapchain, U64_MAX, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
     if result == .ERROR_OUT_OF_DATE_KHR {
         frame_index -= 1;
         swapchain_needs_recreation = true;
@@ -497,17 +393,14 @@ draw_frame :: () {
         assert(result == .SUCCESS, "vkAcquireNextImageKHR failed: %", result);
     }
 
-    result = vkWaitForFences(device, 1, *present_fences[image_index], VK_TRUE, u64_max);
+    result = vkWaitForFences(device, 1, *present_fences[image_index], VK_TRUE, U64_MAX);
     assert(result == .SUCCESS);
     result = vkResetFences(device, 1, *present_fences[image_index]);
     assert(result == .SUCCESS);
 
-    {
-        using begin_info: VkCommandBufferBeginInfo;
-        flags = .ONE_TIME_SUBMIT;
-        result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
-        assert(result == .SUCCESS);
-    }
+    begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
+    result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
+    assert(result == .SUCCESS);
 
     vkCmdResetQueryPool(command_buffers[index], timestamp_pool, xx (index * 2), 2);
     vkCmdWriteTimestamp2(command_buffers[index], .NONE, timestamp_pool, xx (index * 2));
@@ -536,43 +429,21 @@ draw_frame :: () {
             pipeline_barrier(command_buffers[index], barriers, .[history_barrier]);
         }
 
-        color_attachment : VkRenderingAttachmentInfoKHR;
-        {
-            using color_attachment;
-            imageView = hdr_view;
-            imageLayout = .GENERAL;
-            loadOp = .CLEAR;
-            storeOp = .STORE;
-            clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
-        }
+        color_attachment := VkRenderingAttachmentInfoKHR.{imageView = hdr_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .STORE};
+        color_attachment.clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
 
-        depth_attachment : VkRenderingAttachmentInfoKHR;
-        {
-            using depth_attachment;
-            imageView = depth_view;
-            imageLayout = .GENERAL;
-            loadOp = .CLEAR;
-            storeOp = .DONT_CARE;
-            clearValue.depthStencil = .{depth = 1, stencil = 0};
-        }
+        depth_attachment := VkRenderingAttachmentInfoKHR.{imageView = depth_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .DONT_CARE};
+        depth_attachment.clearValue.depthStencil = .{depth = 1};
 
-        {
-            using rendering_info : VkRenderingInfo;
-            renderArea = VkRect2D.{
-                offset = .{0, 0},
-                extent = swapchain_extent,
-            };
-            layerCount = 1;
-            viewMask = 0;
-            colorAttachmentCount = 1;
-            pColorAttachments = *color_attachment;
-            pDepthAttachment = *depth_attachment;
-            pStencilAttachment = null;
+        rendering_info := VkRenderingInfo.{
+            renderArea           = .{extent = swapchain_extent},
+            layerCount           = 1,
+            colorAttachmentCount = 1,
+            pColorAttachments    = *color_attachment,
+            pDepthAttachment     = *depth_attachment,
+        };
+        vkCmdBeginRendering(command_buffers[index], *rendering_info);
 
-            vkCmdBeginRendering(command_buffers[index], *rendering_info);
-        }
-
-        // Set up my dynamic state
         bind_descriptor_heaps(command_buffers[index]);
         set_draw_state(command_buffers[index]);
 
@@ -682,77 +553,37 @@ draw_frame :: () {
     result = vkEndCommandBuffer(command_buffers[index]);
     assert(result == .SUCCESS);
 
-    {
-        // Wait at the Color Attachment Output stage so the GPU can do vertex work before the image is fully acquired.
-        wait_image_info : VkSemaphoreSubmitInfo;
-        {
-            using wait_image_info;
-            semaphore = image_available_semaphores[index];
-            value = 0; // binary.
-            stageMask = .COLOR_ATTACHMENT_OUTPUT;
-        }
+    wait_info := VkSemaphoreSubmitInfo.{semaphore = image_available_semaphores[index], stageMask = .COLOR_ATTACHMENT_OUTPUT};
+    signal_infos := VkSemaphoreSubmitInfo.[
+        .{semaphore = present_ready_semaphores[image_index], stageMask = .ALL_COMMANDS},
+        .{semaphore = timeline_semaphore, value = frame_index, stageMask = .ALL_COMMANDS},
+    ];
+    command_buffer_info := VkCommandBufferSubmitInfo.{commandBuffer = command_buffers[index]};
+    submit_info := VkSubmitInfo2.{
+        waitSemaphoreInfoCount   = 1,
+        pWaitSemaphoreInfos      = *wait_info,
+        commandBufferInfoCount   = 1,
+        pCommandBufferInfos      = *command_buffer_info,
+        signalSemaphoreInfoCount = signal_infos.count,
+        pSignalSemaphoreInfos    = signal_infos.data,
+    };
+    result = vkQueueSubmit2(queue, 1, *submit_info, VK_NULL_HANDLE);
+    assert(result == .SUCCESS);
 
-        // Signal this when all commands, including the layout transition to PRESENT_SRC, finish.
-        signal_present_info : VkSemaphoreSubmitInfo;
-        {
-            using signal_present_info;
-            semaphore = present_ready_semaphores[image_index];
-            value = 0; // binary.
-            stageMask = .ALL_COMMANDS;
-        }
-
-        // Signal the timeline when all commands have finished.
-        signal_timeline_info : VkSemaphoreSubmitInfo;
-        {
-            using signal_timeline_info;
-            semaphore = timeline_semaphore;
-            value = frame_index;
-            stageMask = .ALL_COMMANDS;
-        };
-
-        signal_infos := VkSemaphoreSubmitInfo.[signal_present_info, signal_timeline_info];
-
-        command_buffer_info : VkCommandBufferSubmitInfo;
-        {
-            using command_buffer_info;
-            commandBuffer = command_buffers[index];
-        }
-
-        submit_info_2: VkSubmitInfo2;
-        {
-            using submit_info_2;
-            waitSemaphoreInfoCount = 1;
-            pWaitSemaphoreInfos = *wait_image_info;
-            commandBufferInfoCount = 1;
-            pCommandBufferInfos = *command_buffer_info;
-            signalSemaphoreInfoCount = 2;
-            pSignalSemaphoreInfos = signal_infos.data;
-        }
-
-        result = vkQueueSubmit2(queue, 1, *submit_info_2, VK_NULL_HANDLE);
-        assert(result == .SUCCESS);
-    }
-
-    {
-        using present_info: VkPresentInfoKHR;
-        waitSemaphoreCount = 1;
-        pWaitSemaphores    = *present_ready_semaphores[image_index];
-        swapchainCount     = 1;
-        pSwapchains        = *swapchain;
-        pImageIndices      = *image_index;
-
-        present_fence_info : VkSwapchainPresentFenceInfoKHR;
-        present_fence_info.swapchainCount = 1;
-        present_fence_info.pFences        = *present_fences[image_index];
-        pNext = *present_fence_info;
-
-        result = vkQueuePresentKHR(queue, *present_info);
-        if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {
-            swapchain_needs_recreation = true;
-        }
-        else {
-            assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
-        }
+    present_fence_info := VkSwapchainPresentFenceInfoKHR.{swapchainCount = 1, pFences = *present_fences[image_index]};
+    present_info := VkPresentInfoKHR.{
+        pNext              = *present_fence_info,
+        waitSemaphoreCount = 1,
+        pWaitSemaphores    = *present_ready_semaphores[image_index],
+        swapchainCount     = 1,
+        pSwapchains        = *swapchain,
+        pImageIndices      = *image_index,
+    };
+    result = vkQueuePresentKHR(queue, *present_info);
+    if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {
+        swapchain_needs_recreation = true;
+    } else {
+        assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
     }
 }
 

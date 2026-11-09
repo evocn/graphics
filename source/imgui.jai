@@ -81,22 +81,15 @@ init_imgui :: () {
         io.Fonts.TexID = cast(*void) imgui_font_texture.handle.id;
     }
 
-    {
-        sampler_create_info : VkSamplerCreateInfo;
-        {
-            using sampler_create_info;
-            magFilter    = .LINEAR;
-            minFilter    = .LINEAR;
-            mipmapMode   = .NEAREST;
-            addressModeU = .CLAMP_TO_EDGE;
-            addressModeV = .CLAMP_TO_EDGE;
-            addressModeW = .CLAMP_TO_EDGE;
-            maxLod       = VK_LOD_CLAMP_NONE;
-            borderColor  = .INT_OPAQUE_BLACK;
-        }
-
-        imgui_sampler = create_sampler(sampler_create_info);
-    }
+    imgui_sampler = create_sampler(.{
+        magFilter    = .LINEAR,
+        minFilter    = .LINEAR,
+        mipmapMode   = .NEAREST,
+        addressModeU = .CLAMP_TO_EDGE,
+        addressModeV = .CLAMP_TO_EDGE,
+        addressModeW = .CLAMP_TO_EDGE,
+        maxLod       = VK_LOD_CLAMP_NONE,
+    });
 }
 
 deinit_imgui :: () {
@@ -256,20 +249,17 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
         vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
 
-        color_blend_enables : [1] VkBool32;
-        color_blend_enables[0] = VK_TRUE;
-        vkCmdSetColorBlendEnableEXT(command_buffer, 0, color_blend_enables.count, color_blend_enables.data);
+        color_blend_enable : VkBool32 = VK_TRUE;
+        vkCmdSetColorBlendEnableEXT(command_buffer, 0, 1, *color_blend_enable);
 
-        blend_equation : VkColorBlendEquationEXT;
-        {
-            using blend_equation;
-            srcColorBlendFactor = .SRC_ALPHA;
-            dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA;
-            colorBlendOp        = .ADD;
-            srcAlphaBlendFactor = .ONE;
-            dstAlphaBlendFactor = .ONE_MINUS_SRC_ALPHA;
-            alphaBlendOp        = .ADD;
-        }
+        blend_equation := VkColorBlendEquationEXT.{
+            srcColorBlendFactor = .SRC_ALPHA,
+            dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA,
+            colorBlendOp        = .ADD,
+            srcAlphaBlendFactor = .ONE,
+            dstAlphaBlendFactor = .ONE_MINUS_SRC_ALPHA,
+            alphaBlendOp        = .ADD,
+        };
         vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
     }
 
@@ -311,24 +301,12 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
                 x2 := clamp(cast(s32) pcmd.ClipRect.z, 0, fb_width);
                 y2 := clamp(cast(s32) pcmd.ClipRect.w, 0, fb_height);
                 if x2 > x1 && y2 > y1 {
-                    scissors : [1] VkRect2D;
-                    scissors[0] = .{
-                        offset = .{x1, y1},
-                        extent = .{xx (x2 - x1), xx (y2 - y1)},
-                    };
-                    vkCmdSetScissorWithCount(command_buffer, scissors.count, scissors.data);
+                    scissor := VkRect2D.{offset = .{x1, y1}, extent = .{xx (x2 - x1), xx (y2 - y1)}};
+                    vkCmdSetScissorWithCount(command_buffer, 1, *scissor);
 
                     push_data.texture = .{id = cast(u32) cast(u64) pcmd.TextureId};
 
-                    push_data_info : VkPushDataInfoEXT;
-                    {
-                        using push_data_info;
-                        offset = 0;
-                        data = .{
-                            address = *push_data,
-                            size    = size_of(Imgui_Push_Data),
-                        };
-                    }
+                    push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Imgui_Push_Data)}};
                     vkCmdPushDataEXT(command_buffer, *push_data_info);
 
                     vkCmdDrawIndexed(command_buffer,

@@ -29,25 +29,14 @@ init_descriptor_heaps :: () {
     sampler_heap_offset  = heap_allocate(*buffer_heap, sampler_heap_size,  descriptor_heap_properties.samplerHeapAlignment);
     resource_heap_offset = heap_allocate(*buffer_heap, resource_heap_size, descriptor_heap_properties.resourceHeapAlignment);
 
-    {
-        using bind_sampler_heap_info;
-        heapRange = .{
-            address = heap_address(*buffer_heap, sampler_heap_offset),
-            size = sampler_heap_size,
-        };
-        reservedRangeOffset = 0;
-        reservedRangeSize = descriptor_heap_properties.minSamplerHeapReservedRange;
-    }
-
-    {
-        using bind_resource_heap_info;
-        heapRange = .{
-            address = heap_address(*buffer_heap, resource_heap_offset),
-            size = resource_heap_size,
-        };
-        reservedRangeOffset = 0;
-        reservedRangeSize = descriptor_heap_properties.minResourceHeapReservedRange;
-    }
+    bind_sampler_heap_info = .{
+        heapRange         = .{address = heap_address(*buffer_heap, sampler_heap_offset), size = sampler_heap_size},
+        reservedRangeSize = descriptor_heap_properties.minSamplerHeapReservedRange,
+    };
+    bind_resource_heap_info = .{
+        heapRange         = .{address = heap_address(*buffer_heap, resource_heap_offset), size = resource_heap_size},
+        reservedRangeSize = descriptor_heap_properties.minResourceHeapReservedRange,
+    };
 
     first_image_id    = cast(u32, (descriptor_heap_properties.minResourceHeapReservedRange + image_descriptor_stride - 1) / image_descriptor_stride);
     first_sampler_id  = cast(u32, (descriptor_heap_properties.minSamplerHeapReservedRange + sampler_descriptor_stride - 1) / sampler_descriptor_stride);
