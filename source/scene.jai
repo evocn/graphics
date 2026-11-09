@@ -3,43 +3,51 @@
 
 Vertex :: struct @Gpu {
     position    : Vector3;
-    color       : Vector3;
     uv          : Vector2;
 }
 
 ground_vertices := Vertex.[
     // Ground plane at y = +1 (+Y is down), facing up toward the camera.
-    .{position = .{-15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
-    .{position = .{ 15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
-    .{position = .{-15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 6.0}},
+    .{position = .{-15.0,  1.0,  15.0}, uv = .{0.0, 0.0}},
+    .{position = .{ 15.0,  1.0, -15.0}, uv = .{6.0, 6.0}},
+    .{position = .{-15.0,  1.0, -15.0}, uv = .{0.0, 6.0}},
 
-    .{position = .{-15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{0.0, 0.0}},
-    .{position = .{ 15.0,  1.0,  15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 0.0}},
-    .{position = .{ 15.0,  1.0, -15.0}, color = .{0.5, 0.5, 0.5}, uv = .{6.0, 6.0}},
+    .{position = .{-15.0,  1.0,  15.0}, uv = .{0.0, 0.0}},
+    .{position = .{ 15.0,  1.0,  15.0}, uv = .{6.0, 0.0}},
+    .{position = .{ 15.0,  1.0, -15.0}, uv = .{6.0, 6.0}},
 ];
 
 triangle_vertices := Vertex.[
-    .{position = .{-2.0,  1.0, 0.0}, color = .{1.0, 0.0, 0.0}, uv = .{0.0, 1.0}},
-    .{position = .{ 0.0, -2.0, 0.0}, color = .{1.0, 0.0, 0.0}, uv = .{0.5, 0.0}},
-    .{position = .{ 2.0,  1.0, 0.0}, color = .{1.0, 0.0, 0.0}, uv = .{1.0, 1.0}},
+    .{position = .{-2.0,  1.0, 0.0}, uv = .{0.0, 1.0}},
+    .{position = .{ 0.0, -2.0, 0.0}, uv = .{0.5, 0.0}},
+    .{position = .{ 2.0,  1.0, 0.0}, uv = .{1.0, 1.0}},
 ];
 
+Material :: struct @Gpu {
+    base_color : Vector4;
+    texture    : Texture_Handle;
+    sampler    : Sampler_Handle;
+}
+
 Draw_Data :: struct @Gpu {
-    vertices : Gpu_Pointer(Vertex);
-    texture  : Texture_Handle;
-    sampler  : Sampler_Handle;
+    vertices       : Gpu_Pointer(Vertex);
+    material_index : u32;
 }
 
 Draw :: struct {
-    vertex_offset : VkDeviceSize;
-    vertex_count  : u32;
-    blas          : VkAccelerationStructureKHR;
-    blas_address  : VkDeviceAddress;
+    vertex_offset  : VkDeviceSize;
+    vertex_count   : u32;
+    material_index : u32;
+    blas           : VkAccelerationStructureKHR;
+    blas_address   : VkDeviceAddress;
 }
 
 init_data :: () {
     white_pixel : u32 = 0xFFFFFFFF;
-    texture = create_texture(command_buffers[0], *white_pixel, 1, 1, "white texture");
+    white_texture := add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, "white texture"));
+
+    croc_data := program_state.texture_datas[0];
+    croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, "croc"));
 
     sampler : Sampler_Handle;
     {
@@ -59,20 +67,24 @@ init_data :: () {
         sampler = create_sampler(sampler_create_info);
     }
 
-    add_draw(ground_vertices);
-    add_draw(triangle_vertices);
+    ground_material := add_material(.{base_color = .{0.5, 0.5, 0.5, 1.0}, texture = white_texture, sampler = sampler});
+    croc_material   := add_material(.{base_color = .{1.0, 1.0, 1.0, 1.0}, texture = croc_texture,  sampler = sampler});
+
+    add_draw(ground_vertices,   ground_material);
+    add_draw(triangle_vertices, croc_material);
+
+    materials_offset = upload(materials);
 
     {
-        draw_data_offset = heap_allocate(*heaps.buffer, xx (draws.count * size_of(Draw_Data)), 256);
-
-        draw_datas := cast(*Draw_Data) heap_pointer(*heaps.buffer, draw_data_offset);
+        draw_datas : [..] Draw_Data;
+        defer array_free(draw_datas);
         for draws {
-            draw_datas[it_index] = .{
-                vertices = heap_gpu_pointer(*heaps.buffer, Vertex, it.vertex_offset),
-                texture  = texture.handle,
-                sampler  = sampler,
-            };
+            array_add(*draw_datas, .{
+                vertices       = heap_gpu_pointer(*heaps.buffer, Vertex, it.vertex_offset),
+                material_index = it.material_index,
+            });
         }
+        draw_data_offset = upload(draw_datas);
     }
 
     for * draws {
@@ -102,16 +114,33 @@ deinit_data :: () {
     vkDestroyAccelerationStructureKHR(device, tlas, null);
     for draws  vkDestroyAccelerationStructureKHR(device, it.blas, null);
     array_free(draws);
-    destroy_texture(texture);
+    array_free(materials);
+    for textures  destroy_texture(it);
+    array_free(textures);
 }
 
 #scope_file
 
-add_draw :: (vertices: [] Vertex) {
-    draw := array_add(*draws);
-    draw.vertex_count = xx vertices.count;
+add_texture :: (texture: Texture) -> Texture_Handle {
+    array_add(*textures, texture);
+    return texture.handle;
+}
 
-    size := vertices.count * size_of(Vertex);
-    draw.vertex_offset = heap_allocate(*heaps.buffer, xx size, 256);
-    memcpy(heap_pointer(*heaps.buffer, draw.vertex_offset), vertices.data, size);
+add_material :: (material: Material) -> u32 {
+    array_add(*materials, material);
+    return xx (materials.count - 1);
+}
+
+add_draw :: (vertices: [] Vertex, material_index: u32) {
+    draw := array_add(*draws);
+    draw.vertex_count   = xx vertices.count;
+    draw.material_index = material_index;
+    draw.vertex_offset  = upload(vertices);
+}
+
+upload :: (array: [] $T) -> VkDeviceSize {
+    size := array.count * size_of(T);
+    offset := heap_allocate(*heaps.buffer, xx size, 256);
+    memcpy(heap_pointer(*heaps.buffer, offset), array.data, size);
+    return offset;
 }

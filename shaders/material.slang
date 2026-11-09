@@ -18,7 +18,6 @@ RaytracingAccelerationStructure acceleration_structure_from_address(uint64_t add
 }
 
 struct Coarse_Vertex {
-    float3 color;
     float2 uv;
     float3 world_position;
 }
@@ -37,12 +36,10 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Vertex vertex = draw.vertices[vertex_id];
 
     float3 position = vertex.position;
-    float3 color    = vertex.color;
 
     Vertex_Stage_Output output;
     {
         {
-            output.coarse_vertex.color = color;
             output.coarse_vertex.uv = vertex.uv;
             output.coarse_vertex.world_position = position;
         }
@@ -65,8 +62,9 @@ struct Fragment_Stage_Output {
 Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
-    float3 color = coarse_vertex.color;
-    float4 texture_color = draw.texture.Sample(draw.sampler, coarse_vertex.uv);
+    Material material = push_data.materials[draw.material_index];
+    float4 texture_color = material.texture.Sample(material.sampler, coarse_vertex.uv);
+    float3 color = material.base_color.rgb * texture_color.rgb;
     float3 world_position = coarse_vertex.world_position;
 
     // Shadows
@@ -87,7 +85,7 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) 
 
     Fragment_Stage_Output output;
     {
-        output.color = lerp(texture_color.xyz, color, texture_color.a) * shadow;
+        output.color = color * shadow;
     }
     return output;
 }

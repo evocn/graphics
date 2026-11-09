@@ -47,7 +47,9 @@ using render_context : struct {
 }
 
 using scene_data : struct {
-    texture : Texture;
+    textures         : [..] Texture;
+    materials        : [..] Material;
+    materials_offset : VkDeviceSize;
 
     draws            : [..] Draw;
     draw_data_offset : VkDeviceSize;

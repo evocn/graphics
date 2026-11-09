@@ -11,6 +11,7 @@ Frame_Constants :: struct @Gpu {
 Push_Data :: struct @Gpu {
     frame      : Gpu_Pointer(Frame_Constants);
     draws      : Gpu_Pointer(Draw_Data);
+    materials  : Gpu_Pointer(Material);
     draw_index : u32;
 }
 
@@ -556,6 +557,7 @@ draw_frame :: () {
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),
                 draws      = heap_gpu_pointer(*heaps.buffer, Draw_Data, draw_data_offset),
+                materials  = heap_gpu_pointer(*heaps.buffer, Material, materials_offset),
             };
 
             push_data_info := VkPushDataInfoEXT.{
