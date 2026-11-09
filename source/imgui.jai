@@ -1,16 +1,5 @@
 // Graphics
 // ImGui
-//
-// Vulkan render backend plus platform glue for the ImGui module. The render half is
-// modeled on jai/modules/ImGui_GL.jai / ImGui_Metal.jai, but written against this
-// renderer's idioms: shader objects, dynamic state, the shared arena, and the
-// descriptor heap. The input half is adapted from jai/modules/ImGui_Platform.jai;
-// cursor visibility is left to set_mouse_look rather than handed to ImGui.
-//
-// Per-frame vertex/index data streams through FRAMES_IN_FLIGHT regions of the arena;
-// reuse is safe because draw_frame waits on the timeline semaphore before recording
-// over a slot. Draw order: call render_imgui inside the frame's rendering scope,
-// after the scene, so the UI composites on top.
 
 imgui_state : struct {
     imgui_context : *ImGui.ImGuiContext;
@@ -42,8 +31,6 @@ Imgui_Push_Data :: struct @Gpu {
     sampler   : Sampler_Handle;
 }
 
-// Records the font upload into command_buffers[0], so call it inside main's GPU
-// initialization recording, before that command buffer is submitted.
 init_imgui :: () {
     result : VkResult;
     using imgui_state;
@@ -53,8 +40,6 @@ init_imgui :: () {
     io := ImGui.GetIO();
     io.IniFilename = null;
 
-    // Key mapping, indices into io.KeysDown[], which imgui_process_event fills
-    // indexed by Key_Code.
     {
         io.KeyMap[ImGui.Key.Tab]        = xx Key_Code.TAB;
         io.KeyMap[ImGui.Key.LeftArrow]  = xx Key_Code.ARROW_LEFT;
@@ -83,13 +68,11 @@ init_imgui :: () {
         #if OS == .WINDOWS { io.ImeWindowHandle = program_state.window; }
     }
 
-    // Arena regions for streamed vertex/index data.
     {
         vertex_offset = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * vertex_slot_stride, 256);
         index_offset  = heap_allocate(*heaps.buffer, FRAMES_IN_FLIGHT * index_slot_stride,  256);
     }
 
-    // Shaders
     {
         spirv : [2] string;
         {
@@ -147,8 +130,6 @@ init_imgui :: () {
         set_debug_name(.SHADER_EXT, shaders[1], "imgui fragment");
     }
 
-    // Font, baked at a size proportional to the initial window height. Rebaking on
-    // live resizes is not supported; the size chosen here sticks for the run.
     {
         font_size := cast(float) program_state.window_height / 50.0;
         font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
@@ -194,8 +175,6 @@ deinit_imgui :: () {
     ImGui.DestroyContext(imgui_context);
 }
 
-// ImGui wants a zero-terminated C string that stays valid after we return, so keep the
-// latest copy around until the next request.
 imgui_get_clipboard_text :: (data: *void) -> *u8 #c_call {
     result : *u8;
     push_context {
@@ -219,8 +198,6 @@ imgui_set_clipboard_text :: (data: *void, text: *u8) #c_call {
     }
 }
 
-// Pass every event through; read io.WantCaptureMouse / io.WantCaptureKeyboard to
-// decide whether the game should also act on it.
 imgui_process_event :: (event: Event) -> bool {
     io := ImGui.GetIO();
     if event.type == {
@@ -259,10 +236,9 @@ imgui_new_frame :: () {
     now := seconds_since_init();
     if imgui_state.time > 0  io.DeltaTime = cast(float)(now - imgui_state.time);
     else                     io.DeltaTime = 1.0/60.0;
-    if io.DeltaTime <= 0     io.DeltaTime = 0.000001; // ImGui asserts on non-positive DeltaTime.
+    if io.DeltaTime <= 0     io.DeltaTime = 0.000001;
     imgui_state.time = now;
 
-    // While mouse look is on, the cursor belongs to the camera.
     mouse_x, mouse_y := get_mouse_pointer_position(program_state.window, false);
     if !camera.mouse_look_active && is_mouse_over_window(program_state.window) {
         io.MousePos = .{xx mouse_x, xx mouse_y};
@@ -270,7 +246,6 @@ imgui_new_frame :: () {
         io.MousePos = .{-FLOAT32_MAX, -FLOAT32_MAX};
     }
 
-    // A press event always counts as "held this frame", so sub-frame clicks are not lost.
     is_down :: (key: Key_Code) -> bool {
         return cast(bool)(input_button_states[key] & .DOWN);
     }
@@ -302,9 +277,6 @@ imgui_debug_ui :: () {
     ImGui.End();
 }
 
-// Encodes ImGui's draw data into the frame's rendering scope. Assumes set_draw_state
-// ran earlier in the scope; only the state it needs differently is touched, so call
-// this last, after the scene's draws.
 render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     using imgui_state;
 
@@ -322,7 +294,6 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
     vertex_slot_offset := vertex_offset + frame_slot * vertex_slot_stride;
     index_slot_offset  := index_offset  + frame_slot * index_slot_stride;
 
-    // Pack every command list's vertices and indices contiguously into this frame's slot.
     {
         vertex_bytes_used, index_bytes_used : VkDeviceSize;
         for n : 0..draw_data.CmdListsCount-1 {
@@ -338,7 +309,6 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         }
     }
 
-    // State deltas from set_draw_state: no culling, no depth, alpha blending on.
     {
         vkCmdSetCullMode(command_buffer, .NONE);
 
@@ -389,9 +359,6 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         sampler   = sampler,
     };
 
-    // Slang lowers SV_VertexID to gl_VertexIndex - gl_BaseVertex (D3D semantics), so
-    // vkCmdDrawIndexed's vertexOffset would cancel out of the pulled index. Instead each
-    // command list gets its own base pointer, and every draw uses vertexOffset = 0.
     vertex_bytes_base : VkDeviceSize = 0;
     index_base : u32 = 0;
     for n : 0..draw_data.CmdListsCount-1 {
@@ -405,7 +372,6 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
                 pcmd.UserCallback(cmd_list, pcmd);
             }
             else {
-                // Clamp; validation rejects scissors that poke outside the target.
                 x1 := clamp(cast(s32) pcmd.ClipRect.x, 0, fb_width);
                 y1 := clamp(cast(s32) pcmd.ClipRect.y, 0, fb_height);
                 x2 := clamp(cast(s32) pcmd.ClipRect.z, 0, fb_width);
