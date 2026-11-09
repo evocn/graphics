@@ -24,10 +24,10 @@ ground_attributes := Vertex_Attributes.[
 ground_indices := u32.[0, 1, 2, 0, 3, 1];
 
 quad_positions := Vector3.[
-    .{-1.5,  1.0, 0.0},
-    .{-1.5, -2.0, 0.0},
-    .{ 1.5, -2.0, 0.0},
-    .{ 1.5,  1.0, 0.0},
+    .{-0.75,  1.0, 0.0},
+    .{-0.75, -0.5, 0.0},
+    .{ 0.75, -0.5, 0.0},
+    .{ 0.75,  1.0, 0.0},
 ];
 
 quad_attributes := Vertex_Attributes.[
@@ -124,8 +124,8 @@ init_data :: () {
         add_instance(ground_mesh, ground_material, Matrix4_Identity);
     }
 
-    add_instance(quad_mesh,   green_croc_material,  placement(.{-1.6, 0.0, 3.5},  0.4));
-    add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.6, 0.0, 3.0}, -0.4));
+    add_instance(quad_mesh,   green_croc_material,  placement(.{-1.3, 0.0, 0.6},  0.4));
+    add_instance(quad_mesh,   orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
 
     if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler, white_texture) {
         log_error("Could not load BoxTextured.");
