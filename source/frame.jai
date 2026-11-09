@@ -556,30 +556,25 @@ draw_frame :: () {
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),
                 draws      = heap_gpu_pointer(*heaps.buffer, Draw_Data, draw_data_offset),
-                draw_index = 0,
             };
 
-            push_data_info : VkPushDataInfoEXT;
-            {
-                using push_data_info;
-                offset = 0;
-                data = .{
-                    address = *push_data,
-                    size    = size_of(Push_Data),
-                };
-            }
-
+            push_data_info := VkPushDataInfoEXT.{
+                offset = 0,
+                data   = .{address = *push_data, size = size_of(Push_Data)},
+            };
             vkCmdPushDataEXT(command_buffers[index], *push_data_info);
         }
 
+        for draws {
+            draw_index := cast(u32) it_index;
+            push_data_info := VkPushDataInfoEXT.{
+                offset = offset_of(Push_Data, "draw_index"),
+                data   = .{address = *draw_index, size = size_of(u32)},
+            };
+            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
 
-        vkCmdDraw(
-            command_buffers[index],
-            vertexCount = xx vertices.count,
-            instanceCount = 1,
-            firstVertex = 0,
-            firstInstance = 0
-        );
+            vkCmdDraw(command_buffers[index], vertexCount = it.vertex_count, instanceCount = 1, firstVertex = 0, firstInstance = 0);
+        }
 
         render_imgui(command_buffers[index], index);
 

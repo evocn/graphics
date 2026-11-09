@@ -49,12 +49,9 @@ using render_context : struct {
 using scene_data : struct {
     texture : Texture;
 
+    draws            : [..] Draw;
     draw_data_offset : VkDeviceSize;
 
-    vertex_offset   : VkDeviceSize;
-    vertex_size     : VkDeviceSize;
-
-    blas         : VkAccelerationStructureKHR;
     tlas         : VkAccelerationStructureKHR;
     tlas_address : VkDeviceAddress;
 }
