@@ -94,6 +94,18 @@ init_data :: () {
         sampler = create_sampler(sampler_create_info);
     }
 
+    trilinear_sampler := create_sampler(.{
+        magFilter        = .LINEAR,
+        minFilter        = .LINEAR,
+        mipmapMode       = .LINEAR,
+        addressModeU     = .REPEAT,
+        addressModeV     = .REPEAT,
+        addressModeW     = .REPEAT,
+        anisotropyEnable = VK_TRUE,
+        maxAnisotropy    = min(16.0, physical_device_context.properties2.properties.limits.maxSamplerAnisotropy),
+        maxLod           = VK_LOD_CLAMP_NONE,
+    });
+
     ground_material      := add_material(.{base_color = srgb(0.5, 0.5, 0.5), texture = white_texture, sampler = sampler});
     green_croc_material  := add_material(.{base_color = srgb(0.4, 0.9, 0.3), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
     orange_croc_material := add_material(.{base_color = srgb(1.0, 0.6, 0.2), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
@@ -103,7 +115,7 @@ init_data :: () {
 
     sponza_path := tprint("%/Sponza/Sponza.gltf", models_path);
     if file_exists(sponza_path) {
-        if !load_gltf(sponza_path, placement(.{0.0, 1.0, 0.0}, PI / 2), sampler, white_texture) {
+        if !load_gltf(sponza_path, placement(.{0.0, 1.0, 0.0}, PI / 2), trilinear_sampler, white_texture) {
             log_error("Could not load Sponza.");
         }
     } else {
@@ -113,7 +125,7 @@ init_data :: () {
     add_instance(quad_mesh,   green_croc_material,  placement(.{-2.5, 0.0, 2.5},  0.4));
     add_instance(quad_mesh,   orange_croc_material, placement(.{ 2.5, 0.0, 2.0}, -0.4));
 
-    if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), sampler, white_texture) {
+    if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler, white_texture) {
         log_error("Could not load BoxTextured.");
     }
 

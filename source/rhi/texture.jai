@@ -3,11 +3,16 @@ Texture :: struct {
     handle : Texture_Handle;
 }
 
-create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, height: u32, format: VkFormat, name: string) -> Texture {
+create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, height: u32, format: VkFormat, name: string, generate_mips := true) -> Texture {
     result : VkResult;
     texture : Texture;
 
     size := cast(VkDeviceSize) (4 * width * height);
+
+    mip_levels : u32 = 1;
+    if generate_mips {
+        while (max(width, height) >> mip_levels) > 0  mip_levels += 1;
+    }
 
     use_host_image_copy := false;
     {
@@ -30,11 +35,11 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
             imageType     = .e2D,
             format        = format,
             extent        = .{width = width, height = height, depth = 1},
-            mipLevels     = 1,
+            mipLevels     = mip_levels,
             arrayLayers   = 1,
             samples       = .e1,
             tiling        = .OPTIMAL,
-            usage         = ifx use_host_image_copy then .SAMPLED | .HOST_TRANSFER else .SAMPLED | .TRANSFER_DST,
+            usage         = ifx use_host_image_copy then .SAMPLED | .TRANSFER_SRC | .TRANSFER_DST | .HOST_TRANSFER else .SAMPLED | .TRANSFER_SRC | .TRANSFER_DST,
             sharingMode   = .EXCLUSIVE,
             initialLayout = .UNDEFINED,
         };
@@ -96,7 +101,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
                 using image_memory_barrier;
                 srcStageMask        = .NONE;
                 srcAccessMask       = .NONE;
-                dstStageMask        = .COPY;
+                dstStageMask        = .ALL_TRANSFER;
                 dstAccessMask       = .TRANSFER_WRITE;
                 oldLayout           = .UNDEFINED;
                 newLayout           = .GENERAL;
@@ -142,6 +147,31 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         }
     }
 
+    for level : 1..mip_levels - 1 {
+        image_barrier(command_buffer, texture.image, level - 1, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
+
+        source_width  := max(width  >> (level - 1), 1);
+        source_height := max(height >> (level - 1), 1);
+        region := VkImageBlit2.{
+            srcSubresource = .{aspectMask = .COLOR, mipLevel = level - 1, layerCount = 1},
+            dstSubresource = .{aspectMask = .COLOR, mipLevel = level,     layerCount = 1},
+        };
+        region.srcOffsets[1] = .{xx source_width, xx source_height, 1};
+        region.dstOffsets[1] = .{xx max(source_width / 2, 1), xx max(source_height / 2, 1), 1};
+
+        blit_info := VkBlitImageInfo2.{
+            srcImage       = texture.image,
+            srcImageLayout = .GENERAL,
+            dstImage       = texture.image,
+            dstImageLayout = .GENERAL,
+            regionCount    = 1,
+            pRegions       = *region,
+            filter         = .LINEAR,
+        };
+        vkCmdBlitImage2(command_buffer, *blit_info);
+    }
+    image_barrier(command_buffer, texture.image, VK_REMAINING_MIP_LEVELS, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+
     {
         view_create_info := VkImageViewCreateInfo.{
             image            = texture.image,
@@ -153,11 +183,35 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         texture.handle = create_image_descriptor(view_create_info);
     }
 
-    log("Uploaded % (%x%) via %.", name, width, height, ifx use_host_image_copy then "host image copy" else "device copy");
+    log("Uploaded % (%x%, % mips) via %.", name, width, height, mip_levels, ifx use_host_image_copy then "host image copy" else "device copy");
 
     return texture;
 }
 
 destroy_texture :: (texture: Texture) {
     vkDestroyImage(device, texture.image, null);
+}
+
+#scope_file
+
+image_barrier :: (command_buffer: VkCommandBuffer, image: VkImage, level: u32, src_stage: VkPipelineStageFlags2, src_access: VkAccessFlags2, dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
+    barrier := VkImageMemoryBarrier2.{
+        srcStageMask        = src_stage,
+        srcAccessMask       = src_access,
+        dstStageMask        = dst_stage,
+        dstAccessMask       = dst_access,
+        oldLayout           = .GENERAL,
+        newLayout           = .GENERAL,
+        srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        image               = image,
+        subresourceRange    = .{
+            aspectMask   = .COLOR,
+            baseMipLevel = ifx level == VK_REMAINING_MIP_LEVELS then 0 else level,
+            levelCount   = ifx level == VK_REMAINING_MIP_LEVELS then VK_REMAINING_MIP_LEVELS else 1,
+            layerCount   = 1,
+        },
+    };
+    dependency_info := VkDependencyInfo.{imageMemoryBarrierCount = 1, pImageMemoryBarriers = *barrier};
+    vkCmdPipelineBarrier2(command_buffer, *dependency_info);
 }
