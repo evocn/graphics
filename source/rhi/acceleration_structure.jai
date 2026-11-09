@@ -1,4 +1,4 @@
-build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress, vertex_stride: VkDeviceSize, vertex_count: u32, index_address: VkDeviceAddress, index_count: u32, opaque: bool) -> VkAccelerationStructureKHR, VkDeviceAddress {
+build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress, vertex_stride: VkDeviceSize, vertex_count: u32, index_address: VkDeviceAddress, index_count: u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
     triangle_geometry : VkAccelerationStructureGeometryKHR;
     {
         using triangle_geometry;
@@ -11,7 +11,6 @@ build_blas :: (command_buffer: VkCommandBuffer, vertex_address: VkDeviceAddress,
             indexType = .UINT32,
             indexData.deviceAddress = index_address,
         };
-        if opaque  flags = .OPAQUE;
     }
 
     blas, address := build_acceleration_structure(command_buffer, .BOTTOM_LEVEL, *triangle_geometry, index_count / 3);

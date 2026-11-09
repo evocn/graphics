@@ -33,7 +33,7 @@ struct Vertex_Stage_Output {
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     Draw_Data draw = push_data.draws[push_data.draw_index];
-    float3 position = draw.positions[vertex_id];
+    float3 position = mul(draw.transform, float4(draw.positions[vertex_id], 1.0)).xyz;
     Vertex_Attributes attributes = draw.attributes[vertex_id];
 
     Vertex_Stage_Output output;

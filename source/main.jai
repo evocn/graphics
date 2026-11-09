@@ -54,7 +54,8 @@ using scene_data : struct {
     materials        : [..] Material;
     materials_offset : VkDeviceSize;
 
-    draws            : [..] Draw;
+    meshes           : [..] Mesh;
+    instances        : [..] Instance;
     draw_data_offset : VkDeviceSize;
 
     tlas         : VkAccelerationStructureKHR;
