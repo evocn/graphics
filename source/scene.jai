@@ -31,7 +31,7 @@ Material :: struct @Gpu {
 }
 
 Draw_Data :: struct @Gpu {
-    vertices       : Gpu_Pointer(Vertex);
+    vertices       : Gpu_Pointer(Vertex); @ReadOnly
     material_index : u32;
 }
 
