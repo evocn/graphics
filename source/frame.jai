@@ -8,6 +8,9 @@ Frame_Constants :: struct @Gpu {
     sun_intensity   : float;
     time            : float;
     camera_position : Vector3;
+    ambient                : Storage_Image_Handle;
+    ambient_history_frames : u32;
+    frame_number           : u32;
 }
 
 Push_Data :: struct @Gpu {
@@ -412,8 +415,23 @@ draw_frame :: () {
             layerCount     = VK_REMAINING_ARRAY_LAYERS;
         }
 
+        ambient_history_valid := swapchain_context.ambient_initialized;
+        swapchain_context.ambient_initialized = true;
+
         {
-            image_memory_barriers : [3] VkImageMemoryBarrier2;
+            image_memory_barriers : [4] VkImageMemoryBarrier2;
+            image_memory_barriers[3] = .{
+                srcStageMask        = .FRAGMENT_SHADER,
+                srcAccessMask       = .SHADER_STORAGE_WRITE,
+                dstStageMask        = .FRAGMENT_SHADER,
+                dstAccessMask       = .SHADER_STORAGE_READ | .SHADER_STORAGE_WRITE,
+                oldLayout           = ifx ambient_history_valid then VkImageLayout.GENERAL else .UNDEFINED,
+                newLayout           = .GENERAL,
+                srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                image               = swapchain_context.ambient_image,
+                subresourceRange    = swapchain_image_subresource_range,
+            };
             {
                 using image_memory_barriers[0];
                 srcStageMask        = .COLOR_ATTACHMENT_OUTPUT;
@@ -518,6 +536,17 @@ draw_frame :: () {
             frame_constants.sun_intensity   = world_state.sun_intensity;
             frame_constants.time            = cast(float) seconds_since_init();
             frame_constants.camera_position = camera.position;
+
+            if !ambient_history_valid || memcmp(*frame_constants.view_projection, *last_view_projection, size_of(Matrix4)) != 0 {
+                ambient_history_frames = 0;
+            } else {
+                ambient_history_frames = min(ambient_history_frames + 1, 255);
+            }
+            last_view_projection = frame_constants.view_projection;
+
+            frame_constants.ambient                = swapchain_context.ambient_storage;
+            frame_constants.ambient_history_frames = ambient_history_frames;
+            frame_constants.frame_number           = cast(u32) frame_index;
 
             push_data := Push_Data.{
                 frame      = heap_gpu_pointer(*heaps.buffer, Frame_Constants, frame_constants_slot),

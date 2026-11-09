@@ -20,6 +20,13 @@ swapchain_context : struct {
     hdr_texture           : Texture_Handle;
     hdr_texture_allocated : bool;
 
+    AMBIENT_FORMAT : VkFormat : .R32_SFLOAT;
+    ambient_image             : VkImage;
+    ambient_view              : VkImageView;
+    ambient_storage           : Storage_Image_Handle;
+    ambient_storage_allocated : bool;
+    ambient_initialized       : bool;
+
     needs_recreation : bool;
 }
 
@@ -233,9 +240,50 @@ init_swapchain :: (width: u32, height: u32) {
         set_debug_name(.IMAGE,      swapchain_context.hdr_image, "hdr image");
         set_debug_name(.IMAGE_VIEW, swapchain_context.hdr_view,  "hdr view");
     }
+
+    {
+        image_create_info := VkImageCreateInfo.{
+            imageType     = .e2D,
+            format        = swapchain_context.AMBIENT_FORMAT,
+            extent        = .{width = swapchain_context.extent.width, height = swapchain_context.extent.height, depth = 1},
+            mipLevels     = 1,
+            arrayLayers   = 1,
+            samples       = .e1,
+            tiling        = .OPTIMAL,
+            usage         = .STORAGE,
+            sharingMode   = .EXCLUSIVE,
+            initialLayout = .UNDEFINED,
+        };
+        result = vkCreateImage(device, *image_create_info, null, *swapchain_context.ambient_image);
+        assert(result == .SUCCESS);
+
+        heap_bind_image(*heaps.render_target, swapchain_context.ambient_image);
+
+        view_create_info := VkImageViewCreateInfo.{
+            image            = swapchain_context.ambient_image,
+            viewType         = .e2D,
+            format           = swapchain_context.AMBIENT_FORMAT,
+            subresourceRange = .{aspectMask = .COLOR, levelCount = 1, layerCount = 1},
+        };
+        result = vkCreateImageView(device, *view_create_info, null, *swapchain_context.ambient_view);
+        assert(result == .SUCCESS);
+
+        if !swapchain_context.ambient_storage_allocated {
+            swapchain_context.ambient_storage = create_storage_image_descriptor(view_create_info);
+            swapchain_context.ambient_storage_allocated = true;
+        } else {
+            write_storage_image_descriptor(swapchain_context.ambient_storage, view_create_info);
+        }
+        swapchain_context.ambient_initialized = false;
+
+        set_debug_name(.IMAGE,      swapchain_context.ambient_image, "ambient image");
+        set_debug_name(.IMAGE_VIEW, swapchain_context.ambient_view,  "ambient view");
+    }
 }
 
 deinit_swapchain :: () {
+    vkDestroyImageView(device, swapchain_context.ambient_view, null);
+    vkDestroyImage(device, swapchain_context.ambient_image, null);
     vkDestroyImageView(device, swapchain_context.hdr_view, null);
     vkDestroyImage(device, swapchain_context.hdr_image, null);
     vkDestroyImageView(device, swapchain_context.depth_view, null);

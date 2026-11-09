@@ -78,6 +78,20 @@ create_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Texture_
 }
 
 write_image_descriptor :: (handle: Texture_Handle, view_create_info: VkImageViewCreateInfo) {
+    write_resource_image_descriptor(handle.id, .SAMPLED_IMAGE, view_create_info);
+}
+
+create_storage_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Storage_Image_Handle {
+    handle := Storage_Image_Handle.{id = take_image_id()};
+    write_storage_image_descriptor(handle, view_create_info);
+    return handle;
+}
+
+write_storage_image_descriptor :: (handle: Storage_Image_Handle, view_create_info: VkImageViewCreateInfo) {
+    write_resource_image_descriptor(handle.id, .STORAGE_IMAGE, view_create_info);
+}
+
+write_resource_image_descriptor :: (id: u32, type: VkDescriptorType, view_create_info: VkImageViewCreateInfo) {
     view_info := view_create_info;
 
     image_descriptor_info : VkImageDescriptorInfoEXT;
@@ -87,15 +101,11 @@ write_image_descriptor :: (handle: Texture_Handle, view_create_info: VkImageView
         layout = .GENERAL;
     }
 
-    resource_descriptor_info : VkResourceDescriptorInfoEXT;
-    {
-        using resource_descriptor_info;
-        type = .SAMPLED_IMAGE;
-        data.pImage = *image_descriptor_info;
-    }
+    resource_descriptor_info := VkResourceDescriptorInfoEXT.{type = type};
+    resource_descriptor_info.data.pImage = *image_descriptor_info;
 
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heaps.buffer, resource_heap_offset + handle.id * image_descriptor_stride),
+        address = heap_pointer(*heaps.buffer, resource_heap_offset + id * image_descriptor_stride),
         size    = image_descriptor_stride,
     };
 

@@ -37,6 +37,9 @@ using render_context : struct {
 
     frame_constants_offset      : VkDeviceSize;
 
+    ambient_history_frames : u32;
+    last_view_projection   : Matrix4;
+
     timestamp_pool : VkQueryPool;
     gpu_frame_ms   : float;
 

@@ -364,6 +364,7 @@ init_device :: () {
                 }
 
                 assert(VK_TRUE == supported.features2.features.shaderInt64);
+                assert(VK_TRUE == supported.features2.features.fragmentStoresAndAtomics);
                 assert(VK_TRUE == supported.features2.features.samplerAnisotropy);
                 assert(VK_TRUE == supported.vulkan_1_1_features.shaderDrawParameters);
                 assert(VK_TRUE == supported.vulkan_1_2_features.timelineSemaphore);
@@ -423,6 +424,7 @@ init_device :: () {
                 {
                     using features2.features;
                     shaderInt64 = VK_TRUE;
+                    fragmentStoresAndAtomics = VK_TRUE;
                     samplerAnisotropy = VK_TRUE;
                 }
             }

@@ -107,13 +107,16 @@ float3 fresnel_schlick(float3 f0, float v_dot_h) {
     return f0 + (1.0 - f0) * pow(1.0 - v_dot_h, 5.0);
 }
 
-bool sun_visible(float3 world_position, float3 geometric_normal, float3 to_light) {
+static const uint AMBIENT_RAY_COUNT = 2;
+static const float AMBIENT_RAY_LENGTH = 2.0;
+
+bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction, float max_distance) {
     RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
     RayDesc ray;
     ray.Origin      = world_position + geometric_normal * 0.01;
-    ray.Direction   = to_light;
+    ray.Direction   = direction;
     ray.TMin        = 0.01;
-    ray.TMax        = 10000.0;
+    ray.TMax        = max_distance;
 
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
     query.TraceRayInline(tlas, RAY_FLAG_NONE, 0xFF, ray);
@@ -124,6 +127,40 @@ bool sun_visible(float3 world_position, float3 geometric_normal, float3 to_light
         }
     }
     return query.CommittedStatus() != COMMITTED_TRIANGLE_HIT;
+}
+
+float interleaved_gradient_noise(float2 pixel) {
+    return frac(52.9829189 * frac(dot(pixel, float2(0.06711056, 0.00583715))));
+}
+
+float ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
+    float3 tangent = normalize(cross(geometric_normal, abs(geometric_normal.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0)));
+    float3 bitangent = cross(geometric_normal, tangent);
+
+    float frame = float(push_data.frame.frame_number % 1024);
+    float rotation = frac(interleaved_gradient_noise(pixel) + frame * 0.618034);
+    float offset = frac(interleaved_gradient_noise(pixel + float2(37.0, 17.0)) + frame * 0.754878);
+
+    uint visible = 0;
+    for (uint i = 0; i < AMBIENT_RAY_COUNT; i++) {
+        float u = frac((i + offset) / AMBIENT_RAY_COUNT);
+        float phi = 2.0 * PI * frac(i * 0.618034 + rotation);
+        float radius = sqrt(u);
+        float3 direction = tangent * (radius * cos(phi)) + bitangent * (radius * sin(phi)) + geometric_normal * sqrt(1.0 - u);
+        if (unoccluded(world_position, geometric_normal, direction, AMBIENT_RAY_LENGTH)) visible++;
+    }
+    return float(visible) / AMBIENT_RAY_COUNT;
+}
+
+float accumulated_ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
+    float current = ambient_visibility(world_position, geometric_normal, pixel);
+    uint history_frames = push_data.frame.ambient_history_frames;
+    RWTexture2D<float> history = push_data.frame.ambient;
+    uint2 texel = uint2(pixel);
+
+    float result = history_frames == 0 ? current : lerp(history[texel], current, 1.0 / float(history_frames + 1));
+    history[texel] = result;
+    return result;
 }
 
 [shader("fragment")]
@@ -137,7 +174,7 @@ void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
 
 [earlydepthstencil]
 [shader("fragment")]
-Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
+Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[push_data.draw_index];
 
     Material material = push_data.materials[draw.material_index];
@@ -172,7 +209,7 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, 
 
     float3 sun = float3(0.0);
     float n_dot_l = dot(normal, to_light);
-    if (n_dot_l > 0.0 && dot(geometric_normal, to_light) > 0.0 && sun_visible(world_position, geometric_normal, to_light)) {
+    if (n_dot_l > 0.0 && dot(geometric_normal, to_light) > 0.0 && unoccluded(world_position, geometric_normal, to_light, 10000.0)) {
         float3 half_vector = normalize(to_light + to_camera);
         float n_dot_v = max(dot(normal, to_camera), 1e-4);
         float n_dot_h = saturate(dot(normal, half_vector));
@@ -188,6 +225,7 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, 
 
     float sky = saturate(0.5 - 0.5 * normal.y);
     float3 ambient = lerp(float3(0.12, 0.1, 0.08), float3(0.3, 0.34, 0.42), sky);
+    ambient *= accumulated_ambient_visibility(world_position, geometric_normal, sv_position.xy);
 
     Fragment_Stage_Output output;
     {

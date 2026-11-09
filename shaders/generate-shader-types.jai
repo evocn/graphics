@@ -165,6 +165,7 @@ builtin_slang_name :: (info: *Type_Info_Struct) -> string {
 
         case "Texture_Handle"; return "DescriptorHandle<Texture2D>";
         case "Sampler_Handle"; return "DescriptorHandle<SamplerState>";
+        case "Storage_Image_Handle"; return "DescriptorHandle<RWTexture2D<float>>";
     }
     return "";
 }
