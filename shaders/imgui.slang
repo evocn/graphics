@@ -21,12 +21,17 @@ struct Vertex_Stage_Output {
     float4          sv_position     : SV_Position;
 }
 
+float3 linear_from_srgb(float3 c) {
+    return select(c <= 0.04045, c / 12.92, pow((c + 0.055) / 1.055, 2.4));
+}
+
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID) {
     ImDrawVert vertex = push_data.vertices[vertex_id];
 
     uint c = vertex.col;
     float4 color = float4(c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF, (c >> 24) & 0xFF) / 255.0;
+    color.rgb = linear_from_srgb(color.rgb);
 
     Vertex_Stage_Output output;
     {

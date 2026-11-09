@@ -44,10 +44,10 @@ Draw :: struct {
 
 init_data :: () {
     white_pixel : u32 = 0xFFFFFFFF;
-    white_texture := add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, "white texture"));
+    white_texture := add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, .R8G8B8A8_SRGB, "white texture"));
 
     croc_data := program_state.texture_datas[0];
-    croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, "croc"));
+    croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
 
     sampler : Sampler_Handle;
     {
@@ -67,8 +67,8 @@ init_data :: () {
         sampler = create_sampler(sampler_create_info);
     }
 
-    ground_material := add_material(.{base_color = .{0.5, 0.5, 0.5, 1.0}, texture = white_texture, sampler = sampler});
-    croc_material   := add_material(.{base_color = .{1.0, 1.0, 1.0, 1.0}, texture = croc_texture,  sampler = sampler});
+    ground_material := add_material(.{base_color = srgb(0.5, 0.5, 0.5), texture = white_texture, sampler = sampler});
+    croc_material   := add_material(.{base_color = srgb(1.0, 1.0, 1.0), texture = croc_texture,  sampler = sampler});
 
     add_draw(ground_vertices,   ground_material);
     add_draw(triangle_vertices, croc_material);

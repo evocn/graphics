@@ -28,7 +28,7 @@ init_heaps :: () {
         {
             using texture_info;
             imageType   = .e2D;
-            format      = TEXTURE_FORMAT;
+            format      = .R8G8B8A8_UNORM;
             extent      = .{width = 1, height = 1, depth = 1};
             mipLevels   = 1;
             arrayLayers = 1;

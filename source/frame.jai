@@ -496,7 +496,7 @@ draw_frame :: () {
             imageLayout = .GENERAL;
             loadOp = .CLEAR;
             storeOp = .STORE;
-            clearValue.color.float32_ = .[.1, .1, .12, 1];
+            clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
         }
 
         depth_attachment : VkRenderingAttachmentInfoKHR;

@@ -32,7 +32,7 @@ init_swapchain :: (width: u32, height: u32) {
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, *surface_format_count, surface_formats.data);
     assert(result == .SUCCESS);
 
-    preferred_formats :: VkFormat.[.B8G8R8A8_UNORM, .R8G8B8A8_UNORM];
+    preferred_formats :: VkFormat.[.B8G8R8A8_SRGB, .R8G8B8A8_SRGB];
 
     swapchain_context.surface_format = surface_formats[0];
     for preferred : preferred_formats {

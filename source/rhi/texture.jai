@@ -3,9 +3,7 @@ Texture :: struct {
     handle : Texture_Handle;
 }
 
-TEXTURE_FORMAT :: VkFormat.R8G8B8A8_UNORM;
-
-create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, height: u32, name: string) -> Texture {
+create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, height: u32, format: VkFormat, name: string) -> Texture {
     result : VkResult;
     texture : Texture;
 
@@ -18,7 +16,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         if vulkan_1_4_features.hostImageCopy {
             format_properties_3 : VkFormatProperties3;
             format_properties_2 := VkFormatProperties2.{pNext = *format_properties_3};
-            vkGetPhysicalDeviceFormatProperties2(physical_device, TEXTURE_FORMAT, *format_properties_2);
+            vkGetPhysicalDeviceFormatProperties2(physical_device, format, *format_properties_2);
             format_supports_host_copy := (format_properties_3.optimalTilingFeatures & .HOST_IMAGE_TRANSFER) != 0;
 
             has_dedicated_transfer_family := queue_family_indices.transfer != queue_family_indices.graphics;
@@ -28,20 +26,18 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     }
 
     {
-        image_create_info : VkImageCreateInfo;
-        {
-            using image_create_info;
-            imageType = .e2D;
-            format = TEXTURE_FORMAT;
-            extent = .{width = width, height = height, depth = 1};
-            mipLevels = 1;
-            arrayLayers = 1;
-            samples = .e1;
-            tiling = .OPTIMAL;
-            usage = ifx use_host_image_copy then .SAMPLED | .HOST_TRANSFER else .SAMPLED | .TRANSFER_DST;
-            sharingMode = .EXCLUSIVE;
-            initialLayout = .UNDEFINED;
-        }
+        image_create_info := VkImageCreateInfo.{
+            imageType     = .e2D,
+            format        = format,
+            extent        = .{width = width, height = height, depth = 1},
+            mipLevels     = 1,
+            arrayLayers   = 1,
+            samples       = .e1,
+            tiling        = .OPTIMAL,
+            usage         = ifx use_host_image_copy then .SAMPLED | .HOST_TRANSFER else .SAMPLED | .TRANSFER_DST,
+            sharingMode   = .EXCLUSIVE,
+            initialLayout = .UNDEFINED,
+        };
 
         result = vkCreateImage(device, *image_create_info, null, *texture.image);
         assert(result == .SUCCESS);
@@ -147,14 +143,12 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     }
 
     {
-        view_create_info : VkImageViewCreateInfo;
-        {
-            using view_create_info;
-            image    = texture.image;
-            viewType = .e2D;
-            format   = TEXTURE_FORMAT;
-            subresourceRange = subresource_range;
-        }
+        view_create_info := VkImageViewCreateInfo.{
+            image            = texture.image,
+            viewType         = .e2D,
+            format           = format,
+            subresourceRange = subresource_range,
+        };
 
         texture.handle = create_image_descriptor(view_create_info);
     }
