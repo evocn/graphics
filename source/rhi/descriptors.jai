@@ -68,35 +68,16 @@ bind_descriptor_heaps :: (command_buffer: VkCommandBuffer) {
     vkCmdBindResourceHeapEXT(command_buffer, *bind_resource_heap_info);
 }
 
-create_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Texture_Handle {
-    handle := Texture_Handle.{id = take_image_id()};
-    write_image_descriptor(handle, view_create_info);
-    return handle;
+reserve_image_descriptor :: () -> u32 {
+    id := next_image_id;
+    assert(id < image_id_capacity, "Out of image descriptor slots.");
+    next_image_id += 1;
+    return id;
 }
 
-write_image_descriptor :: (handle: Texture_Handle, view_create_info: VkImageViewCreateInfo) {
-    write_resource_image_descriptor(handle.id, .SAMPLED_IMAGE, view_create_info);
-}
-
-create_storage_image_descriptor :: (view_create_info: VkImageViewCreateInfo) -> Storage_Image_Handle {
-    handle := Storage_Image_Handle.{id = take_image_id()};
-    write_storage_image_descriptor(handle, view_create_info);
-    return handle;
-}
-
-write_storage_image_descriptor :: (handle: Storage_Image_Handle, view_create_info: VkImageViewCreateInfo) {
-    write_resource_image_descriptor(handle.id, .STORAGE_IMAGE, view_create_info);
-}
-
-write_resource_image_descriptor :: (id: u32, type: VkDescriptorType, view_create_info: VkImageViewCreateInfo) {
+write_image_descriptor :: (id: u32, type: VkDescriptorType, view_create_info: VkImageViewCreateInfo) {
     view_info := view_create_info;
-
-    image_descriptor_info : VkImageDescriptorInfoEXT;
-    {
-        using image_descriptor_info;
-        pView  = *view_info;
-        layout = .GENERAL;
-    }
+    image_descriptor_info := VkImageDescriptorInfoEXT.{pView = *view_info, layout = .GENERAL};
 
     resource_descriptor_info := VkResourceDescriptorInfoEXT.{type = type};
     resource_descriptor_info.data.pImage = *image_descriptor_info;
@@ -105,38 +86,22 @@ write_resource_image_descriptor :: (id: u32, type: VkDescriptorType, view_create
         address = heap_pointer(*buffer_heap, resource_heap_offset + id * image_descriptor_stride),
         size    = image_descriptor_stride,
     };
-
     result := vkWriteResourceDescriptorsEXT(device, 1, *resource_descriptor_info, *destination);
     assert(result == .SUCCESS);
 }
 
 create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {
-    id := take_sampler_id();
+    id := next_sampler_id;
+    assert(id < sampler_id_capacity, "Out of sampler descriptor slots.");
+    next_sampler_id += 1;
 
     info := sampler_create_info;
     destination := VkHostAddressRangeEXT.{
         address = heap_pointer(*buffer_heap, sampler_heap_offset + id * sampler_descriptor_stride),
         size    = sampler_descriptor_stride,
     };
-
     result := vkWriteSamplerDescriptorsEXT(device, 1, *info, *destination);
     assert(result == .SUCCESS);
 
     return .{id = id};
-}
-
-#scope_file
-
-take_image_id :: () -> u32 {
-    id := next_image_id;
-    assert(id < image_id_capacity, "Out of image descriptor slots.");
-    next_image_id += 1;
-    return id;
-}
-
-take_sampler_id :: () -> u32 {
-    id := next_sampler_id;
-    assert(id < sampler_id_capacity, "Out of sampler descriptor slots.");
-    next_sampler_id += 1;
-    return id;
 }

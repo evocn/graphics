@@ -100,7 +100,7 @@ main :: () {
 
     init_descriptor_heaps();
 
-    init_swapchain(window_width, window_height);
+    init_swapchain();
     defer deinit_swapchain();
 
     init_render();
@@ -167,7 +167,7 @@ main :: () {
         if !running break;
 
         if swapchain_needs_recreation {
-            if !recreate_swapchain(window_width, window_height, present_fences) {
+            if !recreate_swapchain() {
                 sleep_milliseconds(16);
                 continue;
             }

@@ -92,7 +92,8 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         format           = format,
         subresourceRange = subresource_range,
     };
-    texture.handle = create_image_descriptor(view_create_info);
+    texture.handle = .{id = reserve_image_descriptor()};
+    write_image_descriptor(texture.handle.id, .SAMPLED_IMAGE, view_create_info);
 
     log("Uploaded % (%x%, % mips).", name, width, height, mip_levels);
     return texture;

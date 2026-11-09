@@ -28,6 +28,96 @@ screenshot_allocated_size : VkDeviceSize;
 screenshot_extent         : VkExtent2D;
 screenshot_format         : VkFormat;
 
+DEPTH_FORMAT   : VkFormat : .D32_SFLOAT;
+HDR_FORMAT     : VkFormat : .R16G16B16A16_SFLOAT;
+AMBIENT_FORMAT : VkFormat : .R16G16B16A16_SFLOAT;
+
+depth_image         : VkImage;
+depth_view          : VkImageView;
+hdr_image           : VkImage;
+hdr_view            : VkImageView;
+hdr_texture         : Texture_Handle;
+ambient_images      : [2] VkImage;
+ambient_views       : [2] VkImageView;
+ambient_storages    : [2] Storage_Image_Handle;
+ambient_initialized : bool;
+
+create_render_targets :: () {
+    create :: (format: VkFormat, usage: VkImageUsageFlags, aspect: VkImageAspectFlags, name: string) -> VkImage, VkImageView, VkImageViewCreateInfo {
+        image_create_info := VkImageCreateInfo.{
+            imageType   = .e2D,
+            format      = format,
+            extent      = .{width = swapchain_extent.width, height = swapchain_extent.height, depth = 1},
+            mipLevels   = 1,
+            arrayLayers = 1,
+            samples     = .e1,
+            tiling      = .OPTIMAL,
+            usage       = usage,
+        };
+        image : VkImage;
+        result := vkCreateImage(device, *image_create_info, null, *image);
+        assert(result == .SUCCESS);
+        heap_bind_image(*render_target_heap, image);
+
+        view_create_info := VkImageViewCreateInfo.{
+            image            = image,
+            viewType         = .e2D,
+            format           = format,
+            subresourceRange = .{aspectMask = aspect, levelCount = 1, layerCount = 1},
+        };
+        view : VkImageView;
+        result = vkCreateImageView(device, *view_create_info, null, *view);
+        assert(result == .SUCCESS);
+
+        set_debug_name(.IMAGE,      image, name);
+        set_debug_name(.IMAGE_VIEW, view,  name);
+        return image, view, view_create_info;
+    }
+
+    depth_image, depth_view = create(DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT, .DEPTH, "depth");
+
+    hdr_view_info : VkImageViewCreateInfo;
+    hdr_image, hdr_view, hdr_view_info = create(HDR_FORMAT, .COLOR_ATTACHMENT | .SAMPLED, .COLOR, "hdr");
+    write_image_descriptor(hdr_texture.id, .SAMPLED_IMAGE, hdr_view_info);
+
+    for 0..1 {
+        ambient_view_info : VkImageViewCreateInfo;
+        ambient_images[it], ambient_views[it], ambient_view_info = create(AMBIENT_FORMAT, .STORAGE, .COLOR, tprint("ambient %", it));
+        write_image_descriptor(ambient_storages[it].id, .STORAGE_IMAGE, ambient_view_info);
+    }
+    ambient_initialized = false;
+}
+
+destroy_render_targets :: () {
+    for 0..1 {
+        vkDestroyImageView(device, ambient_views[it], null);
+        vkDestroyImage(device, ambient_images[it], null);
+    }
+    vkDestroyImageView(device, hdr_view, null);
+    vkDestroyImage(device, hdr_image, null);
+    vkDestroyImageView(device, depth_view, null);
+    vkDestroyImage(device, depth_image, null);
+    heap_reset(*render_target_heap);
+}
+
+recreate_swapchain :: () -> ready: bool {
+    capabilities : VkSurfaceCapabilitiesKHR;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, *capabilities);
+    if capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0  return false;
+
+    vkDeviceWaitIdle(device);
+    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, U64_MAX);
+    assert(result == .SUCCESS);
+
+    destroy_render_targets();
+    deinit_swapchain();
+    init_swapchain();
+    create_render_targets();
+
+    swapchain_needs_recreation = false;
+    return true;
+}
+
 Frame_Constants :: struct @Gpu {
     view_projection          : Matrix4;
     previous_view_projection : Matrix4;
@@ -154,9 +244,15 @@ init_render :: () {
     material_shaders = create_graphics_shaders("material");
     tonemap_shaders  = create_graphics_shaders("tonemap");
     depth_shaders    = create_graphics_shaders("material", "material-depth-fragment");
+
+    hdr_texture         = .{id = reserve_image_descriptor()};
+    ambient_storages[0] = .{id = reserve_image_descriptor()};
+    ambient_storages[1] = .{id = reserve_image_descriptor()};
+    create_render_targets();
 }
 
 deinit_render :: () {
+    destroy_render_targets();
     destroy_graphics_shaders(material_shaders);
     destroy_graphics_shaders(tonemap_shaders);
     destroy_graphics_shaders(depth_shaders);
