@@ -26,7 +26,8 @@ triangle_vertices := Vertex.[
 Material :: struct @Gpu {
     base_color : Vector4;
     texture    : Texture_Handle;
-    sampler    : Sampler_Handle;
+    sampler      : Sampler_Handle;
+    alpha_cutoff : float;
 }
 
 Draw_Data :: struct @Gpu {
@@ -68,7 +69,7 @@ init_data :: () {
     }
 
     ground_material := add_material(.{base_color = srgb(0.5, 0.5, 0.5), texture = white_texture, sampler = sampler});
-    croc_material   := add_material(.{base_color = srgb(1.0, 1.0, 1.0), texture = croc_texture,  sampler = sampler});
+    croc_material   := add_material(.{base_color = srgb(1.0, 1.0, 1.0), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
 
     add_draw(ground_vertices,   ground_material);
     add_draw(triangle_vertices, croc_material);
@@ -88,7 +89,7 @@ init_data :: () {
     }
 
     for * draws {
-        it.blas, it.blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, it.vertex_offset), size_of(Vertex), it.vertex_count);
+        it.blas, it.blas_address = build_blas(command_buffers[0], heap_address(*heaps.buffer, it.vertex_offset), size_of(Vertex), it.vertex_count, materials[it.material_index].alpha_cutoff == 0);
     }
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
@@ -101,7 +102,7 @@ init_data :: () {
              .[0, 1, 0, 0],
              .[0, 0, 1, 0],
         ];
-        instance.__bitmask0 = 0xFF << 24;
+        instance.__bitmask0 = (0xFF << 24) | cast(u32) it_index;
         instance.__bitmask1 = cast(u32, VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE) << 24;
         instance.accelerationStructureReference = it.blas_address;
     }
