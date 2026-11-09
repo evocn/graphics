@@ -43,6 +43,7 @@ Material :: struct @Gpu {
     texture      : Texture_Handle;
     sampler      : Sampler_Handle;
     alpha_cutoff : float;
+    double_sided : u32;
 }
 
 Draw_Data :: struct @Gpu {
@@ -107,8 +108,8 @@ init_data :: () {
     });
 
     ground_material      := add_material(.{base_color = srgb(0.5, 0.5, 0.5), texture = white_texture, sampler = sampler});
-    green_croc_material  := add_material(.{base_color = srgb(0.4, 0.9, 0.3), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
-    orange_croc_material := add_material(.{base_color = srgb(1.0, 0.6, 0.2), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5});
+    green_croc_material  := add_material(.{base_color = srgb(0.4, 0.9, 0.3), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5, double_sided = 1});
+    orange_croc_material := add_material(.{base_color = srgb(1.0, 0.6, 0.2), texture = croc_texture,  sampler = sampler, alpha_cutoff = 0.5, double_sided = 1});
 
     ground_mesh := add_mesh(ground_positions, ground_attributes, ground_indices);
     quad_mesh   := add_mesh(quad_positions,   quad_attributes,   quad_indices);

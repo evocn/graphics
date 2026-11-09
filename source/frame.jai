@@ -590,8 +590,15 @@ draw_frame :: () {
             vkCmdPushDataEXT(command_buffers[index], *push_data_info);
         }
 
+        culling_back_faces := true;
         for instances {
             mesh := meshes[it.mesh_index];
+            double_sided := materials[it.material_index].double_sided != 0;
+            if double_sided == culling_back_faces {
+                culling_back_faces = !double_sided;
+                vkCmdSetCullMode(command_buffers[index], ifx culling_back_faces then .BACK else .NONE);
+            }
+
             draw_index := cast(u32) it_index;
             push_data_info := VkPushDataInfoEXT.{
                 offset = offset_of(Push_Data, "draw_index"),
@@ -611,6 +618,7 @@ draw_frame :: () {
 
             vkCmdDrawIndexed(command_buffers[index], indexCount = mesh.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
         }
+        if !culling_back_faces  vkCmdSetCullMode(command_buffers[index], .BACK);
 
         render_imgui(command_buffers[index], index);
 

@@ -133,6 +133,8 @@ add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_t
         }
     }
 
+    material.double_sided = xx gltf_material.double_sided;
+
     if gltf_material.alpha_mode == {
         case .mask;  material.alpha_cutoff = gltf_material.alpha_cutoff;
         case .blend; material.alpha_cutoff = 0.5;
