@@ -4,13 +4,6 @@ window        : Window_Type;
 window_width  : u32 = 1920;
 window_height : u32 = 1080;
 
-Texture_Data :: struct {
-    bytes : *void;
-    width : s32;
-    height: s32;
-}
-texture_datas : [..] Texture_Data;
-
 light_direction : Vector3;
 sun_intensity   : float = 3.0;
 exposure        : float = 1.0;
@@ -61,27 +54,6 @@ main :: () {
         vk_load_global_functions(vkGIPA);
     }
 
-    {
-        log("Loading our textures...");
-        for texture_name : textures_to_load {
-            new_texture_data := array_add(*texture_datas);
-
-            desired_channels :: 4;
-            channels : s32;
-
-            full_texture_path := tprint("%/%.png", textures_path, texture_name);
-            new_texture_data.bytes = stbi_load(
-                temp_c_string(full_texture_path),
-                *new_texture_data.width, *new_texture_data.height,
-                channels_in_file = *channels,
-                desired_channels = desired_channels);
-            assert(desired_channels == channels);
-            log("- Loaded % (%x%, % channels)", texture_name, new_texture_data.width, new_texture_data.height, channels);
-        }
-
-        log("\n");
-    }
-  
     init_instance();
     defer deinit_instance();
 
@@ -110,9 +82,6 @@ main :: () {
 
     init_data();
     defer deinit_data();
-
-    for texture_datas  stbi_image_free(it.bytes);
-    array_free(texture_datas);
 
     init_imgui();
     defer deinit_imgui();
@@ -277,10 +246,3 @@ Clipboard :: #import "Clipboard";
 
 textures_path   :: "assets/textures";
 models_path     :: "assets/models";
-
-textures_to_load :: string.[
-    "croc"
-];
-
-models_to_load :: string.[
-];

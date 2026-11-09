@@ -125,7 +125,6 @@ Frame_Constants :: struct @Gpu {
     tlas_address    : u64;
     light_direction : Vector3;
     sun_intensity   : float;
-    time            : float;
     camera_position          : Vector3;
     previous_camera_position : Vector3;
     ambient               : Storage_Image_Handle;
@@ -453,55 +452,46 @@ draw_frame :: () {
         bind_descriptor_heaps(command_buffers[index]);
         set_draw_state(command_buffers[index]);
 
-        {
-            frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
 
-            aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
+        frame_constants_slot := frame_constants_offset + index * FRAME_CONSTANTS_STRIDE;
+        aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
 
-            frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
-            frame_constants.view_projection = camera_view_projection(aspect);
-            frame_constants.tlas_address    = tlas_address;
-            frame_constants.light_direction = light_direction;
-            frame_constants.sun_intensity   = sun_intensity;
-            frame_constants.time            = cast(float) seconds_since_init();
-            frame_constants.camera_position = camera_position;
+        frame_constants := cast(*Frame_Constants) heap_pointer(*buffer_heap, frame_constants_slot);
+        frame_constants.view_projection = camera_view_projection(aspect);
+        frame_constants.tlas_address    = tlas_address;
+        frame_constants.light_direction = light_direction;
+        frame_constants.sun_intensity   = sun_intensity;
+        frame_constants.camera_position = camera_position;
 
-            frame_constants.previous_view_projection = previous_view_projection;
-            frame_constants.previous_camera_position = previous_camera_position;
-            previous_view_projection = frame_constants.view_projection;
-            previous_camera_position = frame_constants.camera_position;
+        frame_constants.previous_view_projection = previous_view_projection;
+        frame_constants.previous_camera_position = previous_camera_position;
+        previous_view_projection = frame_constants.view_projection;
+        previous_camera_position = frame_constants.camera_position;
 
-            frame_constants.ambient               = ambient_storages[ambient_write_index];
-            frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
-            frame_constants.ambient_history_valid = xx ambient_history_valid;
-            frame_constants.frame_number          = cast(u32) frame_index;
-            frame_constants.debug_view            = cast(u32) debug_view;
+        frame_constants.ambient               = ambient_storages[ambient_write_index];
+        frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
+        frame_constants.ambient_history_valid = xx ambient_history_valid;
+        frame_constants.frame_number          = cast(u32) frame_index;
+        frame_constants.debug_view            = cast(u32) debug_view;
             ambient_write_index = 1 - ambient_write_index;
 
-            push_data := Push_Data.{
-                frame      = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
-                draws      = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
-                materials  = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
-            };
-
-            push_data_info := VkPushDataInfoEXT.{
-                offset = 0,
-                data   = .{address = *push_data, size = size_of(Push_Data)},
-            };
-            vkCmdPushDataEXT(command_buffers[index], *push_data_info);
-        }
+        push_data := Push_Data.{
+            frame     = heap_gpu_pointer(*buffer_heap, Frame_Constants, frame_constants_slot),
+            draws     = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
+            materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
+        };
 
         no_components : VkColorComponentFlags;
         vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
         bind_graphics_shaders(command_buffers[index], depth_shaders);
-        draw_scene(command_buffers[index]);
+        draw_scene(command_buffers[index], push_data);
 
         all_components := VkColorComponentFlags.R | .G | .B | .A;
         vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
         vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
         vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
         bind_graphics_shaders(command_buffers[index], material_shaders);
-        draw_scene(command_buffers[index]);
+        draw_scene(command_buffers[index], push_data);
 
         vkCmdEndRendering(command_buffers[index]);
 
@@ -593,7 +583,8 @@ draw_frame :: () {
     }
 }
 
-draw_scene :: (command_buffer: VkCommandBuffer) {
+draw_scene :: (command_buffer: VkCommandBuffer, push_data_in: Push_Data) {
+    push_data := push_data_in;
     culling_back_faces := true;
     for draws {
         double_sided := materials[it.material_index].double_sided != 0;
@@ -602,11 +593,8 @@ draw_scene :: (command_buffer: VkCommandBuffer) {
             vkCmdSetCullMode(command_buffer, ifx culling_back_faces then .BACK else .NONE);
         }
 
-        draw_index := cast(u32) it_index;
-        push_data_info := VkPushDataInfoEXT.{
-            offset = offset_of(Push_Data, "draw_index"),
-            data   = .{address = *draw_index, size = size_of(u32)},
-        };
+        push_data.draw_index = xx it_index;
+        push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
         vkCmdPushDataEXT(command_buffer, *push_data_info);
 
         index_buffer_info := VkBindIndexBuffer3InfoKHR.{

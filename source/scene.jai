@@ -83,8 +83,11 @@ init_data :: () {
     flat_normal_pixel : u32 = 0xFFFF8080;
     flat_normal_texture = add_texture(create_texture(*flat_normal_pixel, 1, 1, .R8G8B8A8_UNORM, "flat normal texture"));
 
-    croc_data := texture_datas[0];
-    croc_texture := add_texture(create_texture(croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
+    croc_width, croc_height, croc_channels : s32;
+    croc_pixels := stbi_load(temp_c_string(tprint("%/croc.png", textures_path)), *croc_width, *croc_height, *croc_channels, 4);
+    assert(croc_pixels != null, "Unable to load croc.png.");
+    croc_texture := add_texture(create_texture(croc_pixels, xx croc_width, xx croc_height, .R8G8B8A8_SRGB, "croc"));
+    stbi_image_free(croc_pixels);
 
     sampler := create_sampler(.{
         magFilter    = .NEAREST,
