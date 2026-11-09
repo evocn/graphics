@@ -122,7 +122,7 @@ bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction
     query.TraceRayInline(tlas, RAY_FLAG_NONE, 0xFF, ray);
     while (query.Proceed()) {
         if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
-        if (shadow_alpha_test(query.CandidateInstanceID(), query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics())) {
+        if (shadow_alpha_test(query.CandidateGeometryIndex(),query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics())) {
             query.CommitNonOpaqueTriangleHit();
         }
     }

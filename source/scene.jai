@@ -68,8 +68,6 @@ Mesh :: struct {
     index_offset     : VkDeviceSize;
     vertex_count     : u32;
     index_count      : u32;
-    blas             : VkAccelerationStructureKHR;
-    blas_address     : VkDeviceAddress;
 }
 
 Instance :: struct {
@@ -164,35 +162,44 @@ init_data :: () {
         draw_data_offset = upload(draw_datas);
     }
 
-    for * meshes {
-        it.blas, it.blas_address = build_blas(
-            command_buffers[0],
-            heap_address(*heaps.buffer, it.position_offset), size_of(Vector3), it.vertex_count,
-            heap_address(*heaps.buffer, it.index_offset), it.index_count
-        );
+    {
+        transforms := NewArray(instances.count, VkTransformMatrixKHR,, temp);
+        for instances  for row : 0..2  for column : 0..3  transforms[it_index].matrix[row][column] = it.transform.v[row].component[column];
+        transforms_offset := upload(transforms);
+
+        geometries := NewArray(instances.count, Blas_Geometry,, temp);
+        for instances {
+            mesh := meshes[it.mesh_index];
+            geometries[it_index] = .{
+                vertex_address    = heap_address(*heaps.buffer, mesh.position_offset),
+                vertex_stride     = size_of(Vector3),
+                vertex_count      = mesh.vertex_count,
+                index_address     = heap_address(*heaps.buffer, mesh.index_offset),
+                index_count       = mesh.index_count,
+                transform_address = heap_address(*heaps.buffer, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
+                opaque            = materials[it.material_index].alpha_cutoff == 0,
+            };
+        }
+
+        scene_blas, scene_blas_address = build_blas(command_buffers[0], geometries);
     }
     acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
-    tlas_instances : [..] VkAccelerationStructureInstanceKHR;
-    defer array_free(tlas_instances);
-    for instances {
-        flags := VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE;
-        if materials[it.material_index].alpha_cutoff == 0  flags |= .FORCE_OPAQUE;
+    tlas_instance : VkAccelerationStructureInstanceKHR;
+    tlas_instance.transform.matrix[0][0] = 1;
+    tlas_instance.transform.matrix[1][1] = 1;
+    tlas_instance.transform.matrix[2][2] = 1;
+    tlas_instance.__bitmask0 = 0xFF << 24;
+    tlas_instance.__bitmask1 = cast(u32) VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE << 24;
+    tlas_instance.accelerationStructureReference = scene_blas_address;
 
-        tlas_instance := array_add(*tlas_instances);
-        for row : 0..2  for column : 0..3  tlas_instance.transform.matrix[row][column] = it.transform.v[row].component[column];
-        tlas_instance.__bitmask0 = (0xFF << 24) | cast(u32) it_index;
-        tlas_instance.__bitmask1 = cast(u32) flags << 24;
-        tlas_instance.accelerationStructureReference = meshes[it.mesh_index].blas_address;
-    }
-
-    tlas, tlas_address = build_tlas(command_buffers[0], tlas_instances);
+    tlas, tlas_address = build_tlas(command_buffers[0], .[tlas_instance]);
     acceleration_structure_build_barrier(command_buffers[0], .FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
 }
 
 deinit_data :: () {
     vkDestroyAccelerationStructureKHR(device, tlas, null);
-    for meshes  vkDestroyAccelerationStructureKHR(device, it.blas, null);
+    vkDestroyAccelerationStructureKHR(device, scene_blas, null);
     array_free(meshes);
     array_free(instances);
     array_free(materials);

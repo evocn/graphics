@@ -68,6 +68,9 @@ using scene_data : struct {
     instances        : [..] Instance;
     draw_data_offset : VkDeviceSize;
 
+    scene_blas         : VkAccelerationStructureKHR;
+    scene_blas_address : VkDeviceAddress;
+
     tlas         : VkAccelerationStructureKHR;
     tlas_address : VkDeviceAddress;
 }
