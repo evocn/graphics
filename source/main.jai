@@ -139,7 +139,6 @@ main :: () {
         //vkGetDeviceQueue(device, xx physical_device_context.queue_family_indices.transfer, queueIndex=0, *transfer_queue);
     }
 
-    result : VkResult;
 
     init_heaps();
     defer deinit_heaps();
@@ -152,12 +151,11 @@ main :: () {
     init_render();
     defer deinit_render();
 
-    {
-        using begin_info: VkCommandBufferBeginInfo;
-        flags = .ONE_TIME_SUBMIT;
-        result = vkBeginCommandBuffer(command_buffers[0], *begin_info);
-        assert(result == .SUCCESS);
-    }
+    begin_init_commands();
+    heaps.scratch.on_full = (heap: *Heap) {
+        submit_init_commands();
+        begin_init_commands();
+    };
 
     init_data();
     defer deinit_data();
@@ -168,21 +166,8 @@ main :: () {
     init_imgui();
     defer deinit_imgui();
 
-    // Submit any GPU initialization work accumulated so far.
-    {
-        result = vkEndCommandBuffer(command_buffers[0]);
-        assert(result == .SUCCESS);
-
-        using submit_info : VkSubmitInfo;
-        commandBufferCount = 1;
-        pCommandBuffers = *command_buffers[0];
-
-        result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
-        assert(result == .SUCCESS);
-    }
-
-    vkDeviceWaitIdle(device);
-    heap_reset(*heaps.scratch);
+    submit_init_commands();
+    heaps.scratch.on_full = null;
 
     running := true;
     last_time := seconds_since_init();
@@ -266,6 +251,24 @@ main :: () {
     vkDeviceWaitIdle(device);
 
     if screenshot.captured then save_screenshot();
+}
+
+begin_init_commands :: () {
+    begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
+    result := vkBeginCommandBuffer(command_buffers[0], *begin_info);
+    assert(result == .SUCCESS);
+}
+
+submit_init_commands :: () {
+    result := vkEndCommandBuffer(command_buffers[0]);
+    assert(result == .SUCCESS);
+
+    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *command_buffers[0]};
+    result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
+    assert(result == .SUCCESS);
+
+    vkDeviceWaitIdle(device);
+    heap_reset(*heaps.scratch);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

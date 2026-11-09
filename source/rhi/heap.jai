@@ -8,6 +8,8 @@ Heap :: struct {
     buffer  : VkBuffer;
     address : VkDeviceAddress;
     cpu_map : *void;
+
+    on_full : #type (heap: *Heap);
 }
 
 heaps : struct {
@@ -20,7 +22,7 @@ heaps : struct {
 MiB :: 1024 * 1024;
 
 init_heaps :: () {
-    init_buffer_heap(*heaps.buffer,  "buffer heap",  64 * MiB);
+    init_buffer_heap(*heaps.buffer,  "buffer heap",  128 * MiB);
     init_buffer_heap(*heaps.scratch, "scratch heap", 64 * MiB);
 
     {
@@ -36,7 +38,7 @@ init_heaps :: () {
             tiling      = .OPTIMAL;
             usage       = .SAMPLED | .TRANSFER_DST;
         }
-        init_image_heap(*heaps.image, "image heap", 256 * MiB, texture_info);
+        init_image_heap(*heaps.image, "image heap", 512 * MiB, texture_info);
     }
 
     {
@@ -65,7 +67,11 @@ deinit_heaps :: () {
 
 heap_allocate :: (heap: *Heap, size: VkDeviceSize, alignment: VkDeviceSize) -> offset: VkDeviceSize {
     offset := align_up(heap.used, alignment);
-    assert(offset + size <= heap.size, "The % is out of space.", heap.name);
+    if offset + size > heap.size && heap.on_full {
+        heap.on_full(heap);
+        offset = align_up(heap.used, alignment);
+    }
+    assert(offset + size <= heap.size, "The % is out of space: % MiB used of %, % MiB requested.", heap.name, heap.used / MiB, heap.size / MiB, size / MiB);
     heap.used = offset + size;
     return offset;
 }
