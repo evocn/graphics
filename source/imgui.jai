@@ -224,6 +224,7 @@ imgui_debug_ui :: () {
     if ImGui.Begin("Lighting", null, .AlwaysAutoResize | .NoSavedSettings) {
         ImGui.SliderFloat("Sun", *world_state.sun_intensity, 0, 10);
         ImGui.SliderFloat("Exposure", *world_state.exposure, 0.1, 4);
+        ImGui.Combo("View", cast(*s32) *world_state.debug_view, DEBUG_VIEW_NAMES.data);
     }
     ImGui.End();
 }

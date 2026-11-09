@@ -14,7 +14,20 @@ Frame_Constants :: struct @Gpu {
     ambient_history       : Storage_Image_Handle;
     ambient_history_valid : u32;
     frame_number          : u32;
+    debug_view            : u32;
 }
+
+Debug_View :: enum s32 {
+    LIT;
+    AMBIENT_OCCLUSION;
+    BASE_COLOR;
+    NORMALS;
+    METALLIC_ROUGHNESS;
+    SUN_ONLY;
+    AMBIENT_ONLY;
+}
+
+DEBUG_VIEW_NAMES :: "Lit\0Ambient occlusion\0Base color\0Normals\0Metallic (R) / roughness (G)\0Sun only\0Ambient only\0\0";
 
 Push_Data :: struct @Gpu {
     frame      : Gpu_Pointer(Frame_Constants);
@@ -26,6 +39,7 @@ Push_Data :: struct @Gpu {
 Tonemap_Push_Data :: struct @Gpu {
     hdr      : Texture_Handle;
     exposure : float;
+    raw      : u32;
 }
 
 FRAME_CONSTANTS_STRIDE : VkDeviceSize : 256;
@@ -220,7 +234,10 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
     screenshot.format    = swapchain_context.surface_format.format;
 
     size := cast(VkDeviceSize) (4 * screenshot.extent.width * screenshot.extent.height);
-    screenshot.offset = heap_allocate(*heaps.scratch, size, 256);
+    if size > screenshot.allocated_size {
+        screenshot.offset = heap_allocate(*heaps.readback, size, 256);
+        screenshot.allocated_size = size;
+    }
 
     {
         image_memory_barrier : VkImageMemoryBarrier2;
@@ -253,7 +270,7 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
         {
             using region;
             addressRange = .{
-                address = heap_address(*heaps.scratch, screenshot.offset),
+                address = heap_address(*heaps.readback, screenshot.offset),
                 size    = size,
             };
             addressFlags = .STORAGE_BUFFER_USAGE;
@@ -299,6 +316,33 @@ record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkI
 save_screenshot :: () {
     using screenshot;
 
+    pixels := read_screenshot_pixels();
+    if !pixels return;
+    defer free(pixels);
+
+    path := timestamped_png_path("bin/screenshots");
+    written := stbi_write_png(temp_c_string(path), xx extent.width, xx extent.height, 4, pixels, xx (4 * extent.width));
+    assert(written != 0, "Unable to write screenshot %", path);
+
+    log("Saved screenshot to %.", path);
+}
+
+timestamped_png_path :: (directory: string) -> string {
+    make_directory_if_it_does_not_exist(directory);
+
+    time := to_calendar(current_time_consensus(), .LOCAL);
+    return tprint("%/%-%-%_%-%-%.png", directory,
+        time.year,
+        formatInt(time.month_starting_at_0 + 1,       minimum_digits = 2),
+        formatInt(time.day_of_month_starting_at_0 + 1, minimum_digits = 2),
+        formatInt(time.hour,   minimum_digits = 2),
+        formatInt(time.minute, minimum_digits = 2),
+        formatInt(time.second, minimum_digits = 2));
+}
+
+read_screenshot_pixels :: () -> *u32 {
+    using screenshot;
+
     Layout :: enum { RGBA8; BGRA8; A2B10G10R10; }
     layout : Layout;
     if format == {
@@ -308,14 +352,13 @@ save_screenshot :: () {
         case .B8G8R8A8_SRGB;            layout = .BGRA8;
         case .A2B10G10R10_UNORM_PACK32; layout = .A2B10G10R10;
         case;
-            log_error("Can't save a screenshot of swapchain format %.", format);
-            return;
+            log_error("Can't read a screenshot of swapchain format %.", format);
+            return null;
     }
 
     pixel_count := extent.width * extent.height;
     pixels := cast(*u32) alloc(4 * pixel_count);
-    defer free(pixels);
-    memcpy(pixels, heap_pointer(*heaps.scratch, offset), 4 * pixel_count);
+    memcpy(pixels, heap_pointer(*heaps.readback, offset), 4 * pixel_count);
 
     for i : 0..pixel_count-1 {
         p := pixels[i];
@@ -331,22 +374,7 @@ save_screenshot :: () {
         pixels[i] = r | (g << 8) | (b << 16) | 0xFF00_0000;
     }
 
-    directory :: "bin/screenshots";
-    make_directory_if_it_does_not_exist(directory);
-
-    time := to_calendar(current_time_consensus(), .LOCAL);
-    path := tprint("%/%-%-%_%-%-%.png", directory,
-        time.year,
-        formatInt(time.month_starting_at_0 + 1,       minimum_digits = 2),
-        formatInt(time.day_of_month_starting_at_0 + 1, minimum_digits = 2),
-        formatInt(time.hour,   minimum_digits = 2),
-        formatInt(time.minute, minimum_digits = 2),
-        formatInt(time.second, minimum_digits = 2));
-
-    written := stbi_write_png(temp_c_string(path), xx extent.width, xx extent.height, 4, pixels, xx (4 * extent.width));
-    assert(written != 0, "Unable to write screenshot %", path);
-
-    log("Saved screenshot to %.", path);
+    return pixels;
 }
 
 u64_min, u64_max :: #run get_integer_range(u64);
@@ -561,6 +589,7 @@ draw_frame :: () {
             frame_constants.ambient_history       = swapchain_context.ambient_storages[1 - ambient_write_index];
             frame_constants.ambient_history_valid = xx ambient_history_valid;
             frame_constants.frame_number          = cast(u32) frame_index;
+            frame_constants.debug_view            = cast(u32) world_state.debug_view;
             ambient_write_index = 1 - ambient_write_index;
 
             push_data := Push_Data.{
@@ -632,6 +661,7 @@ draw_frame :: () {
             push_data := Tonemap_Push_Data.{
                 hdr      = swapchain_context.hdr_texture,
                 exposure = world_state.exposure,
+                raw      = xx (world_state.debug_view != .LIT),
             };
             push_data_info := VkPushDataInfoEXT.{
                 offset = 0,

@@ -15,5 +15,6 @@ float3 aces_fitted(float3 x) {
 [shader("fragment")]
 float4 fragment_main(float4 position : SV_Position) : SV_Target {
     float3 hdr = push_data.hdr.Load(int3(int2(position.xy), 0)).rgb;
+    if (push_data.raw != 0) return float4(saturate(hdr), 1.0);
     return float4(aces_fitted(hdr * push_data.exposure), 1.0);
 }

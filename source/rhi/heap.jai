@@ -15,6 +15,7 @@ Heap :: struct {
 heaps : struct {
     buffer        : Heap;
     scratch       : Heap;
+    readback      : Heap;
     image         : Heap;
     render_target : Heap;
 }
@@ -24,6 +25,7 @@ MiB :: 1024 * 1024;
 init_heaps :: () {
     init_buffer_heap(*heaps.buffer,  "buffer heap",  128 * MiB);
     init_buffer_heap(*heaps.scratch, "scratch heap", 64 * MiB);
+    init_buffer_heap(*heaps.readback, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
 
     {
         texture_info : VkImageCreateInfo;
@@ -59,7 +61,7 @@ init_heaps :: () {
 }
 
 deinit_heaps :: () {
-    for heap : (*Heap).[*heaps.buffer, *heaps.scratch, *heaps.image, *heaps.render_target] {
+    for heap : (*Heap).[*heaps.buffer, *heaps.scratch, *heaps.readback, *heaps.image, *heaps.render_target] {
         if heap.buffer then vkDestroyBuffer(device, heap.buffer, null);
         vkFreeMemory(device, heap.memory, null);
     }
@@ -106,7 +108,7 @@ heap_bind_image :: (heap: *Heap, image: VkImage) {
 
 #scope_file
 
-init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize) {
+init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties := VkMemoryPropertyFlagBits.DEVICE_LOCAL | .HOST_VISIBLE) {
     result : VkResult;
 
     heap.name = name;
@@ -132,7 +134,7 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize) {
     memory_requirements : VkMemoryRequirements;
     vkGetBufferMemoryRequirements(device, heap.buffer, *memory_requirements);
 
-    allocate_heap_memory(heap, memory_requirements.size, memory_requirements.memoryTypeBits, .DEVICE_LOCAL | .HOST_VISIBLE, device_address = true);
+    allocate_heap_memory(heap, memory_requirements.size, memory_requirements.memoryTypeBits, properties, device_address = true);
 
     result = vkBindBufferMemory(device, heap.buffer, heap.memory, 0);
     assert(result == .SUCCESS);

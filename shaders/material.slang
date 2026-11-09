@@ -276,11 +276,18 @@ Fragment_Stage_Output fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, 
 
     float sky = saturate(0.5 - 0.5 * normal.y);
     float3 ambient = lerp(float3(0.12, 0.1, 0.08), float3(0.3, 0.34, 0.42), sky);
-    ambient *= accumulated_ambient_visibility(world_position, geometric_normal, sv_position.xy);
+    float ambient_occlusion = accumulated_ambient_visibility(world_position, geometric_normal, sv_position.xy);
+    float3 ambient_light = ambient * ambient_occlusion * (diffuse_color + f0);
 
     Fragment_Stage_Output output;
-    {
-        output.color = ambient * (diffuse_color + f0) + sun;
+    switch (push_data.frame.debug_view) {
+        case 1:  output.color = float3(ambient_occlusion); break;
+        case 2:  output.color = base_color; break;
+        case 3:  output.color = normal * 0.5 + 0.5; break;
+        case 4:  output.color = float3(metallic, roughness, 0.0); break;
+        case 5:  output.color = sun; break;
+        case 6:  output.color = ambient_light; break;
+        default: output.color = ambient_light + sun; break;
     }
     return output;
 }

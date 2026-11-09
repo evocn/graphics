@@ -23,6 +23,7 @@ world_state : struct {
     light_direction : Vector3;
     sun_intensity   : float = 3.0;
     exposure        : float = 1.0;
+    debug_view      : Debug_View;
 }
 
 using render_context : struct {
@@ -51,7 +52,8 @@ using render_context : struct {
     screenshot : struct {
         requested   : bool;
         captured    : bool;
-        offset      : VkDeviceSize;
+        offset         : VkDeviceSize;
+        allocated_size : VkDeviceSize;
         extent      : VkExtent2D;
         format      : VkFormat;
     }
@@ -87,11 +89,21 @@ main :: () {
         automation : bool;  @"?Open the window at the bottom of the z-order without taking focus."
         frames     : int;   @"?Quit after this many frames. 0 runs until closed."
         screenshot : bool;  @"?Save the last frame to bin/screenshots/ and quit. Runs 1 frame unless -frames is given."
+        shimmer    : int;   @"?Fly a fixed camera path, measure frame-to-frame shimmer over this many frames, save a heatmap to bin/shimmer/ and quit."
+        benchmark  : int;   @"?Fly the shimmer camera path for this many frames without measuring shimmer, print the average GPU frame time and quit."
+        view       : int;   @"?Start in a debug view: 0 lit, 1 ambient occlusion, 2 base color, 3 normals, 4 metallic/roughness, 5 sun only, 6 ambient only."
     }
     success, args := parse_arguments(Command_Line_Arguments);
     if !success return;
 
     if args.screenshot && args.frames == 0 then args.frames = 1;
+    if args.shimmer > 0 then args.frames = SHIMMER_WARMUP_FRAMES + args.shimmer;
+    if args.benchmark > 0 then args.frames = SHIMMER_WARMUP_FRAMES + args.benchmark;
+    flying := args.shimmer > 0 || args.benchmark > 0;
+    world_state.debug_view = xx args.view;
+
+    benchmark_total : float64;
+    benchmark_count : int;
 
     program_state.window = create_window(
         xx program_state.window_width, xx program_state.window_height,
@@ -235,10 +247,14 @@ main :: () {
         dt := cast(float) (now - last_time);
         last_time = now;
         Clamp(*dt, 0, 0.1);
+        if flying {
+            now = cast(float64) frame_index * SHIMMER_TIME_STEP;
+            dt  = SHIMMER_TIME_STEP;
+        }
 
-        // Update
         {
             update_camera(dt);
+            if flying  shimmer_camera_path(cast(float) now);
 
             // Update Light
             {
@@ -251,12 +267,24 @@ main :: () {
         }
 
         imgui_new_frame();
-        imgui_debug_ui();
+        if !flying  imgui_debug_ui();
         ImGui.Render();
 
         if args.screenshot && frame_index + 1 == cast(u64) args.frames then screenshot.requested = true;
+        if args.shimmer > 0 && frame_index >= SHIMMER_WARMUP_FRAMES then screenshot.requested = true;
 
         draw_frame();
+
+        if args.shimmer > 0 && screenshot.captured {
+            vkDeviceWaitIdle(device);
+            shimmer_accumulate();
+            screenshot.captured = false;
+        }
+
+        if args.benchmark > 0 && frame_index > SHIMMER_WARMUP_FRAMES + FRAMES_IN_FLIGHT {
+            benchmark_total += gpu_frame_ms;
+            benchmark_count += 1;
+        }
 
         if args.frames > 0 && frame_index >= cast(u64) args.frames then running = false;
     }
@@ -264,6 +292,8 @@ main :: () {
     vkDeviceWaitIdle(device);
 
     if screenshot.captured then save_screenshot();
+    if args.shimmer > 0 then shimmer_finish();
+    if benchmark_count > 0 then print("BENCHMARK % ms average GPU frame time over % frames\n", formatFloat(benchmark_total / benchmark_count, trailing_width = 3), benchmark_count);
 }
 
 begin_init_commands :: () {
@@ -326,6 +356,7 @@ Clipboard :: #import "Clipboard";
 #load "gltf.jai";
 #load "frame.jai";
 #load "imgui.jai";
+#load "shimmer.jai";
 
 ////////////////////////////////////////////////////////////////////////////////
 
