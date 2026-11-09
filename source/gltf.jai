@@ -27,10 +27,16 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle, white_textur
         image_textures[image_index] = load_gltf_image(*data.images[image_index], directory);
     }
 
+    samplers := NewArray(xx data.samplers_count, Sampler_Handle);
+    defer array_free(samplers);
+    for sampler_index : 0..cast(s64) data.samplers_count - 1 {
+        samplers[sampler_index] = create_sampler(gltf_sampler_info(*data.samplers[sampler_index]));
+    }
+
     material_indices := NewArray(xx data.materials_count, u32);
     defer array_free(material_indices);
     for material_index : 0..cast(s64) data.materials_count - 1 {
-        material_indices[material_index] = add_gltf_material(data, *data.materials[material_index], image_textures, sampler, white_texture);
+        material_indices[material_index] = add_gltf_material(data, *data.materials[material_index], image_textures, samplers, sampler, white_texture);
     }
     default_material := add_material(.{base_color = .{1, 1, 1, 1}, texture = white_texture, sampler = sampler});
 
@@ -112,7 +118,7 @@ load_gltf_image :: (image: *cgltf_image, directory: string) -> Texture_Handle {
     return add_texture(create_texture(command_buffers[0], pixels, xx width, xx height, .R8G8B8A8_SRGB, name));
 }
 
-add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, sampler: Sampler_Handle, white_texture: Texture_Handle) -> u32 {
+add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, samplers: [] Sampler_Handle, sampler: Sampler_Handle, white_texture: Texture_Handle) -> u32 {
     material := Material.{base_color = .{1, 1, 1, 1}, texture = white_texture, sampler = sampler};
 
     if gltf_material.has_pbr_metallic_roughness {
@@ -121,7 +127,10 @@ add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_t
         material.base_color = .{factor[0], factor[1], factor[2], factor[3]};
 
         texture := pbr.base_color_texture.texture;
-        if texture && texture.image  material.texture = image_textures[cgltf_image_index(data, texture.image)];
+        if texture && texture.image {
+            material.texture = image_textures[cgltf_image_index(data, texture.image)];
+            if texture.sampler  material.sampler = samplers[cgltf_sampler_index(data, texture.sampler)];
+        }
     }
 
     if gltf_material.alpha_mode == {
@@ -130,6 +139,41 @@ add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_t
     }
 
     return add_material(material);
+}
+
+gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
+    wrap :: (mode: cgltf_wrap_mode) -> VkSamplerAddressMode {
+        if mode == {
+            case .clamp_to_edge;   return .CLAMP_TO_EDGE;
+            case .mirrored_repeat; return .MIRRORED_REPEAT;
+            case;                  return .REPEAT;
+        }
+    }
+
+    info := VkSamplerCreateInfo.{
+        magFilter    = ifx sampler.mag_filter == .nearest then .NEAREST else .LINEAR,
+        minFilter    = .LINEAR,
+        mipmapMode   = .LINEAR,
+        addressModeU = wrap(sampler.wrap_s),
+        addressModeV = wrap(sampler.wrap_t),
+        addressModeW = .REPEAT,
+        maxLod       = VK_LOD_CLAMP_NONE,
+    };
+
+    if sampler.min_filter == {
+        case .nearest;                info.minFilter = .NEAREST; info.maxLod = 0.25;
+        case .linear;                 info.maxLod = 0.25;
+        case .nearest_mipmap_nearest; info.minFilter = .NEAREST; info.mipmapMode = .NEAREST;
+        case .linear_mipmap_nearest;  info.mipmapMode = .NEAREST;
+        case .nearest_mipmap_linear;  info.minFilter = .NEAREST;
+    }
+
+    if info.minFilter == .LINEAR && info.magFilter == .LINEAR && info.mipmapMode == .LINEAR {
+        info.anisotropyEnable = VK_TRUE;
+        info.maxAnisotropy    = min(16.0, physical_device_context.properties2.properties.limits.maxSamplerAnisotropy);
+    }
+
+    return info;
 }
 
 add_gltf_primitive :: (primitive: *cgltf_primitive) -> mesh_index: u32, success: bool {
