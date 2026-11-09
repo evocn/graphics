@@ -158,6 +158,9 @@ main :: () {
     init_data();
     defer deinit_data();
 
+    for program_state.texture_datas  stbi_image_free(it.bytes);
+    array_free(program_state.texture_datas);
+
     init_imgui();
     defer deinit_imgui();
 
