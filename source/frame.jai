@@ -251,7 +251,7 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
 
     vkCmdSetPolygonModeEXT(command_buffer,          .FILL);
     vkCmdSetFrontFace(command_buffer,               .CLOCKWISE);
-    vkCmdSetCullMode(command_buffer,                .BACK);
+    vkCmdSetCullMode(command_buffer,                .NONE);
 
     vkCmdSetAlphaToOneEnableEXT(command_buffer,     VK_FALSE);
     vkCmdSetAlphaToCoverageEnableEXT(command_buffer,VK_FALSE);
@@ -512,7 +512,6 @@ draw_frame :: () {
 
     vkCmdSetDepthTestEnable(command_buffers[index],  VK_FALSE);
     vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
-    vkCmdSetCullMode(command_buffers[index], .NONE);
     bind_graphics_shaders(command_buffers[index], tonemap_shaders);
 
     tonemap_push_data := Tonemap_Push_Data.{hdr = hdr_texture, exposure = exposure, raw = xx (debug_view != .LIT)};
@@ -572,14 +571,7 @@ draw_frame :: () {
 
 draw_scene :: (command_buffer: VkCommandBuffer, push_data_in: Push_Data) {
     push_data := push_data_in;
-    culling_back_faces := true;
     for draws {
-        double_sided := materials[it.material_index].double_sided != 0;
-        if double_sided == culling_back_faces {
-            culling_back_faces = !double_sided;
-            vkCmdSetCullMode(command_buffer, ifx culling_back_faces then .BACK else .NONE);
-        }
-
         push_data.draw_index = xx it_index;
         push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
         vkCmdPushDataEXT(command_buffer, *push_data_info);
@@ -596,5 +588,4 @@ draw_scene :: (command_buffer: VkCommandBuffer, push_data_in: Push_Data) {
 
         vkCmdDrawIndexed(command_buffer, indexCount = it.index_count, instanceCount = 1, firstIndex = 0, vertexOffset = 0, firstInstance = 0);
     }
-    if !culling_back_faces  vkCmdSetCullMode(command_buffer, .BACK);
 }

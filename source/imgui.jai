@@ -233,8 +233,6 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_slot: u64) {
         }
     }
 
-    vkCmdSetCullMode(command_buffer, .NONE);
-
     vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
     vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
 

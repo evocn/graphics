@@ -148,7 +148,6 @@ add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_t
     material.normal_texture = image_of(gltf_material.normal_texture);
     if gltf_material.normal_texture.texture  material.normal_scale = gltf_material.normal_texture.scale;
 
-    material.double_sided = xx gltf_material.double_sided;
 
     if gltf_material.alpha_mode == {
         case .mask;  material.alpha_cutoff = gltf_material.alpha_cutoff;
