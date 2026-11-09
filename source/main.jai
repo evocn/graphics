@@ -218,15 +218,15 @@ main :: () {
 
 begin_init_commands :: () {
     begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
-    result := vkBeginCommandBuffer(command_buffers[0], *begin_info);
+    result := vkBeginCommandBuffer(init_command_buffer, *begin_info);
     assert(result == .SUCCESS);
 }
 
 submit_init_commands :: () {
-    result := vkEndCommandBuffer(command_buffers[0]);
+    result := vkEndCommandBuffer(init_command_buffer);
     assert(result == .SUCCESS);
 
-    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *command_buffers[0]};
+    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *init_command_buffer};
     result = vkQueueSubmit(queue, 1, *submit_info, VK_NULL_HANDLE);
     assert(result == .SUCCESS);
 

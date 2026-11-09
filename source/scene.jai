@@ -78,13 +78,13 @@ Draw_Data :: struct @Gpu {
 
 init_data :: () {
     white_pixel : u32 = 0xFFFFFFFF;
-    white_texture = add_texture(create_texture(command_buffers[0], *white_pixel, 1, 1, .R8G8B8A8_SRGB, "white texture"));
+    white_texture = add_texture(create_texture(*white_pixel, 1, 1, .R8G8B8A8_SRGB, "white texture"));
 
     flat_normal_pixel : u32 = 0xFFFF8080;
-    flat_normal_texture = add_texture(create_texture(command_buffers[0], *flat_normal_pixel, 1, 1, .R8G8B8A8_UNORM, "flat normal texture"));
+    flat_normal_texture = add_texture(create_texture(*flat_normal_pixel, 1, 1, .R8G8B8A8_UNORM, "flat normal texture"));
 
     croc_data := texture_datas[0];
-    croc_texture := add_texture(create_texture(command_buffers[0], croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
+    croc_texture := add_texture(create_texture(croc_data.bytes, xx croc_data.width, xx croc_data.height, .R8G8B8A8_SRGB, "croc"));
 
     sampler := create_sampler(.{
         magFilter    = .NEAREST,
@@ -162,9 +162,9 @@ init_data :: () {
             primitive_counts[it_index] = it.index_count / 3;
         }
 
-        scene_blas, scene_blas_address = build_acceleration_structure(command_buffers[0], .BOTTOM_LEVEL, geometries, primitive_counts);
+        scene_blas, scene_blas_address = build_acceleration_structure(.BOTTOM_LEVEL, geometries, primitive_counts);
     }
-    acceleration_structure_build_barrier(command_buffers[0], .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
+    acceleration_structure_build_barrier(.ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
 
     tlas_instance : VkAccelerationStructureInstanceKHR;
     tlas_instance.transform.matrix[0][0] = 1;
@@ -174,8 +174,8 @@ init_data :: () {
     tlas_instance.__bitmask1 = cast(u32) VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE << 24;
     tlas_instance.accelerationStructureReference = scene_blas_address;
 
-    tlas, tlas_address = build_tlas(command_buffers[0], .[tlas_instance]);
-    acceleration_structure_build_barrier(command_buffers[0], .FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
+    tlas, tlas_address = build_tlas(.[tlas_instance]);
+    acceleration_structure_build_barrier(.FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
 }
 
 deinit_data :: () {

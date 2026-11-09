@@ -4,6 +4,7 @@ frame_index                : u64;
 timeline_semaphore         : VkSemaphore;
 command_pool               : VkCommandPool;
 command_buffers            : [FRAMES_IN_FLIGHT] VkCommandBuffer;
+init_command_buffer        : VkCommandBuffer;
 image_available_semaphores : [FRAMES_IN_FLIGHT] VkSemaphore;
 present_ready_semaphores   : [MAX_SWAPCHAIN_IMAGES] VkSemaphore;
 present_fences             : [MAX_SWAPCHAIN_IMAGES] VkFence;
@@ -175,6 +176,11 @@ init_render :: () {
     result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
     assert(result == .SUCCESS);
     for command_buffers  set_debug_name(.COMMAND_BUFFER, it, tprint("frame command buffer %", it_index));
+
+    command_buffer_allocate_info.commandBufferCount = 1;
+    result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, *init_command_buffer);
+    assert(result == .SUCCESS);
+    set_debug_name(.COMMAND_BUFFER, init_command_buffer, "init command buffer");
 
     semaphore_create_info : VkSemaphoreCreateInfo;
     fence_create_info := VkFenceCreateInfo.{flags = .SIGNALED};

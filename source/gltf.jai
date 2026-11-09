@@ -120,7 +120,7 @@ load_gltf_image :: (image: *cgltf_image, directory: string, format: VkFormat) ->
     assert(pixels != null, "Failed to load glTF image %.", name);
     defer stbi_image_free(pixels);
 
-    return add_texture(create_texture(command_buffers[0], pixels, xx width, xx height, format, name));
+    return add_texture(create_texture(pixels, xx width, xx height, format, name));
 }
 
 add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, samplers: [] Sampler_Handle, sampler: Sampler_Handle) -> u32 {

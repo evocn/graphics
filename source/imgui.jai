@@ -77,7 +77,7 @@ init_imgui :: () {
         width, height, bpp : s32;
         io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
 
-        imgui_font_texture = create_texture(command_buffers[0], pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
+        imgui_font_texture = create_texture(pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
         io.Fonts.TexID = cast(*void) imgui_font_texture.handle.id;
     }
 

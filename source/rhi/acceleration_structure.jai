@@ -1,4 +1,4 @@
-build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerationStructureKHR, VkDeviceAddress {
+build_tlas :: (instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerationStructureKHR, VkDeviceAddress {
     instances_size := cast(VkDeviceSize) (instances.count * size_of(VkAccelerationStructureInstanceKHR));
     instances_offset := heap_allocate(*scratch_heap, instances_size, 16);
     memcpy(heap_pointer(*scratch_heap, instances_offset), instances.data, xx instances_size);
@@ -6,15 +6,15 @@ build_tlas :: (command_buffer: VkCommandBuffer, instances: [] VkAccelerationStru
     instance_geometry := VkAccelerationStructureGeometryKHR.{geometryType = .INSTANCES};
     instance_geometry.geometry.instances = .{data.deviceAddress = heap_address(*scratch_heap, instances_offset)};
 
-    tlas, address := build_acceleration_structure(command_buffer, .TOP_LEVEL, .[instance_geometry], .[cast(u32) instances.count]);
+    tlas, address := build_acceleration_structure(.TOP_LEVEL, .[instance_geometry], .[cast(u32) instances.count]);
     return tlas, address;
 }
 
-acceleration_structure_build_barrier :: (command_buffer: VkCommandBuffer, dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
-    memory_barrier(command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
+acceleration_structure_build_barrier :: (dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
+    memory_barrier(init_command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
 }
 
-build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccelerationStructureTypeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
+build_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
     assert(geometries.count == primitive_counts.count);
 
     build_geometry_info := VkAccelerationStructureBuildGeometryInfoKHR.{
@@ -50,7 +50,7 @@ build_acceleration_structure :: (command_buffer: VkCommandBuffer, type: VkAccele
     build_range_infos := NewArray(primitive_counts.count, VkAccelerationStructureBuildRangeInfoKHR,, temp);
     for primitive_counts  build_range_infos[it_index].primitiveCount = it;
     build_range_info_pointer := build_range_infos.data;
-    vkCmdBuildAccelerationStructuresKHR(command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
+    vkCmdBuildAccelerationStructuresKHR(init_command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
 
     return acceleration_structure, address;
 }

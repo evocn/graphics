@@ -3,7 +3,7 @@ Texture :: struct {
     handle : Texture_Handle;
 }
 
-create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, height: u32, format: VkFormat, name: string, generate_mips := true) -> Texture {
+create_texture :: (pixels: *void, width: u32, height: u32, format: VkFormat, name: string, generate_mips := true) -> Texture {
     texture : Texture;
 
     size := cast(VkDeviceSize) (4 * width * height);
@@ -38,7 +38,7 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
     staging_offset := heap_allocate(*scratch_heap, size, 256);
     memcpy(heap_pointer(*scratch_heap, staging_offset), pixels, xx size);
 
-    pipeline_barrier(command_buffer, .[image_barrier(texture.image, .NONE, .NONE, .ALL_TRANSFER, .TRANSFER_WRITE)]);
+    pipeline_barrier(init_command_buffer, .[image_barrier(texture.image, .NONE, .NONE, .ALL_TRANSFER, .TRANSFER_WRITE)]);
 
     region := VkDeviceMemoryImageCopyKHR.{
         addressRange     = .{address = heap_address(*scratch_heap, staging_offset), size = size},
@@ -48,10 +48,10 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
         imageExtent      = .{width, height, 1},
     };
     copy_info := VkCopyDeviceMemoryImageInfoKHR.{image = texture.image, regionCount = 1, pRegions = *region};
-    vkCmdCopyMemoryToImageKHR(command_buffer, *copy_info);
+    vkCmdCopyMemoryToImageKHR(init_command_buffer, *copy_info);
 
     for level : 1..mip_levels - 1 {
-        memory_barrier(command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
+        memory_barrier(init_command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
 
         source_width  := max(width  >> (level - 1), 1);
         source_height := max(height >> (level - 1), 1);
@@ -71,9 +71,9 @@ create_texture :: (command_buffer: VkCommandBuffer, pixels: *void, width: u32, h
             pRegions       = *blit,
             filter         = .LINEAR,
         };
-        vkCmdBlitImage2(command_buffer, *blit_info);
+        vkCmdBlitImage2(init_command_buffer, *blit_info);
     }
-    memory_barrier(command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+    memory_barrier(init_command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
 
     view_create_info := VkImageViewCreateInfo.{
         image            = texture.image,
