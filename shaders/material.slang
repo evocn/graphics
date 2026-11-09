@@ -152,11 +152,15 @@ float ambient_visibility(float3 world_position, float3 geometric_normal, float2 
     return float(visible) / AMBIENT_RAY_COUNT;
 }
 
+static const uint AMBIENT_CONVERGED_FRAMES = 64;
+
 float accumulated_ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
-    float current = ambient_visibility(world_position, geometric_normal, pixel);
     uint history_frames = push_data.frame.ambient_history_frames;
     RWTexture2D<float> history = push_data.frame.ambient;
     uint2 texel = uint2(pixel);
+    if (history_frames >= AMBIENT_CONVERGED_FRAMES) return history[texel];
+
+    float current = ambient_visibility(world_position, geometric_normal, pixel);
 
     float result = history_frames == 0 ? current : lerp(history[texel], current, 1.0 / float(history_frames + 1));
     history[texel] = result;
