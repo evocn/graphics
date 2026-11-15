@@ -101,13 +101,25 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 #scope_file
 
 load_gltf_image :: (image: *cgltf_image, directory: string, format: VkFormat) -> Texture_Handle {
+    name := ifx image.name then to_string(image.name) else "gltf image";
+
     if image.buffer_view {
         bytes := cgltf_buffer_view_data(image.buffer_view);
-        name := ifx image.name then to_string(image.name) else "gltf image";
         return load_image_texture_from_memory(bytes, xx image.buffer_view.size, format, name);
     }
 
     assert(image.uri != null);
+    if begins_with(to_string(image.uri), "data:") {
+        data_uri := to_string(image.uri);
+        comma := find_index_from_left(data_uri, #char ",");
+        assert(comma >= 0 && contains(slice(data_uri, 0, comma), ";base64"), "Unsupported data URI in glTF image %.", name);
+
+        bytes, decoded := base64_decode(slice(data_uri, comma + 1, data_uri.count - comma - 1));
+        assert(decoded, "Invalid base64 in glTF image %.", name);
+        defer free(bytes);
+        return load_image_texture_from_memory(bytes.data, bytes.count, format, name);
+    }
+
     uri := copy_temporary_string(to_string(image.uri));
     uri.count = xx cgltf_decode_uri(uri.data);
     return load_image_texture(tprint("%1%2", directory, uri), format);
