@@ -5,18 +5,17 @@ Heap :: struct {
     size              : VkDeviceSize;
     used              : VkDeviceSize;
 
-    buffer  : VkBuffer;
+    buffer   : VkBuffer;
     address : VkDeviceAddress;
     cpu_map : *void;
 }
 
 heap_context : struct {
-    buffer        : Heap;
-    scratch       : Heap;
-    readback      : Heap;
-    image         : Heap;
-    render_target : Heap;
-    frames        : [FRAMES_IN_FLIGHT] Heap;
+    buffer   : Heap;
+    scratch  : Heap;
+    readback : Heap;
+    image    : Heap;
+    frames   : [FRAMES_IN_FLIGHT] Heap;
 }
 
 MiB :: 1024 * 1024;
@@ -27,21 +26,20 @@ init_heaps :: () {
     init_buffer_heap(*heap_context.readback, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
     for * heap_context.frames  init_buffer_heap(it, sprint("frame heap %", it_index), 8 * MiB);
 
-    init_image_heap(*heap_context.image,         "image heap",         512 * MiB, .R8G8B8A8_UNORM, .SAMPLED | .TRANSFER_DST);
-    init_image_heap(*heap_context.render_target, "render target heap", 256 * MiB, DEPTH_FORMAT,    .DEPTH_STENCIL_ATTACHMENT);
+    init_image_heap(*heap_context.image, "image heap", 512 * MiB, .R8G8B8A8_UNORM, .SAMPLED | .TRANSFER_DST);
 }
 
 deinit_heaps :: () {
-    destroy :: (heap: Heap) {
-        if heap.buffer  vkDestroyBuffer(device_context.device, heap.buffer, null);
-        vkFreeMemory(device_context.device, heap.memory, null);
-    }
-    destroy(heap_context.buffer);
-    destroy(heap_context.scratch);
-    destroy(heap_context.readback);
-    destroy(heap_context.image);
-    destroy(heap_context.render_target);
-    for heap_context.frames  destroy(it);
+    destroy_heap(heap_context.buffer);
+    destroy_heap(heap_context.scratch);
+    destroy_heap(heap_context.readback);
+    destroy_heap(heap_context.image);
+    for heap_context.frames  destroy_heap(it);
+}
+
+destroy_heap :: (heap: Heap) {
+    if heap.buffer  vkDestroyBuffer(device_context.device, heap.buffer, null);
+    vkFreeMemory(device_context.device, heap.memory, null);
 }
 
 heap_allocate :: (heap: *Heap, size: VkDeviceSize, alignment: VkDeviceSize) -> offset: VkDeviceSize {
@@ -78,8 +76,6 @@ heap_bind_image :: (heap: *Heap, image: VkImage) {
     result := vkBindImageMemory(device_context.device, image, heap.memory, offset);
     assert(result == .SUCCESS);
 }
-
-#scope_file
 
 init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties := VkMemoryPropertyFlagBits.DEVICE_LOCAL | .HOST_VISIBLE) {
     result : VkResult;
@@ -133,6 +129,8 @@ init_image_heap :: (heap: *Heap, name: string, size: VkDeviceSize, format: VkFor
 
     allocate_heap_memory(heap, size, memory_requirements.memoryRequirements.memoryTypeBits, .DEVICE_LOCAL, device_address = false);
 }
+
+#scope_file
 
 allocate_heap_memory :: (heap: *Heap, size: VkDeviceSize, memory_type_bits: u32, properties: VkMemoryPropertyFlagBits, device_address: bool) {
     success, memory_type_index := select_memory_type(device_context.memory_properties, memory_type_bits, properties);

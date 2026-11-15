@@ -11,6 +11,7 @@ renderer_context : struct {
     depth_shaders    : [2] VkShaderEXT;
     tonemap_shaders  : [2] VkShaderEXT;
 
+    target_heap : Heap;
     depth_image : VkImage;
     depth_view  : VkImageView;
     hdr_image   : VkImage;
@@ -55,12 +56,14 @@ init_renderer :: () {
     renderer_context.tonemap_shaders  = create_graphics_shaders("tonemap");
     renderer_context.depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
 
+    init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
     renderer_context.hdr_texture = .{id = reserve_image_descriptor()};
     create_render_targets();
 }
 
 deinit_renderer :: () {
     destroy_render_targets();
+    destroy_heap(renderer_context.target_heap);
     destroy_graphics_shaders(renderer_context.material_shaders);
     destroy_graphics_shaders(renderer_context.tonemap_shaders);
     destroy_graphics_shaders(renderer_context.depth_shaders);
@@ -231,7 +234,7 @@ create_render_targets :: () {
         image : VkImage;
         result := vkCreateImage(device_context.device, *image_create_info, null, *image);
         assert(result == .SUCCESS);
-        heap_bind_image(*heap_context.render_target, image);
+        heap_bind_image(*renderer_context.target_heap, image);
 
         view_create_info := VkImageViewCreateInfo.{
             image            = image,
@@ -260,7 +263,7 @@ destroy_render_targets :: () {
     vkDestroyImage(device_context.device, renderer_context.hdr_image, null);
     vkDestroyImageView(device_context.device, renderer_context.depth_view, null);
     vkDestroyImage(device_context.device, renderer_context.depth_image, null);
-    heap_reset(*heap_context.render_target);
+    heap_reset(*renderer_context.target_heap);
 }
 
 set_draw_state :: (command_buffer: VkCommandBuffer) {
