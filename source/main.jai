@@ -73,8 +73,10 @@ main :: () {
     result := vkBeginCommandBuffer(frame_context.init_command_buffer, *begin_info);
     assert(result == .SUCCESS);
 
-    init_data();
-    defer deinit_data();
+    init_scene();
+    defer deinit_scene();
+    init_demo_scene();
+    build_scene();
 
     init_imgui();
     defer deinit_imgui();
@@ -188,6 +190,7 @@ Clipboard :: #import "Clipboard";
 #load "utils.jai";
 #load "camera.jai";
 #load "scene.jai";
+#load "demo_scene.jai";
 #load "gltf.jai";
 #load "renderer.jai";
 
@@ -195,6 +198,3 @@ Clipboard :: #import "Clipboard";
 
 #load "tools/imgui.jai";
 #load "tools/screenshot.jai";
-
-textures_path   :: "assets/textures";
-models_path     :: "assets/models";
