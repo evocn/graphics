@@ -10,7 +10,7 @@ create_graphics_shaders :: (name: string, fragment_entry := "fragment_main") -> 
     ];
 
     shaders : [2] VkShaderEXT;
-    result := vkCreateShadersEXT(device, infos.count, infos.data, null, shaders.data);
+    result := vkCreateShadersEXT(device_context.device, infos.count, infos.data, null, shaders.data);
     assert(result == .SUCCESS);
 
     set_debug_name(.SHADER_EXT, shaders[0], tprint("% vertex_main", name));
@@ -19,7 +19,7 @@ create_graphics_shaders :: (name: string, fragment_entry := "fragment_main") -> 
 }
 
 destroy_graphics_shaders :: (shaders: [2] VkShaderEXT) {
-    for shaders  vkDestroyShaderEXT(device, it, null);
+    for shaders  vkDestroyShaderEXT(device_context.device, it, null);
 }
 
 bind_graphics_shaders :: (command_buffer: VkCommandBuffer, shaders: [2] VkShaderEXT) {

@@ -82,9 +82,6 @@ float3 fresnel_schlick(float3 f0, float v_dot_h) {
     return f0 + (1.0 - f0) * pow(1.0 - v_dot_h, 5.0);
 }
 
-static const uint AMBIENT_RAY_COUNT = 2;
-static const float AMBIENT_RAY_LENGTH = 2.0;
-
 bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction, float max_distance) {
     RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
     RayDesc ray;
@@ -104,98 +101,6 @@ bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction
     return query.CommittedStatus() != COMMITTED_TRIANGLE_HIT;
 }
 
-uint pcg_hash(uint value) {
-    uint state = value * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-float next_random(inout uint seed) {
-    seed = pcg_hash(seed);
-    return float(seed >> 8) * (1.0 / 16777216.0);
-}
-
-uint ambient_hits(float3 world_position, float3 geometric_normal, float2 pixel, uint ray_count) {
-    float3 tangent = normalize(cross(geometric_normal, abs(geometric_normal.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0)));
-    float3 bitangent = cross(geometric_normal, tangent);
-
-    uint2 texel = uint2(pixel);
-    uint seed = pcg_hash(texel.x + pcg_hash(texel.y + pcg_hash(push_data.frame.frame_number)));
-
-    uint visible = 0;
-    for (uint i = 0; i < ray_count; i++) {
-        float u = next_random(seed);
-        float phi = 2.0 * PI * next_random(seed);
-        float radius = sqrt(u);
-        float3 direction = tangent * (radius * cos(phi)) + bitangent * (radius * sin(phi)) + geometric_normal * sqrt(1.0 - u);
-        if (unoccluded(world_position, geometric_normal, direction, AMBIENT_RAY_LENGTH)) visible++;
-    }
-    return visible;
-}
-
-static const float AMBIENT_MAX_HISTORY = 512.0;
-
-float accumulated_ambient_visibility(float3 world_position, float3 geometric_normal, float2 pixel) {
-    RWTexture2D<float4> history = push_data.frame.ambient_history;
-    RWTexture2D<float4> output = push_data.frame.ambient;
-    uint2 size;
-    output.GetDimensions(size.x, size.y);
-
-    float history_visibility = 0.0;
-    float history_count = 0.0;
-    bool history_exact = false;
-    if (push_data.frame.ambient_history_valid != 0) {
-        float4 previous_clip = mul(push_data.frame.previous_view_projection, float4(world_position, 1.0));
-        if (previous_clip.w > 0.0) {
-            float2 previous_pixel = (previous_clip.xy / previous_clip.w * 0.5 + 0.5) * float2(size) - 0.5;
-            float previous_distance = length(world_position - push_data.frame.previous_camera_position);
-
-            float2 base = floor(previous_pixel);
-            float2 fraction = previous_pixel - base;
-            history_exact = all(min(fraction, 1.0 - fraction) < 0.01);
-            if (history_exact) {
-                base = round(previous_pixel);
-                fraction = float2(0.0);
-            }
-
-            float total_weight = 0.0;
-            for (uint i = 0; i < 4; i++) {
-                int2 offset = int2(i & 1, i >> 1);
-                int2 tap = int2(base) + offset;
-                float weight = (offset.x == 1 ? fraction.x : 1.0 - fraction.x) * (offset.y == 1 ? fraction.y : 1.0 - fraction.y);
-                if (weight <= 0.0 || any(tap < 0) || any(tap >= int2(size))) continue;
-
-                float4 stored = history[uint2(tap)];
-                if (abs(stored.z - previous_distance) > 0.02 * previous_distance + 0.01) continue;
-
-                history_visibility += stored.x * weight;
-                history_count += stored.y * weight;
-                total_weight += weight;
-            }
-
-            if (total_weight > 0.01) {
-                history_visibility /= total_weight;
-                history_count /= total_weight;
-            } else {
-                history_count = 0.0;
-            }
-            history_exact = history_exact && total_weight > 0.99;
-        }
-    }
-
-    float visibility = history_visibility;
-    float count = history_count;
-    if (!history_exact || history_count < AMBIENT_MAX_HISTORY) {
-        uint ray_count = history_count < 32.0 ? 32 : history_count < 128.0 ? 8 : AMBIENT_RAY_COUNT;
-        uint hits = ambient_hits(world_position, geometric_normal, pixel, ray_count);
-        count = min(history_count + float(ray_count), AMBIENT_MAX_HISTORY);
-        visibility = lerp(history_visibility, float(hits) / float(ray_count), float(ray_count) / min(history_count + float(ray_count), AMBIENT_MAX_HISTORY));
-    }
-
-    output[uint2(pixel)] = float4(visibility, count, length(world_position - push_data.frame.camera_position), 0.0);
-    return visibility;
-}
-
 [shader("fragment")]
 void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
     Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
@@ -207,7 +112,7 @@ void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
 
 [earlydepthstencil]
 [shader("fragment")]
-float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_position : SV_Position, bool is_front_face : SV_IsFrontFace) : SV_Target {
+float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
 
     Material material = push_data.materials[draw.material_index];
@@ -258,16 +163,14 @@ float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, float4 sv_posit
 
     float sky = saturate(0.5 - 0.5 * normal.y);
     float3 ambient = lerp(float3(0.12, 0.1, 0.08), float3(0.3, 0.34, 0.42), sky);
-    float ambient_occlusion = accumulated_ambient_visibility(world_position, geometric_normal, sv_position.xy);
-    float3 ambient_light = ambient * ambient_occlusion * (diffuse_color + f0);
+    float3 ambient_light = ambient * (diffuse_color + f0);
 
     switch (push_data.frame.debug_view) {
-        case 1:  return float4(ambient_occlusion.xxx, 1.0);
-        case 2:  return float4(base_color, 1.0);
-        case 3:  return float4(normal * 0.5 + 0.5, 1.0);
-        case 4:  return float4(metallic, roughness, 0.0, 1.0);
-        case 5:  return float4(sun, 1.0);
-        case 6:  return float4(ambient_light, 1.0);
+        case 1:  return float4(base_color, 1.0);
+        case 2:  return float4(normal * 0.5 + 0.5, 1.0);
+        case 3:  return float4(metallic, roughness, 0.0, 1.0);
+        case 4:  return float4(sun, 1.0);
+        case 5:  return float4(ambient_light, 1.0);
         default: return float4(ambient_light + sun, 1.0);
     }
 }

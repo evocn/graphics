@@ -186,7 +186,7 @@ gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
 
     if info.minFilter == .LINEAR && info.magFilter == .LINEAR && info.mipmapMode == .LINEAR {
         info.anisotropyEnable = VK_TRUE;
-        info.maxAnisotropy    = min(16.0, device_limits.maxSamplerAnisotropy);
+        info.maxAnisotropy    = min(16.0, device_context.limits.maxSamplerAnisotropy);
     }
 
     return info;

@@ -1,52 +1,38 @@
 FRAMES_IN_FLIGHT :: 2;
 
-frame_index                : u64;
-timeline_semaphore         : VkSemaphore;
-command_pool               : VkCommandPool;
-command_buffers            : [FRAMES_IN_FLIGHT] VkCommandBuffer;
-init_command_buffer        : VkCommandBuffer;
-image_available_semaphores : [FRAMES_IN_FLIGHT] VkSemaphore;
-present_ready_semaphores   : [MAX_SWAPCHAIN_IMAGES] VkSemaphore;
-present_fences             : [MAX_SWAPCHAIN_IMAGES] VkFence;
+DEPTH_FORMAT : VkFormat : .D32_SFLOAT;
+HDR_FORMAT   : VkFormat : .R16G16B16A16_SFLOAT;
 
-ambient_write_index      : u32;
-previous_view_projection : Matrix4;
-previous_camera_position : Vector3;
+frame_context : struct {
+    index                      : u64;
+    timeline_semaphore         : VkSemaphore;
+    command_pool               : VkCommandPool;
+    command_buffers            : [FRAMES_IN_FLIGHT] VkCommandBuffer;
+    init_command_buffer        : VkCommandBuffer;
+    image_available_semaphores : [FRAMES_IN_FLIGHT] VkSemaphore;
+    present_ready_semaphores   : [MAX_SWAPCHAIN_IMAGES] VkSemaphore;
+    present_fences             : [MAX_SWAPCHAIN_IMAGES] VkFence;
 
-timestamp_pool : VkQueryPool;
-gpu_frame_ms   : float;
+    timestamp_pool : VkQueryPool;
+    gpu_ms         : float;
 
-material_shaders : [2] VkShaderEXT;
-depth_shaders    : [2] VkShaderEXT;
-tonemap_shaders  : [2] VkShaderEXT;
+    material_shaders : [2] VkShaderEXT;
+    depth_shaders    : [2] VkShaderEXT;
+    tonemap_shaders  : [2] VkShaderEXT;
 
-screenshot_requested      : bool;
-screenshot_captured       : bool;
-screenshot_offset         : VkDeviceSize;
-screenshot_allocated_size : VkDeviceSize;
-screenshot_extent         : VkExtent2D;
-screenshot_format         : VkFormat;
-
-DEPTH_FORMAT   : VkFormat : .D32_SFLOAT;
-HDR_FORMAT     : VkFormat : .R16G16B16A16_SFLOAT;
-AMBIENT_FORMAT : VkFormat : .R16G16B16A16_SFLOAT;
-
-depth_image         : VkImage;
-depth_view          : VkImageView;
-hdr_image           : VkImage;
-hdr_view            : VkImageView;
-hdr_texture         : Texture_Handle;
-ambient_images      : [2] VkImage;
-ambient_views       : [2] VkImageView;
-ambient_storages    : [2] Storage_Image_Handle;
-ambient_initialized : bool;
+    depth_image : VkImage;
+    depth_view  : VkImageView;
+    hdr_image   : VkImage;
+    hdr_view    : VkImageView;
+    hdr_texture : Texture_Handle;
+}
 
 create_render_targets :: () {
     create :: (format: VkFormat, usage: VkImageUsageFlags, aspect: VkImageAspectFlags, name: string) -> VkImage, VkImageView, VkImageViewCreateInfo {
         image_create_info := VkImageCreateInfo.{
             imageType   = .e2D,
             format      = format,
-            extent      = .{width = swapchain_extent.width, height = swapchain_extent.height, depth = 1},
+            extent      = .{width = swapchain_context.extent.width, height = swapchain_context.extent.height, depth = 1},
             mipLevels   = 1,
             arrayLayers = 1,
             samples     = .e1,
@@ -54,9 +40,9 @@ create_render_targets :: () {
             usage       = usage,
         };
         image : VkImage;
-        result := vkCreateImage(device, *image_create_info, null, *image);
+        result := vkCreateImage(device_context.device, *image_create_info, null, *image);
         assert(result == .SUCCESS);
-        heap_bind_image(*render_target_heap, image);
+        heap_bind_image(*heap_context.render_target, image);
 
         view_create_info := VkImageViewCreateInfo.{
             image            = image,
@@ -65,7 +51,7 @@ create_render_targets :: () {
             subresourceRange = .{aspectMask = aspect, levelCount = 1, layerCount = 1},
         };
         view : VkImageView;
-        result = vkCreateImageView(device, *view_create_info, null, *view);
+        result = vkCreateImageView(device_context.device, *view_create_info, null, *view);
         assert(result == .SUCCESS);
 
         set_debug_name(.IMAGE,      image, name);
@@ -73,39 +59,28 @@ create_render_targets :: () {
         return image, view, view_create_info;
     }
 
-    depth_image, depth_view = create(DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT, .DEPTH, "depth");
+    frame_context.depth_image, frame_context.depth_view = create(DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT, .DEPTH, "depth");
 
     hdr_view_info : VkImageViewCreateInfo;
-    hdr_image, hdr_view, hdr_view_info = create(HDR_FORMAT, .COLOR_ATTACHMENT | .SAMPLED, .COLOR, "hdr");
-    write_image_descriptor(hdr_texture.id, .SAMPLED_IMAGE, hdr_view_info);
-
-    for 0..1 {
-        ambient_view_info : VkImageViewCreateInfo;
-        ambient_images[it], ambient_views[it], ambient_view_info = create(AMBIENT_FORMAT, .STORAGE, .COLOR, tprint("ambient %", it));
-        write_image_descriptor(ambient_storages[it].id, .STORAGE_IMAGE, ambient_view_info);
-    }
-    ambient_initialized = false;
+    frame_context.hdr_image, frame_context.hdr_view, hdr_view_info = create(HDR_FORMAT, .COLOR_ATTACHMENT | .SAMPLED, .COLOR, "hdr");
+    write_image_descriptor(frame_context.hdr_texture.id, .SAMPLED_IMAGE, hdr_view_info);
 }
 
 destroy_render_targets :: () {
-    for 0..1 {
-        vkDestroyImageView(device, ambient_views[it], null);
-        vkDestroyImage(device, ambient_images[it], null);
-    }
-    vkDestroyImageView(device, hdr_view, null);
-    vkDestroyImage(device, hdr_image, null);
-    vkDestroyImageView(device, depth_view, null);
-    vkDestroyImage(device, depth_image, null);
-    heap_reset(*render_target_heap);
+    vkDestroyImageView(device_context.device, frame_context.hdr_view, null);
+    vkDestroyImage(device_context.device, frame_context.hdr_image, null);
+    vkDestroyImageView(device_context.device, frame_context.depth_view, null);
+    vkDestroyImage(device_context.device, frame_context.depth_image, null);
+    heap_reset(*heap_context.render_target);
 }
 
 recreate_swapchain :: () -> ready: bool {
     capabilities : VkSurfaceCapabilitiesKHR;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, *capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_context.physical_device, device_context.surface, *capabilities);
     if capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0  return false;
 
-    vkDeviceWaitIdle(device);
-    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, U64_MAX);
+    vkDeviceWaitIdle(device_context.device);
+    result := vkWaitForFences(device_context.device, MAX_SWAPCHAIN_IMAGES, frame_context.present_fences.data, VK_TRUE, U64_MAX);
     assert(result == .SUCCESS);
 
     destroy_render_targets();
@@ -113,28 +88,21 @@ recreate_swapchain :: () -> ready: bool {
     init_swapchain();
     create_render_targets();
 
-    swapchain_needs_recreation = false;
+    swapchain_context.needs_recreation = false;
     return true;
 }
 
 Frame_Constants :: struct @Gpu {
-    view_projection          : Matrix4;
-    previous_view_projection : Matrix4;
+    view_projection : Matrix4;
     tlas_address    : u64;
     light_direction : Vector3;
     sun_intensity   : float;
-    camera_position          : Vector3;
-    previous_camera_position : Vector3;
-    ambient               : Storage_Image_Handle;
-    ambient_history       : Storage_Image_Handle;
-    ambient_history_valid : u32;
-    frame_number          : u32;
-    debug_view            : u32;
+    camera_position : Vector3;
+    debug_view      : u32;
 }
 
 Debug_View :: enum s32 {
     LIT;
-    AMBIENT_OCCLUSION;
     BASE_COLOR;
     NORMALS;
     METALLIC_ROUGHNESS;
@@ -142,7 +110,7 @@ Debug_View :: enum s32 {
     AMBIENT_ONLY;
 }
 
-DEBUG_VIEW_NAMES :: "Lit\0Ambient occlusion\0Base color\0Normals\0Metallic (R) / roughness (G)\0Sun only\0Ambient only\0\0";
+DEBUG_VIEW_NAMES :: "Lit\0Base color\0Normals\0Metallic (R) / roughness (G)\0Sun only\0Ambient only\0\0";
 
 Push_Data :: struct @Gpu {
     frame      : Gpu_Pointer(Frame_Constants);
@@ -159,71 +127,69 @@ Tonemap_Push_Data :: struct @Gpu {
 init_render :: () {
     result : VkResult;
 
-    command_pool_create_info := VkCommandPoolCreateInfo.{flags = .RESET_COMMAND_BUFFER, queueFamilyIndex = queue_family_index};
-    result = vkCreateCommandPool(device, *command_pool_create_info, null, *command_pool);
+    command_pool_create_info := VkCommandPoolCreateInfo.{flags = .RESET_COMMAND_BUFFER, queueFamilyIndex = device_context.queue_family_index};
+    result = vkCreateCommandPool(device_context.device, *command_pool_create_info, null, *frame_context.command_pool);
     assert(result == .SUCCESS);
 
-    command_buffer_allocate_info := VkCommandBufferAllocateInfo.{commandPool = command_pool, level = .PRIMARY, commandBufferCount = FRAMES_IN_FLIGHT};
-    result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, command_buffers.data);
+    command_buffer_allocate_info := VkCommandBufferAllocateInfo.{commandPool = frame_context.command_pool, level = .PRIMARY, commandBufferCount = FRAMES_IN_FLIGHT};
+    result = vkAllocateCommandBuffers(device_context.device, *command_buffer_allocate_info, frame_context.command_buffers.data);
     assert(result == .SUCCESS);
-    for command_buffers  set_debug_name(.COMMAND_BUFFER, it, tprint("frame command buffer %", it_index));
+    for frame_context.command_buffers  set_debug_name(.COMMAND_BUFFER, it, tprint("frame command buffer %", it_index));
 
     command_buffer_allocate_info.commandBufferCount = 1;
-    result = vkAllocateCommandBuffers(device, *command_buffer_allocate_info, *init_command_buffer);
+    result = vkAllocateCommandBuffers(device_context.device, *command_buffer_allocate_info, *frame_context.init_command_buffer);
     assert(result == .SUCCESS);
-    set_debug_name(.COMMAND_BUFFER, init_command_buffer, "init command buffer");
+    set_debug_name(.COMMAND_BUFFER, frame_context.init_command_buffer, "init command buffer");
 
     semaphore_create_info : VkSemaphoreCreateInfo;
     fence_create_info := VkFenceCreateInfo.{flags = .SIGNALED};
     for 0..MAX_SWAPCHAIN_IMAGES-1 {
-        vkCreateSemaphore(device, *semaphore_create_info, null, *present_ready_semaphores[it]);
-        set_debug_name(.SEMAPHORE, present_ready_semaphores[it], tprint("present ready semaphore %", it));
-        vkCreateFence(device, *fence_create_info, null, *present_fences[it]);
-        set_debug_name(.FENCE, present_fences[it], tprint("present fence %", it));
+        vkCreateSemaphore(device_context.device, *semaphore_create_info, null, *frame_context.present_ready_semaphores[it]);
+        set_debug_name(.SEMAPHORE, frame_context.present_ready_semaphores[it], tprint("present ready semaphore %", it));
+        vkCreateFence(device_context.device, *fence_create_info, null, *frame_context.present_fences[it]);
+        set_debug_name(.FENCE, frame_context.present_fences[it], tprint("present fence %", it));
     }
     for 0..FRAMES_IN_FLIGHT-1 {
-        vkCreateSemaphore(device, *semaphore_create_info, null, *image_available_semaphores[it]);
-        set_debug_name(.SEMAPHORE, image_available_semaphores[it], tprint("image available semaphore %", it));
+        vkCreateSemaphore(device_context.device, *semaphore_create_info, null, *frame_context.image_available_semaphores[it]);
+        set_debug_name(.SEMAPHORE, frame_context.image_available_semaphores[it], tprint("image available semaphore %", it));
     }
 
     semaphore_type_create_info := VkSemaphoreTypeCreateInfo.{semaphoreType = .TIMELINE};
     timeline_semaphore_create_info := VkSemaphoreCreateInfo.{pNext = *semaphore_type_create_info};
-    vkCreateSemaphore(device, *timeline_semaphore_create_info, null, *timeline_semaphore);
-    set_debug_name(.SEMAPHORE, timeline_semaphore, "frame timeline semaphore");
+    vkCreateSemaphore(device_context.device, *timeline_semaphore_create_info, null, *frame_context.timeline_semaphore);
+    set_debug_name(.SEMAPHORE, frame_context.timeline_semaphore, "frame timeline semaphore");
 
     query_pool_create_info := VkQueryPoolCreateInfo.{queryType = .TIMESTAMP, queryCount = FRAMES_IN_FLIGHT * 2};
-    result = vkCreateQueryPool(device, *query_pool_create_info, null, *timestamp_pool);
+    result = vkCreateQueryPool(device_context.device, *query_pool_create_info, null, *frame_context.timestamp_pool);
     assert(result == .SUCCESS);
-    set_debug_name(.QUERY_POOL, timestamp_pool, "frame timestamp pool");
+    set_debug_name(.QUERY_POOL, frame_context.timestamp_pool, "frame timestamp pool");
 
-    material_shaders = create_graphics_shaders("material");
-    tonemap_shaders  = create_graphics_shaders("tonemap");
-    depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
+    frame_context.material_shaders = create_graphics_shaders("material");
+    frame_context.tonemap_shaders  = create_graphics_shaders("tonemap");
+    frame_context.depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
 
-    hdr_texture         = .{id = reserve_image_descriptor()};
-    ambient_storages[0] = .{id = reserve_image_descriptor()};
-    ambient_storages[1] = .{id = reserve_image_descriptor()};
+    frame_context.hdr_texture = .{id = reserve_image_descriptor()};
     create_render_targets();
 }
 
 deinit_render :: () {
     destroy_render_targets();
-    destroy_graphics_shaders(material_shaders);
-    destroy_graphics_shaders(tonemap_shaders);
-    destroy_graphics_shaders(depth_shaders);
-    result := vkWaitForFences(device, MAX_SWAPCHAIN_IMAGES, present_fences.data, VK_TRUE, U64_MAX);
+    destroy_graphics_shaders(frame_context.material_shaders);
+    destroy_graphics_shaders(frame_context.tonemap_shaders);
+    destroy_graphics_shaders(frame_context.depth_shaders);
+    result := vkWaitForFences(device_context.device, MAX_SWAPCHAIN_IMAGES, frame_context.present_fences.data, VK_TRUE, U64_MAX);
     assert(result == .SUCCESS);
 
     for image_index : 0..MAX_SWAPCHAIN_IMAGES-1 {
-        vkDestroyFence(device, present_fences[image_index], null);
-        vkDestroySemaphore(device, present_ready_semaphores[image_index], null);
+        vkDestroyFence(device_context.device, frame_context.present_fences[image_index], null);
+        vkDestroySemaphore(device_context.device, frame_context.present_ready_semaphores[image_index], null);
     }
     for index : 0..FRAMES_IN_FLIGHT-1 {
-        vkDestroySemaphore(device, image_available_semaphores[index], null);
+        vkDestroySemaphore(device_context.device, frame_context.image_available_semaphores[index], null);
     }
-    vkDestroySemaphore(device, timeline_semaphore, null);
-    vkDestroyQueryPool(device, timestamp_pool, null);
-    vkDestroyCommandPool(device, command_pool, null);
+    vkDestroySemaphore(device_context.device, frame_context.timeline_semaphore, null);
+    vkDestroyQueryPool(device_context.device, frame_context.timestamp_pool, null);
+    vkDestroyCommandPool(device_context.device, frame_context.command_pool, null);
 }
 
 set_draw_state :: (command_buffer: VkCommandBuffer) {
@@ -259,302 +225,186 @@ set_draw_state :: (command_buffer: VkCommandBuffer) {
     sample_mask : VkSampleMask = 1;
     vkCmdSetSampleMaskEXT(command_buffer, .e1, *sample_mask);
 
-    viewport := VkViewport.{width = xx swapchain_extent.width, height = xx swapchain_extent.height, maxDepth = 1};
+    viewport := VkViewport.{width = xx swapchain_context.extent.width, height = xx swapchain_context.extent.height, maxDepth = 1};
     vkCmdSetViewportWithCount(command_buffer, 1, *viewport);
 
-    scissor := VkRect2D.{extent = swapchain_extent};
+    scissor := VkRect2D.{extent = swapchain_context.extent};
     vkCmdSetScissorWithCount(command_buffer, 1, *scissor);
 
     vkCmdSetVertexInputEXT(command_buffer, 0, null, 0, null);
 }
 
-record_screenshot_copy :: (command_buffer: VkCommandBuffer, swapchain_image: VkImage) {
-    screenshot_requested = false;
-    screenshot_extent    = swapchain_extent;
-    screenshot_format    = surface_format.format;
-
-    size := cast(VkDeviceSize) (4 * screenshot_extent.width * screenshot_extent.height);
-    if size > screenshot_allocated_size {
-        screenshot_offset = heap_allocate(*readback_heap, size, 256);
-        screenshot_allocated_size = size;
-    }
-
-    memory_barrier(command_buffer, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .COPY, .TRANSFER_READ);
-
-    region := VkDeviceMemoryImageCopyKHR.{
-        addressRange     = .{address = heap_address(*readback_heap, screenshot_offset), size = size},
-        addressFlags     = .STORAGE_BUFFER_USAGE,
-        imageSubresource = .{aspectMask = .COLOR, layerCount = 1},
-        imageLayout      = .GENERAL,
-        imageExtent      = .{screenshot_extent.width, screenshot_extent.height, 1},
-    };
-    copy_info := VkCopyDeviceMemoryImageInfoKHR.{image = swapchain_image, regionCount = 1, pRegions = *region};
-    vkCmdCopyImageToMemoryKHR(command_buffer, *copy_info);
-
-    memory_barrier(command_buffer, .COPY, .TRANSFER_WRITE, .HOST, .HOST_READ);
-
-    screenshot_captured = true;
-}
-
-save_screenshot :: () {
-    pixels := read_screenshot_pixels();
-    if !pixels return;
-    defer free(pixels);
-
-    path := timestamped_png_path("bin/screenshots");
-    written := stbi_write_png(temp_c_string(path), xx screenshot_extent.width, xx screenshot_extent.height, 4, pixels, xx (4 * screenshot_extent.width));
-    assert(written != 0, "Unable to write screenshot %", path);
-
-    log("Saved screenshot to %.", path);
-}
-
-timestamped_png_path :: (directory: string) -> string {
-    make_directory_if_it_does_not_exist(directory);
-
-    time := to_calendar(current_time_consensus(), .LOCAL);
-    return tprint("%/%-%-%_%-%-%.png", directory,
-        time.year,
-        formatInt(time.month_starting_at_0 + 1,       minimum_digits = 2),
-        formatInt(time.day_of_month_starting_at_0 + 1, minimum_digits = 2),
-        formatInt(time.hour,   minimum_digits = 2),
-        formatInt(time.minute, minimum_digits = 2),
-        formatInt(time.second, minimum_digits = 2));
-}
-
-read_screenshot_pixels :: () -> *u32 {
-    Layout :: enum { RGBA8; BGRA8; A2B10G10R10; }
-    layout : Layout;
-    if screenshot_format == {
-        case .R8G8B8A8_UNORM;           #through;
-        case .R8G8B8A8_SRGB;            layout = .RGBA8;
-        case .B8G8R8A8_UNORM;           #through;
-        case .B8G8R8A8_SRGB;            layout = .BGRA8;
-        case .A2B10G10R10_UNORM_PACK32; layout = .A2B10G10R10;
-        case;
-            log_error("Can't read a screenshot of swapchain format %.", screenshot_format);
-            return null;
-    }
-
-    pixel_count := screenshot_extent.width * screenshot_extent.height;
-    pixels := cast(*u32) alloc(4 * pixel_count);
-    memcpy(pixels, heap_pointer(*readback_heap, screenshot_offset), 4 * pixel_count);
-
-    for i : 0..pixel_count-1 {
-        p := pixels[i];
-        r, g, b : u32;
-        if layout == {
-            case .RGBA8;
-                r = p & 0xFF;          g = (p >> 8) & 0xFF;            b = (p >> 16) & 0xFF;
-            case .BGRA8;
-                r = (p >> 16) & 0xFF;  g = (p >> 8) & 0xFF;            b = p & 0xFF;
-            case .A2B10G10R10;
-                r = (p & 0x3FF) >> 2;  g = ((p >> 10) & 0x3FF) >> 2;   b = ((p >> 20) & 0x3FF) >> 2;
-        }
-        pixels[i] = r | (g << 8) | (b << 16) | 0xFF00_0000;
-    }
-
-    return pixels;
-}
-
 draw_frame :: () {
     result : VkResult;
 
-    frame_index += 1;
-    index := frame_index % FRAMES_IN_FLIGHT;
+    frame_context.index += 1;
+    index := frame_context.index % FRAMES_IN_FLIGHT;
 
-    wait_value : u64 = ifx frame_index > FRAMES_IN_FLIGHT then frame_index - FRAMES_IN_FLIGHT else 0;
-    semaphore_wait_info := VkSemaphoreWaitInfo.{semaphoreCount = 1, pSemaphores = *timeline_semaphore, pValues = *wait_value};
-    result = vkWaitSemaphores(device, *semaphore_wait_info, U64_MAX);
+    wait_value : u64 = ifx frame_context.index > FRAMES_IN_FLIGHT then frame_context.index - FRAMES_IN_FLIGHT else 0;
+    semaphore_wait_info := VkSemaphoreWaitInfo.{semaphoreCount = 1, pSemaphores = *frame_context.timeline_semaphore, pValues = *wait_value};
+    result = vkWaitSemaphores(device_context.device, *semaphore_wait_info, U64_MAX);
     assert(result == .SUCCESS);
 
-    frame_heap := *frame_heaps[index];
+    frame_heap := *heap_context.frames[index];
     heap_reset(frame_heap);
 
-    if frame_index > FRAMES_IN_FLIGHT {
+    if frame_context.index > FRAMES_IN_FLIGHT {
         timestamps : [2] u64;
-        result = vkGetQueryPoolResults(device, timestamp_pool, xx (index * 2), 2, size_of(type_of(timestamps)), timestamps.data, size_of(u64), .e64);
+        result = vkGetQueryPoolResults(device_context.device, frame_context.timestamp_pool, xx (index * 2), 2, size_of(type_of(timestamps)), timestamps.data, size_of(u64), .e64);
         assert(result == .SUCCESS);
 
-        period := device_limits.timestampPeriod;
-        gpu_frame_ms = cast(float) (timestamps[1] - timestamps[0]) * period / 1_000_000.0;
+        period := device_context.limits.timestampPeriod;
+        frame_context.gpu_ms = cast(float) (timestamps[1] - timestamps[0]) * period / 1_000_000.0;
     }
 
     image_index: u32;
-    result = vkAcquireNextImageKHR(device, swapchain, U64_MAX, image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
+    result = vkAcquireNextImageKHR(device_context.device, swapchain_context.swapchain, U64_MAX, frame_context.image_available_semaphores[index], VK_NULL_HANDLE, *image_index);
     if result == .ERROR_OUT_OF_DATE_KHR {
-        frame_index -= 1;
-        swapchain_needs_recreation = true;
+        frame_context.index -= 1;
+        swapchain_context.needs_recreation = true;
         return;
     }
     if result == .SUBOPTIMAL_KHR {
-        swapchain_needs_recreation = true;
+        swapchain_context.needs_recreation = true;
     }
     else {
         assert(result == .SUCCESS, "vkAcquireNextImageKHR failed: %", result);
     }
 
-    result = vkWaitForFences(device, 1, *present_fences[image_index], VK_TRUE, U64_MAX);
+    result = vkWaitForFences(device_context.device, 1, *frame_context.present_fences[image_index], VK_TRUE, U64_MAX);
     assert(result == .SUCCESS);
-    result = vkResetFences(device, 1, *present_fences[image_index]);
+    result = vkResetFences(device_context.device, 1, *frame_context.present_fences[image_index]);
     assert(result == .SUCCESS);
 
     begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
-    result = vkBeginCommandBuffer(command_buffers[index], *begin_info);
+    result = vkBeginCommandBuffer(frame_context.command_buffers[index], *begin_info);
     assert(result == .SUCCESS);
 
-    vkCmdResetQueryPool(command_buffers[index], timestamp_pool, xx (index * 2), 2);
-    vkCmdWriteTimestamp2(command_buffers[index], .NONE, timestamp_pool, xx (index * 2));
+    vkCmdResetQueryPool(frame_context.command_buffers[index], frame_context.timestamp_pool, xx (index * 2), 2);
+    vkCmdWriteTimestamp2(frame_context.command_buffers[index], .NONE, frame_context.timestamp_pool, xx (index * 2));
 
-    ambient_history_valid := ambient_initialized;
-    ambient_initialized = true;
+    pipeline_barrier(frame_context.command_buffers[index], .[
+        image_barrier(swapchain_context.images[image_index], .COLOR_ATTACHMENT_OUTPUT, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+        image_barrier(frame_context.depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
+        image_barrier(frame_context.hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
+    ]);
 
-    {
-        image_barriers := VkImageMemoryBarrier2.[
-            image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
-            image_barrier(depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
-            image_barrier(hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
-            image_barrier(ambient_images[ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_WRITE),
-            image_barrier(ambient_images[1 - ambient_write_index], .FRAGMENT_SHADER, .NONE, .FRAGMENT_SHADER, .SHADER_STORAGE_READ),
-        ];
-        barriers : [] VkImageMemoryBarrier2 = image_barriers;
-        if ambient_history_valid  barriers.count -= 1;
-
-        history_barrier := VkMemoryBarrier2.{
-            srcStageMask  = .FRAGMENT_SHADER,
-            srcAccessMask = .SHADER_STORAGE_WRITE,
-            dstStageMask  = .FRAGMENT_SHADER,
-            dstAccessMask = .SHADER_STORAGE_READ,
-        };
-        pipeline_barrier(command_buffers[index], barriers, .[history_barrier]);
-    }
-
-    color_attachment := VkRenderingAttachmentInfoKHR.{imageView = hdr_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .STORE};
+    color_attachment := VkRenderingAttachmentInfoKHR.{imageView = frame_context.hdr_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .STORE};
     color_attachment.clearValue.color.float32_ = xx srgb(0.1, 0.1, 0.12).component;
 
-    depth_attachment := VkRenderingAttachmentInfoKHR.{imageView = depth_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .DONT_CARE};
+    depth_attachment := VkRenderingAttachmentInfoKHR.{imageView = frame_context.depth_view, imageLayout = .GENERAL, loadOp = .CLEAR, storeOp = .DONT_CARE};
     depth_attachment.clearValue.depthStencil = .{depth = 1};
 
     rendering_info := VkRenderingInfo.{
-        renderArea           = .{extent = swapchain_extent},
+        renderArea           = .{extent = swapchain_context.extent},
         layerCount           = 1,
         colorAttachmentCount = 1,
         pColorAttachments    = *color_attachment,
         pDepthAttachment     = *depth_attachment,
     };
-    vkCmdBeginRendering(command_buffers[index], *rendering_info);
+    vkCmdBeginRendering(frame_context.command_buffers[index], *rendering_info);
 
-    bind_descriptor_heaps(command_buffers[index]);
-    set_draw_state(command_buffers[index]);
+    bind_descriptor_heaps(frame_context.command_buffers[index]);
+    set_draw_state(frame_context.command_buffers[index]);
 
     frame_constants_offset := heap_allocate(frame_heap, size_of(Frame_Constants), 256);
-    aspect := cast(float) swapchain_extent.width / cast(float) swapchain_extent.height;
+    aspect := cast(float) swapchain_context.extent.width / cast(float) swapchain_context.extent.height;
 
     frame_constants := cast(*Frame_Constants) heap_pointer(frame_heap, frame_constants_offset);
     frame_constants.view_projection = camera_view_projection(aspect);
-    frame_constants.tlas_address    = tlas_address;
-    frame_constants.light_direction = light_direction;
-    frame_constants.sun_intensity   = sun_intensity;
-    frame_constants.camera_position = camera_position;
-
-    frame_constants.previous_view_projection = previous_view_projection;
-    frame_constants.previous_camera_position = previous_camera_position;
-    previous_view_projection = frame_constants.view_projection;
-    previous_camera_position = frame_constants.camera_position;
-
-    frame_constants.ambient               = ambient_storages[ambient_write_index];
-    frame_constants.ambient_history       = ambient_storages[1 - ambient_write_index];
-    frame_constants.ambient_history_valid = xx ambient_history_valid;
-    frame_constants.frame_number          = cast(u32) frame_index;
-    frame_constants.debug_view            = cast(u32) debug_view;
-    ambient_write_index = 1 - ambient_write_index;
+    frame_constants.tlas_address    = scene_context.tlas_address;
+    frame_constants.light_direction = main_context.light_direction;
+    frame_constants.sun_intensity   = main_context.sun_intensity;
+    frame_constants.camera_position = camera_context.position;
+    frame_constants.debug_view      = cast(u32) main_context.debug_view;
 
     push_data := Push_Data.{
         frame     = heap_gpu_pointer(frame_heap, Frame_Constants, frame_constants_offset),
-        draws     = heap_gpu_pointer(*buffer_heap, Draw_Data, draws_offset),
-        materials = heap_gpu_pointer(*buffer_heap, Material, materials_offset),
+        draws     = heap_gpu_pointer(*heap_context.buffer, Draw_Data, scene_context.draws_offset),
+        materials = heap_gpu_pointer(*heap_context.buffer, Material, scene_context.materials_offset),
     };
 
     push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
-    vkCmdPushDataEXT(command_buffers[index], *push_data_info);
+    vkCmdPushDataEXT(frame_context.command_buffers[index], *push_data_info);
 
     index_buffer_info := VkBindIndexBuffer3InfoKHR.{
-        addressRange = .{address = buffer_heap.address, size = buffer_heap.size},
+        addressRange = .{address = heap_context.buffer.address, size = heap_context.buffer.size},
         addressFlags = .STORAGE_BUFFER_USAGE,
         indexType    = .UINT32,
     };
-    vkCmdBindIndexBuffer3KHR(command_buffers[index], *index_buffer_info);
+    vkCmdBindIndexBuffer3KHR(frame_context.command_buffers[index], *index_buffer_info);
 
     draw_info := VkDrawIndirect2InfoKHR.{
         addressRange = .{
-            address = heap_address(*buffer_heap, draw_commands_offset),
-            size    = xx (draws.count * size_of(VkDrawIndexedIndirectCommand)),
+            address = heap_address(*heap_context.buffer, scene_context.draw_commands_offset),
+            size    = xx (scene_context.draws.count * size_of(VkDrawIndexedIndirectCommand)),
             stride  = size_of(VkDrawIndexedIndirectCommand),
         },
         addressFlags = .STORAGE_BUFFER_USAGE,
-        drawCount    = xx draws.count,
+        drawCount    = xx scene_context.draws.count,
     };
 
     no_components : VkColorComponentFlags;
-    vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *no_components);
-    bind_graphics_shaders(command_buffers[index], depth_shaders);
-    vkCmdDrawIndexedIndirect2KHR(command_buffers[index], *draw_info);
+    vkCmdSetColorWriteMaskEXT(frame_context.command_buffers[index], 0, 1, *no_components);
+    bind_graphics_shaders(frame_context.command_buffers[index], frame_context.depth_shaders);
+    vkCmdDrawIndexedIndirect2KHR(frame_context.command_buffers[index], *draw_info);
 
     all_components := VkColorComponentFlags.R | .G | .B | .A;
-    vkCmdSetColorWriteMaskEXT(command_buffers[index], 0, 1, *all_components);
-    vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
-    vkCmdSetDepthCompareOp(command_buffers[index], .EQUAL);
-    bind_graphics_shaders(command_buffers[index], material_shaders);
-    vkCmdDrawIndexedIndirect2KHR(command_buffers[index], *draw_info);
+    vkCmdSetColorWriteMaskEXT(frame_context.command_buffers[index], 0, 1, *all_components);
+    vkCmdSetDepthWriteEnable(frame_context.command_buffers[index], VK_FALSE);
+    vkCmdSetDepthCompareOp(frame_context.command_buffers[index], .EQUAL);
+    bind_graphics_shaders(frame_context.command_buffers[index], frame_context.material_shaders);
+    vkCmdDrawIndexedIndirect2KHR(frame_context.command_buffers[index], *draw_info);
 
-    vkCmdEndRendering(command_buffers[index]);
+    vkCmdEndRendering(frame_context.command_buffers[index]);
 
-    memory_barrier(command_buffers[index], .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+    memory_barrier(frame_context.command_buffers[index], .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
 
     swapchain_attachment := VkRenderingAttachmentInfoKHR.{
-        imageView   = swapchain_views[image_index],
+        imageView   = swapchain_context.views[image_index],
         imageLayout = .GENERAL,
         loadOp      = .DONT_CARE,
         storeOp     = .STORE,
     };
     tonemap_rendering_info := VkRenderingInfo.{
-        renderArea           = .{extent = swapchain_extent},
+        renderArea           = .{extent = swapchain_context.extent},
         layerCount           = 1,
         colorAttachmentCount = 1,
         pColorAttachments    = *swapchain_attachment,
     };
-    vkCmdBeginRendering(command_buffers[index], *tonemap_rendering_info);
+    vkCmdBeginRendering(frame_context.command_buffers[index], *tonemap_rendering_info);
 
-    vkCmdSetDepthTestEnable(command_buffers[index],  VK_FALSE);
-    vkCmdSetDepthWriteEnable(command_buffers[index], VK_FALSE);
-    bind_graphics_shaders(command_buffers[index], tonemap_shaders);
+    vkCmdSetDepthTestEnable(frame_context.command_buffers[index],  VK_FALSE);
+    vkCmdSetDepthWriteEnable(frame_context.command_buffers[index], VK_FALSE);
+    bind_graphics_shaders(frame_context.command_buffers[index], frame_context.tonemap_shaders);
 
-    tonemap_push_data := Tonemap_Push_Data.{hdr = hdr_texture, exposure = exposure, raw = xx (debug_view != .LIT)};
+    tonemap_push_data := Tonemap_Push_Data.{hdr = frame_context.hdr_texture, exposure = main_context.exposure, raw = xx (main_context.debug_view != .LIT)};
     tonemap_push_data_info := VkPushDataInfoEXT.{data = .{address = *tonemap_push_data, size = size_of(Tonemap_Push_Data)}};
-    vkCmdPushDataEXT(command_buffers[index], *tonemap_push_data_info);
+    vkCmdPushDataEXT(frame_context.command_buffers[index], *tonemap_push_data_info);
 
-    vkCmdDraw(command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
+    vkCmdDraw(frame_context.command_buffers[index], vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
 
-    render_imgui(command_buffers[index], frame_heap);
+    render_imgui(frame_context.command_buffers[index], frame_heap);
 
-    vkCmdEndRendering(command_buffers[index]);
+    vkCmdEndRendering(frame_context.command_buffers[index]);
 
-    if screenshot_requested {
-        record_screenshot_copy(command_buffers[index], swapchain_images[image_index]);
+    if screenshot_context.requested {
+        record_screenshot_copy(frame_context.command_buffers[index], swapchain_context.images[image_index]);
     }
 
-    pipeline_barrier(command_buffers[index], .[image_barrier(swapchain_images[image_index], .COLOR_ATTACHMENT_OUTPUT | .COPY, .COLOR_ATTACHMENT_WRITE, .NONE, .NONE, old_layout = .GENERAL, new_layout = .PRESENT_SRC_KHR)]);
+    pipeline_barrier(frame_context.command_buffers[index], .[image_barrier(swapchain_context.images[image_index], .COLOR_ATTACHMENT_OUTPUT | .COPY, .COLOR_ATTACHMENT_WRITE, .NONE, .NONE, old_layout = .GENERAL, new_layout = .PRESENT_SRC_KHR)]);
 
-    vkCmdWriteTimestamp2(command_buffers[index], .ALL_COMMANDS, timestamp_pool, xx (index * 2 + 1));
+    vkCmdWriteTimestamp2(frame_context.command_buffers[index], .ALL_COMMANDS, frame_context.timestamp_pool, xx (index * 2 + 1));
 
-    result = vkEndCommandBuffer(command_buffers[index]);
+    result = vkEndCommandBuffer(frame_context.command_buffers[index]);
     assert(result == .SUCCESS);
 
-    wait_info := VkSemaphoreSubmitInfo.{semaphore = image_available_semaphores[index], stageMask = .COLOR_ATTACHMENT_OUTPUT};
+    wait_info := VkSemaphoreSubmitInfo.{semaphore = frame_context.image_available_semaphores[index], stageMask = .COLOR_ATTACHMENT_OUTPUT};
     signal_infos := VkSemaphoreSubmitInfo.[
-        .{semaphore = present_ready_semaphores[image_index], stageMask = .ALL_COMMANDS},
-        .{semaphore = timeline_semaphore, value = frame_index, stageMask = .ALL_COMMANDS},
+        .{semaphore = frame_context.present_ready_semaphores[image_index], stageMask = .ALL_COMMANDS},
+        .{semaphore = frame_context.timeline_semaphore, value = frame_context.index, stageMask = .ALL_COMMANDS},
     ];
-    command_buffer_info := VkCommandBufferSubmitInfo.{commandBuffer = command_buffers[index]};
+    command_buffer_info := VkCommandBufferSubmitInfo.{commandBuffer = frame_context.command_buffers[index]};
     submit_info := VkSubmitInfo2.{
         waitSemaphoreInfoCount   = 1,
         pWaitSemaphoreInfos      = *wait_info,
@@ -563,21 +413,21 @@ draw_frame :: () {
         signalSemaphoreInfoCount = signal_infos.count,
         pSignalSemaphoreInfos    = signal_infos.data,
     };
-    result = vkQueueSubmit2(queue, 1, *submit_info, VK_NULL_HANDLE);
+    result = vkQueueSubmit2(device_context.queue, 1, *submit_info, VK_NULL_HANDLE);
     assert(result == .SUCCESS);
 
-    present_fence_info := VkSwapchainPresentFenceInfoKHR.{swapchainCount = 1, pFences = *present_fences[image_index]};
+    present_fence_info := VkSwapchainPresentFenceInfoKHR.{swapchainCount = 1, pFences = *frame_context.present_fences[image_index]};
     present_info := VkPresentInfoKHR.{
         pNext              = *present_fence_info,
         waitSemaphoreCount = 1,
-        pWaitSemaphores    = *present_ready_semaphores[image_index],
+        pWaitSemaphores    = *frame_context.present_ready_semaphores[image_index],
         swapchainCount     = 1,
-        pSwapchains        = *swapchain,
+        pSwapchains        = *swapchain_context.swapchain,
         pImageIndices      = *image_index,
     };
-    result = vkQueuePresentKHR(queue, *present_info);
+    result = vkQueuePresentKHR(device_context.queue, *present_info);
     if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR {
-        swapchain_needs_recreation = true;
+        swapchain_context.needs_recreation = true;
     } else {
         assert(result == .SUCCESS, "vkQueuePresentKHR failed: %", result);
     }

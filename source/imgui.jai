@@ -1,12 +1,14 @@
-imgui_context      : *ImGui.ImGuiContext;
-imgui_shaders      : [2] VkShaderEXT;
-imgui_font_texture : Texture;
-imgui_sampler      : Sampler_Handle;
+imgui_context : struct {
+    handle       : *ImGui.ImGuiContext;
+    shaders      : [2] VkShaderEXT;
+    font_texture : Texture;
+    sampler      : Sampler_Handle;
 
-imgui_time              : float64;
-imgui_mouse_pressed     : [3] bool;
-imgui_mouse_wheel       : float;
-imgui_clipboard_cstring : *u8;
+    time              : float64;
+    mouse_pressed     : [3] bool;
+    mouse_wheel       : float;
+    clipboard_cstring : *u8;
+}
 
 Imgui_Push_Data :: struct @Gpu {
     vertices  : Gpu_Pointer(ImGui.ImDrawVert);
@@ -19,7 +21,7 @@ Imgui_Push_Data :: struct @Gpu {
 init_imgui :: () {
     result : VkResult;
 
-    imgui_context = ImGui.CreateContext();
+    imgui_context.handle = ImGui.CreateContext();
 
     io := ImGui.GetIO();
     io.IniFilename = null;
@@ -48,11 +50,11 @@ init_imgui :: () {
     io.GetClipboardTextFn = imgui_get_clipboard_text;
     io.ClipboardUserData = null;
 
-    #if OS == .WINDOWS { io.ImeWindowHandle = window; }
+    #if OS == .WINDOWS { io.ImeWindowHandle = main_context.window; }
 
-    imgui_shaders = create_graphics_shaders("imgui");
+    imgui_context.shaders = create_graphics_shaders("imgui");
 
-    font_size := cast(float) window_height / 50.0;
+    font_size := cast(float) main_context.window_height / 50.0;
     font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
     assert(font != null, "Unable to load the ImGui font.");
 
@@ -60,10 +62,10 @@ init_imgui :: () {
     width, height, bpp : s32;
     io.Fonts.GetTexDataAsRGBA32(io.Fonts, *pixels, *width, *height, *bpp);
 
-    imgui_font_texture = create_texture(pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
-    io.Fonts.TexID = cast(*void) imgui_font_texture.handle.id;
+    imgui_context.font_texture = create_texture(pixels, xx width, xx height, .R8G8B8A8_UNORM, "imgui font texture", generate_mips = false);
+    io.Fonts.TexID = cast(*void) imgui_context.font_texture.handle.id;
 
-    imgui_sampler = create_sampler(.{
+    imgui_context.sampler = create_sampler(.{
         magFilter    = .LINEAR,
         minFilter    = .LINEAR,
         mipmapMode   = .NEAREST,
@@ -75,26 +77,26 @@ init_imgui :: () {
 }
 
 deinit_imgui :: () {
-    destroy_graphics_shaders(imgui_shaders);
-    destroy_texture(imgui_font_texture);
+    destroy_graphics_shaders(imgui_context.shaders);
+    destroy_texture(imgui_context.font_texture);
 
-    free(imgui_clipboard_cstring);
-    ImGui.DestroyContext(imgui_context);
+    free(imgui_context.clipboard_cstring);
+    ImGui.DestroyContext(imgui_context.handle);
 }
 
 imgui_get_clipboard_text :: (data: *void) -> *u8 #c_call {
     result : *u8;
     push_context {
-        free(imgui_clipboard_cstring);
+        free(imgui_context.clipboard_cstring);
 
         text := Clipboard.os_clipboard_get_text();
         defer free(text);
 
-        imgui_clipboard_cstring = alloc(text.count + 1);
-        memcpy(imgui_clipboard_cstring, text.data, text.count);
-        imgui_clipboard_cstring[text.count] = 0;
+        imgui_context.clipboard_cstring = alloc(text.count + 1);
+        memcpy(imgui_context.clipboard_cstring, text.data, text.count);
+        imgui_context.clipboard_cstring[text.count] = 0;
 
-        result = imgui_clipboard_cstring;
+        result = imgui_context.clipboard_cstring;
     }
     return result;
 }
@@ -109,8 +111,8 @@ imgui_process_event :: (event: Event) -> bool {
     io := ImGui.GetIO();
     if event.type == {
         case .MOUSE_WHEEL;
-            if event.wheel_delta > 0 imgui_mouse_wheel = 1;
-            if event.wheel_delta < 0 imgui_mouse_wheel = -1;
+            if event.wheel_delta > 0 imgui_context.mouse_wheel = 1;
+            if event.wheel_delta < 0 imgui_context.mouse_wheel = -1;
             return true;
 
         case .TEXT_INPUT;
@@ -120,9 +122,9 @@ imgui_process_event :: (event: Event) -> bool {
         case .KEYBOARD;
             key := event.key_code;
 
-            if key == .MOUSE_BUTTON_LEFT   { if event.key_pressed imgui_mouse_pressed[0] = true;  return true; }
-            if key == .MOUSE_BUTTON_RIGHT  { if event.key_pressed imgui_mouse_pressed[1] = true;  return true; }
-            if key == .MOUSE_BUTTON_MIDDLE { if event.key_pressed imgui_mouse_pressed[2] = true;  return true; }
+            if key == .MOUSE_BUTTON_LEFT   { if event.key_pressed imgui_context.mouse_pressed[0] = true;  return true; }
+            if key == .MOUSE_BUTTON_RIGHT  { if event.key_pressed imgui_context.mouse_pressed[1] = true;  return true; }
+            if key == .MOUSE_BUTTON_MIDDLE { if event.key_pressed imgui_context.mouse_pressed[2] = true;  return true; }
 
             io.KeysDown[cast(s64)key] = cast(bool) event.key_pressed;
             io.KeyShift = event.shift_pressed;
@@ -137,17 +139,17 @@ imgui_process_event :: (event: Event) -> bool {
 imgui_new_frame :: () {
     io := ImGui.GetIO();
 
-    io.DisplaySize             = .{xx window_width, xx window_height};
+    io.DisplaySize             = .{xx main_context.window_width, xx main_context.window_height};
     io.DisplayFramebufferScale = .{1, 1};
 
     now := seconds_since_init();
-    if imgui_time > 0  io.DeltaTime = cast(float)(now - imgui_time);
+    if imgui_context.time > 0  io.DeltaTime = cast(float)(now - imgui_context.time);
     else                     io.DeltaTime = 1.0/60.0;
     if io.DeltaTime <= 0     io.DeltaTime = 0.000001;
-    imgui_time = now;
+    imgui_context.time = now;
 
-    mouse_x, mouse_y := get_mouse_pointer_position(window, false);
-    if !mouse_look_active && is_mouse_over_window(window) {
+    mouse_x, mouse_y := get_mouse_pointer_position(main_context.window, false);
+    if !camera_context.mouse_look_active && is_mouse_over_window(main_context.window) {
         io.MousePos = .{xx mouse_x, xx mouse_y};
     } else {
         io.MousePos = .{-FLOAT32_MAX, -FLOAT32_MAX};
@@ -156,13 +158,13 @@ imgui_new_frame :: () {
     is_down :: (key: Key_Code) -> bool {
         return cast(bool)(input_button_states[key] & .DOWN);
     }
-    io.MouseDown[0] = imgui_mouse_pressed[0] || is_down(.MOUSE_BUTTON_LEFT);
-    io.MouseDown[1] = imgui_mouse_pressed[1] || is_down(.MOUSE_BUTTON_RIGHT);
-    io.MouseDown[2] = imgui_mouse_pressed[2] || is_down(.MOUSE_BUTTON_MIDDLE);
-    imgui_mouse_pressed = .[false, false, false];
+    io.MouseDown[0] = imgui_context.mouse_pressed[0] || is_down(.MOUSE_BUTTON_LEFT);
+    io.MouseDown[1] = imgui_context.mouse_pressed[1] || is_down(.MOUSE_BUTTON_RIGHT);
+    io.MouseDown[2] = imgui_context.mouse_pressed[2] || is_down(.MOUSE_BUTTON_MIDDLE);
+    imgui_context.mouse_pressed = .[false, false, false];
 
-    io.MouseWheel = imgui_mouse_wheel;
-    imgui_mouse_wheel = 0;
+    io.MouseWheel = imgui_context.mouse_wheel;
+    imgui_context.mouse_wheel = 0;
 
     ImGui.NewFrame();
 }
@@ -180,15 +182,15 @@ imgui_debug_ui :: () {
         ImGui.Text("% ms (% FPS)",
             formatFloat(frame_ms,     trailing_width = 2, zero_removal = .NO),
             formatFloat(io.Framerate, trailing_width = 1, zero_removal = .NO));
-        ImGui.Text("GPU % ms", formatFloat(gpu_frame_ms, trailing_width = 2, zero_removal = .NO));
+        ImGui.Text("GPU % ms", formatFloat(frame_context.gpu_ms, trailing_width = 2, zero_removal = .NO));
     }
     ImGui.End();
 
     ImGui.SetNextWindowPos(.{MARGIN, 90}, .FirstUseEver);
     if ImGui.Begin("Lighting", null, .AlwaysAutoResize | .NoSavedSettings) {
-        ImGui.SliderFloat("Sun", *sun_intensity, 0, 10);
-        ImGui.SliderFloat("Exposure", *exposure, 0.1, 4);
-        ImGui.Combo("View", cast(*s32) *debug_view, DEBUG_VIEW_NAMES.data);
+        ImGui.SliderFloat("Sun", *main_context.sun_intensity, 0, 10);
+        ImGui.SliderFloat("Exposure", *main_context.exposure, 0.1, 4);
+        ImGui.Combo("View", cast(*s32) *main_context.debug_view, DEBUG_VIEW_NAMES.data);
     }
     ImGui.End();
 }
@@ -198,8 +200,8 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
     if !draw_data || draw_data.CmdListsCount == 0  return;
 
     io := ImGui.GetIO();
-    fb_width  := cast(s32) swapchain_extent.width;
-    fb_height := cast(s32) swapchain_extent.height;
+    fb_width  := cast(s32) swapchain_context.extent.width;
+    fb_height := cast(s32) swapchain_context.extent.height;
     if fb_width <= 0 || fb_height <= 0  return;
 
     vertex_offset := heap_allocate(frame_heap, cast(VkDeviceSize) draw_data.TotalVtxCount * size_of(ImGui.ImDrawVert), 256);
@@ -236,7 +238,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
     };
     vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
 
-    bind_graphics_shaders(command_buffer, imgui_shaders);
+    bind_graphics_shaders(command_buffer, imgui_context.shaders);
 
     index_buffer_info := VkBindIndexBuffer3InfoKHR.{
         addressRange = .{
@@ -251,7 +253,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
     push_data := Imgui_Push_Data.{
         scale     = .{2.0 / io.DisplaySize.x, 2.0 / io.DisplaySize.y},
         translate = .{-1, -1},
-        sampler   = imgui_sampler,
+        sampler   = imgui_context.sampler,
     };
 
     vertex_bytes_base : VkDeviceSize = 0;

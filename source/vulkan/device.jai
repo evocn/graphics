@@ -1,16 +1,18 @@
-instance        : VkInstance;
-debug_messenger : VkDebugUtilsMessengerEXT;
-surface         : VkSurfaceKHR;
+device_context : struct {
+    instance        : VkInstance;
+    debug_messenger : VkDebugUtilsMessengerEXT;
+    surface         : VkSurfaceKHR;
 
-physical_device                   : VkPhysicalDevice;
-device_limits                     : VkPhysicalDeviceLimits;
-memory_properties                 : VkPhysicalDeviceMemoryProperties;
-descriptor_heap_properties        : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
-acceleration_structure_properties : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
+    physical_device                   : VkPhysicalDevice;
+    limits                            : VkPhysicalDeviceLimits;
+    memory_properties                 : VkPhysicalDeviceMemoryProperties;
+    descriptor_heap_properties        : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
+    acceleration_structure_properties : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
 
-device              : VkDevice;
-queue_family_index  : u32;
-queue               : VkQueue;
+    device             : VkDevice;
+    queue_family_index : u32;
+    queue              : VkQueue;
+}
 
 init_instance :: () {
     instance_extensions : [..] *u8;
@@ -49,10 +51,10 @@ init_instance :: () {
     instance_create_info.enabledLayerCount       = xx enabled_layers.count;
     instance_create_info.ppEnabledLayerNames     = enabled_layers.data;
 
-    result := vkCreateInstance(*instance_create_info, null, *instance);
+    result := vkCreateInstance(*instance_create_info, null, *device_context.instance);
     assert(result == .SUCCESS);
 
-    vk_load_instance_functions(instance);
+    vk_load_instance_functions(device_context.instance);
 
     #if DEVELOPER_TOOLS {
         messenger_create_info := VkDebugUtilsMessengerCreateInfoEXT.{
@@ -60,22 +62,22 @@ init_instance :: () {
             messageType     = .GENERAL | .VALIDATION | .PERFORMANCE,
             pfnUserCallback = debug_utils_callback,
         };
-        result = vkCreateDebugUtilsMessengerEXT(instance, *messenger_create_info, null, *debug_messenger);
+        result = vkCreateDebugUtilsMessengerEXT(device_context.instance, *messenger_create_info, null, *device_context.debug_messenger);
         assert(result == .SUCCESS);
     }
 }
 
 deinit_instance :: () {
     #if DEVELOPER_TOOLS {
-        vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
+        vkDestroyDebugUtilsMessengerEXT(device_context.instance, device_context.debug_messenger, null);
     }
-    vkDestroyInstance(instance, null);
+    vkDestroyInstance(device_context.instance, null);
 }
 
 init_surface :: () {
     #if OS == .WINDOWS {
-        surface_create_info := VkWin32SurfaceCreateInfoKHR.{hinstance = GetModuleHandleW(null), hwnd = window};
-        result := vkCreateWin32SurfaceKHR(instance, *surface_create_info, null, *surface);
+        surface_create_info := VkWin32SurfaceCreateInfoKHR.{hinstance = GetModuleHandleW(null), hwnd = main_context.window};
+        result := vkCreateWin32SurfaceKHR(device_context.instance, *surface_create_info, null, *device_context.surface);
         assert(result == .SUCCESS);
     } else {
         #assert(false);
@@ -83,14 +85,14 @@ init_surface :: () {
 }
 
 deinit_surface :: () {
-    vkDestroySurfaceKHR(instance, surface, null);
+    vkDestroySurfaceKHR(device_context.instance, device_context.surface, null);
 }
 
 init_device :: () {
     physical_device_count : u32;
-    vkEnumeratePhysicalDevices(instance, *physical_device_count, null);
+    vkEnumeratePhysicalDevices(device_context.instance, *physical_device_count, null);
     physical_devices := NewArray(physical_device_count, VkPhysicalDevice,, temp);
-    vkEnumeratePhysicalDevices(instance, *physical_device_count, physical_devices.data);
+    vkEnumeratePhysicalDevices(device_context.instance, *physical_device_count, physical_devices.data);
 
     chosen_is_discrete := false;
     for candidate : physical_devices {
@@ -106,27 +108,27 @@ init_device :: () {
 
         for family : families {
             supports_present : VkBool32;
-            vkGetPhysicalDeviceSurfaceSupportKHR(candidate, xx it_index, surface, *supports_present);
+            vkGetPhysicalDeviceSurfaceSupportKHR(candidate, xx it_index, device_context.surface, *supports_present);
             if !supports_present || !(family.queueFlags & .GRAPHICS) continue;
 
-            if !physical_device || (is_discrete && !chosen_is_discrete) {
-                physical_device    = candidate;
-                queue_family_index = xx it_index;
+            if !device_context.physical_device || (is_discrete && !chosen_is_discrete) {
+                device_context.physical_device    = candidate;
+                device_context.queue_family_index = xx it_index;
                 chosen_is_discrete = is_discrete;
             }
             break;
         }
     }
-    assert(physical_device != null, "No GPU has a queue family that supports both graphics and present.");
+    assert(device_context.physical_device != null, "No GPU has a queue family that supports both graphics and present.");
 
-    acceleration_structure_properties = .{};
-    descriptor_heap_properties = .{pNext = *acceleration_structure_properties};
-    properties2 := VkPhysicalDeviceProperties2.{pNext = *descriptor_heap_properties};
-    vkGetPhysicalDeviceProperties2(physical_device, *properties2);
-    device_limits = properties2.properties.limits;
-    log("Using %, queue family %.", to_string(properties2.properties.deviceName.data), queue_family_index);
+    device_context.acceleration_structure_properties = .{};
+    device_context.descriptor_heap_properties = .{pNext = *device_context.acceleration_structure_properties};
+    properties2 := VkPhysicalDeviceProperties2.{pNext = *device_context.descriptor_heap_properties};
+    vkGetPhysicalDeviceProperties2(device_context.physical_device, *properties2);
+    device_context.limits = properties2.properties.limits;
+    log("Using %, queue family %.", to_string(properties2.properties.deviceName.data), device_context.queue_family_index);
 
-    vkGetPhysicalDeviceMemoryProperties(physical_device, *memory_properties);
+    vkGetPhysicalDeviceMemoryProperties(device_context.physical_device, *device_context.memory_properties);
 
     Features :: struct {
         features2                       : VkPhysicalDeviceFeatures2;
@@ -161,7 +163,7 @@ init_device :: () {
 
     supported : Features;
     chain(*supported);
-    vkGetPhysicalDeviceFeatures2(physical_device, *supported.features2);
+    vkGetPhysicalDeviceFeatures2(device_context.physical_device, *supported.features2);
 
     enabled : Features;
     chain(*enabled);
@@ -212,7 +214,7 @@ init_device :: () {
 
     queue_priority : float = 1.0;
     queue_create_info := VkDeviceQueueCreateInfo.{
-        queueFamilyIndex = queue_family_index,
+        queueFamilyIndex = device_context.queue_family_index,
         queueCount       = 1,
         pQueuePriorities = *queue_priority,
     };
@@ -224,15 +226,15 @@ init_device :: () {
         enabledExtensionCount   = device_extensions.count,
         ppEnabledExtensionNames = device_extensions.data,
     };
-    result := vkCreateDevice(physical_device, *device_create_info, null, *device);
+    result := vkCreateDevice(device_context.physical_device, *device_create_info, null, *device_context.device);
     assert(result == .SUCCESS);
 
-    vk_load_device_functions(device);
-    vkGetDeviceQueue(device, queue_family_index, 0, *queue);
+    vk_load_device_functions(device_context.device);
+    vkGetDeviceQueue(device_context.device, device_context.queue_family_index, 0, *device_context.queue);
 }
 
 deinit_device :: () {
-    vkDestroyDevice(device, null);
+    vkDestroyDevice(device_context.device, null);
 }
 
 debug_utils_callback :: (severity: VkDebugUtilsMessageSeverityFlagBitsEXT, types: VkDebugUtilsMessageTypeFlagsEXT, callback_data: *VkDebugUtilsMessengerCallbackDataEXT, user_data: *void) -> VkBool32 #c_call {
@@ -251,6 +253,6 @@ set_debug_name :: (object_type: VkObjectType, handle: *void, name: string) {
             objectHandle = cast(u64) handle,
             pObjectName  = temp_c_string(name),
         };
-        vkSetDebugUtilsObjectNameEXT(device, *name_info);
+        vkSetDebugUtilsObjectNameEXT(device_context.device, *name_info);
     }
 }
