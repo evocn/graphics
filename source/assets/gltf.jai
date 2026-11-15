@@ -101,26 +101,16 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 #scope_file
 
 load_gltf_image :: (image: *cgltf_image, directory: string, format: VkFormat) -> Texture_Handle {
-    width, height, channels : s32;
-    pixels : *u8;
-
-    name : string;
     if image.buffer_view {
         bytes := cgltf_buffer_view_data(image.buffer_view);
-        pixels = stbi_load_from_memory(bytes, xx image.buffer_view.size, *width, *height, *channels, 4);
-        name = ifx image.name then to_string(image.name) else "gltf image";
-    } else {
-        assert(image.uri != null);
-        uri := copy_temporary_string(to_string(image.uri));
-        uri.count = xx cgltf_decode_uri(uri.data);
-        image_path := tprint("%1%2", directory, uri);
-        pixels = stbi_load(temp_c_string(image_path), *width, *height, *channels, 4);
-        name = image_path;
+        name := ifx image.name then to_string(image.name) else "gltf image";
+        return load_image_texture_from_memory(bytes, xx image.buffer_view.size, format, name);
     }
-    assert(pixels != null, "Failed to load glTF image %.", name);
-    defer stbi_image_free(pixels);
 
-    return add_texture(create_texture(pixels, xx width, xx height, format, name));
+    assert(image.uri != null);
+    uri := copy_temporary_string(to_string(image.uri));
+    uri.count = xx cgltf_decode_uri(uri.data);
+    return load_image_texture(tprint("%1%2", directory, uri), format);
 }
 
 add_gltf_material :: (data: *cgltf_data, gltf_material: *cgltf_material, image_textures: [] Texture_Handle, samplers: [] Sampler_Handle, sampler: Sampler_Handle) -> u32 {

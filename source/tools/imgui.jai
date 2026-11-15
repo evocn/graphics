@@ -55,7 +55,7 @@ init_imgui :: () {
     imgui_context.shaders = create_graphics_shaders("imgui");
 
     font_size := cast(float) main_context.window_height / 50.0;
-    font := io.Fonts.AddFontFromFileTTF(io.Fonts, "assets/fonts/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", font_size);
+    font := io.Fonts.AddFontFromFileTTF(io.Fonts, temp_c_string(tprint("%/Merriweather/Merriweather-VariableFont_opsz,wdth,wght.ttf", fonts_path)), font_size);
     assert(font != null, "Unable to load the ImGui font.");
 
     pixels : *u8;

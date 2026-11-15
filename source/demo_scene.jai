@@ -1,12 +1,5 @@
-textures_path :: "assets/textures";
-models_path   :: "assets/models";
-
 init_demo_scene :: () {
-    croc_width, croc_height, croc_channels : s32;
-    croc_pixels := stbi_load(temp_c_string(tprint("%/croc.png", textures_path)), *croc_width, *croc_height, *croc_channels, 4);
-    assert(croc_pixels != null, "Unable to load croc.png.");
-    croc_texture := add_texture(create_texture(croc_pixels, xx croc_width, xx croc_height, .R8G8B8A8_SRGB, "croc"));
-    stbi_image_free(croc_pixels);
+    croc_texture := load_image_texture(tprint("%/croc.png", textures_path), .R8G8B8A8_SRGB);
 
     sampler := create_sampler(.{
         magFilter    = .NEAREST,

@@ -147,10 +147,11 @@ Clipboard :: #import "Clipboard";
 #load "camera.jai";
 #load "scene.jai";
 #load "demo_scene.jai";
-#load "gltf.jai";
 #load "renderer.jai";
 
 #load "vulkan/vulkan.jai";
+
+#load "assets/assets.jai";
 
 #load "tools/imgui.jai";
 #load "tools/screenshot.jai";
