@@ -182,12 +182,14 @@ Clipboard :: #import "Clipboard";
 }
 
 #load "utils.jai";
-#load "vulkan/vulkan.jai";
 #load "camera.jai";
 #load "scene.jai";
 #load "gltf.jai";
 #load "frame.jai";
-#load "imgui.jai";
+
+#load "vulkan/vulkan.jai";
+
+#load "tools/imgui.jai";
 #load "tools/screenshot.jai";
 
 textures_path   :: "assets/textures";
