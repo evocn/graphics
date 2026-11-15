@@ -4,11 +4,6 @@ main_context : struct {
     window        : Window_Type;
     window_width  : u32 = 1920;
     window_height : u32 = 1080;
-
-    light_direction : Vector3;
-    sun_intensity   : float = 3.0;
-    exposure        : float = 1.0;
-    debug_view      : Debug_View;
 }
 
 main :: () {
@@ -28,7 +23,7 @@ main :: () {
     if !success return;
 
     if args.screenshot && args.frames == 0 then args.frames = 1;
-    main_context.debug_view = xx args.view;
+    renderer_context.debug_view = xx args.view;
 
     main_context.window = create_window(
         xx main_context.window_width, xx main_context.window_height,
@@ -145,7 +140,7 @@ main :: () {
         update_camera(dt);
 
         sun_angle := cast(float) now * 0.4;
-        main_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
+        renderer_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
 
         imgui_new_frame();
         imgui_debug_ui();

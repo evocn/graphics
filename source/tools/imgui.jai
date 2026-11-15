@@ -188,9 +188,9 @@ imgui_debug_ui :: () {
 
     ImGui.SetNextWindowPos(.{MARGIN, 90}, .FirstUseEver);
     if ImGui.Begin("Lighting", null, .AlwaysAutoResize | .NoSavedSettings) {
-        ImGui.SliderFloat("Sun", *main_context.sun_intensity, 0, 10);
-        ImGui.SliderFloat("Exposure", *main_context.exposure, 0.1, 4);
-        ImGui.Combo("View", cast(*s32) *main_context.debug_view, DEBUG_VIEW_NAMES.data);
+        ImGui.SliderFloat("Sun", *renderer_context.sun_intensity, 0, 10);
+        ImGui.SliderFloat("Exposure", *renderer_context.exposure, 0.1, 4);
+        ImGui.Combo("View", cast(*s32) *renderer_context.debug_view, DEBUG_VIEW_NAMES.data);
     }
     ImGui.End();
 }

@@ -2,6 +2,11 @@ DEPTH_FORMAT : VkFormat : .D32_SFLOAT;
 HDR_FORMAT   : VkFormat : .R16G16B16A16_SFLOAT;
 
 renderer_context : struct {
+    light_direction : Vector3;
+    sun_intensity   : float = 3.0;
+    exposure        : float = 1.0;
+    debug_view      : Debug_View;
+
     material_shaders : [2] VkShaderEXT;
     depth_shaders    : [2] VkShaderEXT;
     tonemap_shaders  : [2] VkShaderEXT;
@@ -101,10 +106,10 @@ draw_frame :: () {
     frame_constants := cast(*Frame_Constants) heap_pointer(frame.heap, frame_constants_offset);
     frame_constants.view_projection = camera_view_projection(aspect);
     frame_constants.tlas_address    = scene_context.tlas_address;
-    frame_constants.light_direction = main_context.light_direction;
-    frame_constants.sun_intensity   = main_context.sun_intensity;
+    frame_constants.light_direction = renderer_context.light_direction;
+    frame_constants.sun_intensity   = renderer_context.sun_intensity;
     frame_constants.camera_position = camera_context.position;
-    frame_constants.debug_view      = cast(u32) main_context.debug_view;
+    frame_constants.debug_view      = cast(u32) renderer_context.debug_view;
 
     push_data := Push_Data.{
         frame     = heap_gpu_pointer(frame.heap, Frame_Constants, frame_constants_offset),
@@ -166,7 +171,7 @@ draw_frame :: () {
     vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
     bind_graphics_shaders(command_buffer, renderer_context.tonemap_shaders);
 
-    tonemap_push_data := Tonemap_Push_Data.{hdr = renderer_context.hdr_texture, exposure = main_context.exposure, raw = xx (main_context.debug_view != .LIT)};
+    tonemap_push_data := Tonemap_Push_Data.{hdr = renderer_context.hdr_texture, exposure = renderer_context.exposure, raw = xx (renderer_context.debug_view != .LIT)};
     tonemap_push_data_info := VkPushDataInfoEXT.{data = .{address = *tonemap_push_data, size = size_of(Tonemap_Push_Data)}};
     vkCmdPushDataEXT(command_buffer, *tonemap_push_data_info);
 
