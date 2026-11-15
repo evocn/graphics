@@ -71,6 +71,32 @@ resize_render_targets :: () {
     create_render_targets();
 }
 
+renderer_debug_ui :: () {
+    io := ImGui.GetIO();
+
+    OVERLAY_FLAGS :: ImGui.WindowFlags.NoDecoration | .AlwaysAutoResize | .NoSavedSettings | .NoFocusOnAppearing | .NoInputs;
+
+    MARGIN :: 10.0;
+    ImGui.SetNextWindowPos(.{MARGIN, MARGIN}, .Always);
+    ImGui.SetNextWindowBgAlpha(0.6);
+    if ImGui.Begin("##stats", null, OVERLAY_FLAGS) {
+        frame_ms := ifx io.Framerate > 0 then 1000.0 / io.Framerate else 0;
+        ImGui.Text("% ms (% FPS)",
+            formatFloat(frame_ms,     trailing_width = 2, zero_removal = .NO),
+            formatFloat(io.Framerate, trailing_width = 1, zero_removal = .NO));
+        ImGui.Text("GPU % ms", formatFloat(frame_context.gpu_ms, trailing_width = 2, zero_removal = .NO));
+    }
+    ImGui.End();
+
+    ImGui.SetNextWindowPos(.{MARGIN, 90}, .FirstUseEver);
+    if ImGui.Begin("Lighting", null, .AlwaysAutoResize | .NoSavedSettings) {
+        ImGui.SliderFloat("Sun", *renderer_context.sun_intensity, 0, 10);
+        ImGui.SliderFloat("Exposure", *renderer_context.exposure, 0.1, 4);
+        ImGui.Combo("View", cast(*s32) *renderer_context.debug_view, DEBUG_VIEW_NAMES.data);
+    }
+    ImGui.End();
+}
+
 draw_frame :: () {
     frame, acquired := begin_frame();
     if !acquired return;

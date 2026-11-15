@@ -143,7 +143,7 @@ main :: () {
         renderer_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
 
         imgui_new_frame();
-        imgui_debug_ui();
+        renderer_debug_ui();
         ImGui.Render();
 
         if args.screenshot && frame_context.index + 1 == cast(u64) args.frames then screenshot_context.requested = true;
