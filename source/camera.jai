@@ -1,8 +1,7 @@
 camera_context : struct {
-    position          : Vector3 = .{0, 0, -2};
-    yaw               : float;
-    pitch             : float;
-    mouse_look_active : bool;
+    position : Vector3 = .{0, 0, -2};
+    yaw      : float;
+    pitch    : float;
 }
 
 CAMERA_FOV_VERTICAL :: PI / 3.0;
@@ -13,53 +12,16 @@ LOOK_SENSITIVITY    :: 0.003;
 PITCH_LIMIT         :: 1.55;
 
 update_camera :: (dt: float) {
-    if camera_context.mouse_look_active && !input_application_has_focus {
-        set_mouse_look(false);
-    }
-
-    if camera_context.mouse_look_active {
-        camera_context.yaw   += cast(float) mouse_delta_x * LOOK_SENSITIVITY;
-        camera_context.pitch += cast(float) mouse_delta_y * LOOK_SENSITIVITY;
-        Clamp(*camera_context.pitch, -PITCH_LIMIT, PITCH_LIMIT);
-    }
+    camera_context.yaw   += input_context.look_delta.x * LOOK_SENSITIVITY;
+    camera_context.pitch += input_context.look_delta.y * LOOK_SENSITIVITY;
+    Clamp(*camera_context.pitch, -PITCH_LIMIT, PITCH_LIMIT);
 
     forward, right := camera_basis();
 
-    move : Vector3;
-    if input_button_states[#char "W"] & .DOWN  move += forward;
-    if input_button_states[#char "S"] & .DOWN  move -= forward;
-    if input_button_states[#char "D"] & .DOWN  move += right;
-    if input_button_states[#char "A"] & .DOWN  move -= right;
-    if input_button_states[#char "E"] & .DOWN  move.y -= 1;
-    if input_button_states[#char "Q"] & .DOWN  move.y += 1;
-
+    input := input_context.move;
+    move := forward * input.z + right * input.x + Vector3.{0, input.y, 0};
     if length(move) > 0 {
         camera_context.position += unit_vector(move) * (CAMERA_MOVE_SPEED * dt);
-    }
-}
-
-set_mouse_look :: (active: bool) {
-    if active == camera_context.mouse_look_active  return;
-    camera_context.mouse_look_active = active;
-
-    show_os_cursor(!active);
-
-    #if OS == .WINDOWS {
-        if active {
-            rect : RECT;
-            GetClientRect(main_context.window, *rect);
-
-            top_left     := POINT.{rect.left,  rect.top};
-            bottom_right := POINT.{rect.right, rect.bottom};
-            ClientToScreen(main_context.window, *top_left);
-            ClientToScreen(main_context.window, *bottom_right);
-
-            clip := RECT.{top_left.x, top_left.y, bottom_right.x, bottom_right.y};
-            ClipCursor(*clip);
-        }
-        else {
-            ClipCursor(null);
-        }
     }
 }
 

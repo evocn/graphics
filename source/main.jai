@@ -84,45 +84,10 @@ main :: () {
     vkDeviceWaitIdle(device_context.device);
     heap_reset(*heap_context.scratch);
 
-    running := true;
     last_time := seconds_since_init();
-    while running {
-        update_window_events();
-
-        for events_this_frame {
-            imgui_process_event(it);
-
-            if it.type == {
-                case .KEYBOARD;
-                    if it.alt_pressed {
-                        if it.key_pressed && it.key_code == .F4 {
-                            running = false;
-                        }
-                    }
-
-                    if it.key_pressed && it.key_code == .MOUSE_BUTTON_LEFT
-                       && !ImGui.GetIO().WantCaptureMouse {
-                        set_mouse_look(true);
-                    }
-
-                    if it.key_pressed && it.key_code == .ESCAPE {
-                        if camera_context.mouse_look_active  set_mouse_look(false);
-                        else                                 running = false;
-                    }
-            }
-
-            if it.type == .QUIT then running = false;
-        }
-
-        for get_window_resizes() {
-            if it.window != main_context.window continue;
-
-            main_context.window_width  = xx it.width;
-            main_context.window_height = xx it.height;
-            swapchain_context.needs_recreation = true;
-        }
-
-        if !running break;
+    while true {
+        update_input();
+        if input_context.quit break;
 
         if swapchain_context.needs_recreation {
             if !recreate_swapchain() {
@@ -150,7 +115,7 @@ main :: () {
 
         draw_frame();
 
-        if args.frames > 0 && frame_context.index >= cast(u64) args.frames then running = false;
+        if args.frames > 0 && frame_context.index >= cast(u64) args.frames then break;
     }
 
     vkDeviceWaitIdle(device_context.device);
@@ -183,6 +148,7 @@ Clipboard :: #import "Clipboard";
 }
 
 #load "utils.jai";
+#load "input.jai";
 #load "camera.jai";
 #load "scene.jai";
 #load "demo_scene.jai";

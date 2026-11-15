@@ -149,7 +149,7 @@ imgui_new_frame :: () {
     imgui_context.time = now;
 
     mouse_x, mouse_y := get_mouse_pointer_position(main_context.window, false);
-    if !camera_context.mouse_look_active && is_mouse_over_window(main_context.window) {
+    if !input_context.mouse_look && is_mouse_over_window(main_context.window) {
         io.MousePos = .{xx mouse_x, xx mouse_y};
     } else {
         io.MousePos = .{-FLOAT32_MAX, -FLOAT32_MAX};
