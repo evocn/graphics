@@ -4,6 +4,7 @@
 #load "gpu.jai";
 #load "swapchain.jai";
 #load "frame.jai";
+#load "upload.jai";
 #load "barrier.jai";
 #load "shader.jai";
 #load "texture.jai";

@@ -11,7 +11,7 @@ build_tlas :: (instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerati
 }
 
 acceleration_structure_build_barrier :: (dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
-    memory_barrier(frame_context.init_command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
+    memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
 }
 
 build_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
@@ -50,7 +50,7 @@ build_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, geometrie
     build_range_infos := NewArray(primitive_counts.count, VkAccelerationStructureBuildRangeInfoKHR,, temp);
     for primitive_counts  build_range_infos[it_index].primitiveCount = it;
     build_range_info_pointer := build_range_infos.data;
-    vkCmdBuildAccelerationStructuresKHR(frame_context.init_command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
+    vkCmdBuildAccelerationStructuresKHR(upload_context.command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
 
     return acceleration_structure, address;
 }

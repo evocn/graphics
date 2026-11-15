@@ -38,7 +38,7 @@ create_texture :: (pixels: *void, width: u32, height: u32, format: VkFormat, nam
     staging_offset := heap_allocate(*heap_context.scratch, size, 256);
     memcpy(heap_pointer(*heap_context.scratch, staging_offset), pixels, xx size);
 
-    pipeline_barrier(frame_context.init_command_buffer, .[image_barrier(texture.image, .NONE, .NONE, .ALL_TRANSFER, .TRANSFER_WRITE)]);
+    pipeline_barrier(upload_context.command_buffer, .[image_barrier(texture.image, .NONE, .NONE, .ALL_TRANSFER, .TRANSFER_WRITE)]);
 
     region := VkDeviceMemoryImageCopyKHR.{
         addressRange     = .{address = heap_address(*heap_context.scratch, staging_offset), size = size},
@@ -48,10 +48,10 @@ create_texture :: (pixels: *void, width: u32, height: u32, format: VkFormat, nam
         imageExtent      = .{width, height, 1},
     };
     copy_info := VkCopyDeviceMemoryImageInfoKHR.{image = texture.image, regionCount = 1, pRegions = *region};
-    vkCmdCopyMemoryToImageKHR(frame_context.init_command_buffer, *copy_info);
+    vkCmdCopyMemoryToImageKHR(upload_context.command_buffer, *copy_info);
 
     for level : 1..mip_levels - 1 {
-        memory_barrier(frame_context.init_command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
+        memory_barrier(upload_context.command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .ALL_TRANSFER, .TRANSFER_READ);
 
         source_width  := max(width  >> (level - 1), 1);
         source_height := max(height >> (level - 1), 1);
@@ -71,9 +71,9 @@ create_texture :: (pixels: *void, width: u32, height: u32, format: VkFormat, nam
             pRegions       = *blit,
             filter         = .LINEAR,
         };
-        vkCmdBlitImage2(frame_context.init_command_buffer, *blit_info);
+        vkCmdBlitImage2(upload_context.command_buffer, *blit_info);
     }
-    memory_barrier(frame_context.init_command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
+    memory_barrier(upload_context.command_buffer, .ALL_TRANSFER, .TRANSFER_WRITE, .FRAGMENT_SHADER, .SHADER_SAMPLED_READ);
 
     view_create_info := VkImageViewCreateInfo.{
         image            = texture.image,

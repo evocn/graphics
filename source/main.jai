@@ -61,12 +61,13 @@ main :: () {
     init_frames();
     defer deinit_frames();
 
+    init_upload();
+    defer deinit_upload();
+
     init_renderer();
     defer deinit_renderer();
 
-    begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
-    result := vkBeginCommandBuffer(frame_context.init_command_buffer, *begin_info);
-    assert(result == .SUCCESS);
+    begin_upload();
 
     init_scene();
     defer deinit_scene();
@@ -76,13 +77,7 @@ main :: () {
     init_imgui();
     defer deinit_imgui();
 
-    result = vkEndCommandBuffer(frame_context.init_command_buffer);
-    assert(result == .SUCCESS);
-    submit_info := VkSubmitInfo.{commandBufferCount = 1, pCommandBuffers = *frame_context.init_command_buffer};
-    result = vkQueueSubmit(device_context.queue, 1, *submit_info, VK_NULL_HANDLE);
-    assert(result == .SUCCESS);
-    vkDeviceWaitIdle(device_context.device);
-    heap_reset(*heap_context.scratch);
+    end_upload();
 
     last_time := seconds_since_init();
     while true {
