@@ -63,8 +63,11 @@ main :: () {
     init_swapchain();
     defer deinit_swapchain();
 
-    init_render();
-    defer deinit_render();
+    init_frames();
+    defer deinit_frames();
+
+    init_renderer();
+    defer deinit_renderer();
 
     begin_info := VkCommandBufferBeginInfo.{flags = .ONE_TIME_SUBMIT};
     result := vkBeginCommandBuffer(frame_context.init_command_buffer, *begin_info);
@@ -107,7 +110,7 @@ main :: () {
 
                     if it.key_pressed && it.key_code == .ESCAPE {
                         if camera_context.mouse_look_active  set_mouse_look(false);
-                        else                running = false;
+                        else                                 running = false;
                     }
             }
 
@@ -129,6 +132,7 @@ main :: () {
                 sleep_milliseconds(16);
                 continue;
             }
+            resize_render_targets();
         }
 
         now := seconds_since_init();
@@ -185,7 +189,7 @@ Clipboard :: #import "Clipboard";
 #load "camera.jai";
 #load "scene.jai";
 #load "gltf.jai";
-#load "frame.jai";
+#load "renderer.jai";
 
 #load "vulkan/vulkan.jai";
 
