@@ -10,8 +10,16 @@ scene_context : struct {
     draws_offset         : VkDeviceSize;
     draw_commands_offset : VkDeviceSize;
 
+    deformers : [..] Deformer;
+
     blases : [..] Acceleration_Structure;
     tlas   : Acceleration_Structure;
+}
+
+Deformer :: struct {
+    draw_index        : u32;
+    source_positions  : Gpu_Pointer(Vector3);
+    source_attributes : Gpu_Pointer(Vertex_Attributes);
 }
 
 Vertex_Attributes :: struct @Gpu {
@@ -66,10 +74,14 @@ build_scene :: () {
     }
     scene_context.draw_commands_offset = upload(draw_commands);
 
+    deformed := NewArray(scene_context.draws.count, bool,, temp);
+    for scene_context.deformers  deformed[it.draw_index] = true;
+
     for scene_context.draws {
         geometry := triangle_geometry(it);
         primitive_count := it.index_count / 3;
-        blas := create_acceleration_structure(.BOTTOM_LEVEL, .PREFER_FAST_TRACE, .[geometry], .[primitive_count]);
+        flags := ifx deformed[it_index] then VkBuildAccelerationStructureFlagsKHR.PREFER_FAST_BUILD | .ALLOW_UPDATE else .PREFER_FAST_TRACE;
+        blas := create_acceleration_structure(.BOTTOM_LEVEL, flags, .[geometry], .[primitive_count]);
         record_acceleration_structure_build(upload_context.command_buffer, blas, .BUILD, .[geometry], .[primitive_count], *heap_context.scratch);
         array_add(*scene_context.blases, blas);
     }
@@ -79,8 +91,18 @@ build_scene :: () {
     scene_context.tlas = create_acceleration_structure(.TOP_LEVEL, .PREFER_FAST_BUILD, .[instance_geometry(0)], .[instance_count]);
 }
 
-build_tlas :: (command_buffer: VkCommandBuffer, heap: *Heap) {
+update_acceleration_structures :: (command_buffer: VkCommandBuffer, heap: *Heap) {
     memory_barrier(command_buffer, .FRAGMENT_SHADER, .NONE, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR);
+
+    if scene_context.deformers.count {
+        for scene_context.deformers {
+            draw := scene_context.draws[it.draw_index];
+            geometry := triangle_geometry(draw);
+            primitive_count := draw.index_count / 3;
+            record_acceleration_structure_build(command_buffer, scene_context.blases[it.draw_index], .UPDATE, .[geometry], .[primitive_count], heap);
+        }
+        memory_barrier(command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR);
+    }
 
     tlas_geometry := instance_geometry(write_tlas_instances(heap));
     instance_count := cast(u32) scene_context.draws.count;
@@ -93,6 +115,7 @@ deinit_scene :: () {
     destroy_acceleration_structure(scene_context.tlas);
     for scene_context.blases  destroy_acceleration_structure(it);
     array_free(scene_context.blases);
+    array_free(scene_context.deformers);
     array_free(scene_context.draws);
     array_free(scene_context.materials);
     for scene_context.textures  destroy_texture(it);
@@ -134,7 +157,27 @@ add_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
     array_add(*scene_context.draws, draw);
 }
 
+add_deformable_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
+    array_add(*scene_context.deformers, .{
+        draw_index        = xx scene_context.draws.count,
+        source_positions  = mesh.positions,
+        source_attributes = mesh.attributes,
+    });
+
+    deformed := mesh;
+    deformed.positions  = duplicate(mesh.positions,  mesh.vertex_count);
+    deformed.attributes = duplicate(mesh.attributes, mesh.vertex_count);
+    add_draw(deformed, material_index, transform);
+}
+
 #scope_file
+
+duplicate :: (source: Gpu_Pointer($T), count: u32) -> Gpu_Pointer(T) {
+    size := count * size_of(T);
+    offset := heap_allocate(*heap_context.buffer, xx size, 256);
+    memcpy(heap_pointer(*heap_context.buffer, offset), heap_pointer(*heap_context.buffer, source.address - heap_context.buffer.address), size);
+    return heap_gpu_pointer(*heap_context.buffer, T, offset);
+}
 
 triangle_geometry :: (draw: Draw_Data) -> VkAccelerationStructureGeometryKHR {
     geometry := VkAccelerationStructureGeometryKHR.{geometryType = .TRIANGLES};

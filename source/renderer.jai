@@ -6,10 +6,13 @@ renderer_context : struct {
     sun_intensity   : float = 3.0;
     exposure        : float = 1.0;
     debug_view      : Debug_View;
+    animate         := true;
+    animation_time  : float;
 
     material_shaders : [2] VkShaderEXT;
     depth_shaders    : [2] VkShaderEXT;
     tonemap_shaders  : [2] VkShaderEXT;
+    wave_shader      : VkShaderEXT;
 
     target_heap : Heap;
     depth_image : VkImage;
@@ -51,10 +54,20 @@ Tonemap_Push_Data :: struct @Gpu {
     raw      : u32;
 }
 
+Wave_Push_Data :: struct @Gpu {
+    source_positions  : Gpu_Pointer(Vector3);
+    source_attributes : Gpu_Pointer(Vertex_Attributes);
+    positions         : Gpu_Pointer(Vector3);
+    attributes        : Gpu_Pointer(Vertex_Attributes);
+    vertex_count      : u32;
+    time              : float;
+}
+
 init_renderer :: () {
     renderer_context.material_shaders = create_graphics_shaders("material");
     renderer_context.tonemap_shaders  = create_graphics_shaders("tonemap");
     renderer_context.depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
+    renderer_context.wave_shader      = create_compute_shader("wave", "wave_main");
 
     init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
     renderer_context.hdr_texture = .{id = reserve_image_descriptor()};
@@ -67,6 +80,7 @@ deinit_renderer :: () {
     destroy_graphics_shaders(renderer_context.material_shaders);
     destroy_graphics_shaders(renderer_context.tonemap_shaders);
     destroy_graphics_shaders(renderer_context.depth_shaders);
+    destroy_compute_shader(renderer_context.wave_shader);
 }
 
 resize_render_targets :: () {
@@ -96,6 +110,7 @@ renderer_debug_ui :: () {
         ImGui.SliderFloat("Sun", *renderer_context.sun_intensity, 0, 10);
         ImGui.SliderFloat("Exposure", *renderer_context.exposure, 0.1, 4);
         ImGui.Combo("View", cast(*s32) *renderer_context.debug_view, DEBUG_VIEW_NAMES.data);
+        ImGui.Checkbox("Animate", *renderer_context.animate);
     }
     ImGui.End();
 }
@@ -106,7 +121,9 @@ draw_frame :: () {
 
     command_buffer := frame.command_buffer;
 
-    build_tlas(command_buffer, frame.heap);
+    bind_descriptor_heaps(command_buffer);
+    deform_pass(command_buffer);
+    update_acceleration_structures(command_buffer, frame.heap);
 
     pipeline_barrier(command_buffer, .[
         image_barrier(renderer_context.depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
@@ -128,7 +145,6 @@ draw_frame :: () {
     };
     vkCmdBeginRendering(command_buffer, *rendering_info);
 
-    bind_descriptor_heaps(command_buffer);
     set_draw_state(command_buffer);
 
     frame_constants_offset := heap_allocate(frame.heap, size_of(Frame_Constants), 256);
@@ -220,6 +236,30 @@ draw_frame :: () {
 }
 
 #scope_file
+
+deform_pass :: (command_buffer: VkCommandBuffer) {
+    if !scene_context.deformers.count return;
+
+    memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
+
+    bind_compute_shader(command_buffer, renderer_context.wave_shader);
+    for scene_context.deformers {
+        draw := scene_context.draws[it.draw_index];
+        push_data := Wave_Push_Data.{
+            source_positions  = it.source_positions,
+            source_attributes = it.source_attributes,
+            positions         = draw.positions,
+            attributes        = draw.attributes,
+            vertex_count      = draw.vertex_count,
+            time              = renderer_context.animation_time,
+        };
+        push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Wave_Push_Data)}};
+        vkCmdPushDataEXT(command_buffer, *push_data_info);
+        dispatch(command_buffer, draw.vertex_count, 64);
+    }
+
+    memory_barrier(command_buffer, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE, .ACCELERATION_STRUCTURE_BUILD_KHR | .VERTEX_SHADER | .FRAGMENT_SHADER, .SHADER_READ);
+}
 
 create_render_targets :: () {
     create :: (format: VkFormat, usage: VkImageUsageFlags, aspect: VkImageAspectFlags, name: string) -> VkImage, VkImageView, VkImageViewCreateInfo {

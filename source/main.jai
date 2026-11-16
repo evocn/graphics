@@ -99,6 +99,8 @@ main :: () {
 
         update_camera(dt);
 
+        if renderer_context.animate  renderer_context.animation_time += dt;
+
         sun_angle := cast(float) now * 0.4;
         renderer_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
 
