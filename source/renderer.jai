@@ -134,7 +134,7 @@ draw_frame :: () {
 
     frame_constants := cast(*Frame_Constants) heap_pointer(frame.heap, frame_constants_offset);
     frame_constants.view_projection = camera_view_projection(aspect);
-    frame_constants.tlas_address    = scene_context.tlas_address;
+    frame_constants.tlas_address    = scene_context.tlas.address;
     frame_constants.light_direction = renderer_context.light_direction;
     frame_constants.sun_intensity   = renderer_context.sun_intensity;
     frame_constants.camera_position = camera_context.position;

@@ -10,11 +10,8 @@ scene_context : struct {
     draws_offset         : VkDeviceSize;
     draw_commands_offset : VkDeviceSize;
 
-    blas         : VkAccelerationStructureKHR;
-    blas_address : VkDeviceAddress;
-
-    tlas         : VkAccelerationStructureKHR;
-    tlas_address : VkDeviceAddress;
+    blases : [..] Acceleration_Structure;
+    tlas   : Acceleration_Structure;
 }
 
 Vertex_Attributes :: struct @Gpu {
@@ -69,48 +66,26 @@ build_scene :: () {
     }
     scene_context.draw_commands_offset = upload(draw_commands);
 
-    {
-        transforms := NewArray(scene_context.draws.count, VkTransformMatrixKHR,, temp);
-        for scene_context.draws  for row : 0..2  for column : 0..3  transforms[it_index].matrix[row][column] = it.transform.v[row].component[column];
-        transforms_offset := upload(transforms);
-
-        geometries       := NewArray(scene_context.draws.count, VkAccelerationStructureGeometryKHR,, temp);
-        primitive_counts := NewArray(scene_context.draws.count, u32,, temp);
-        for scene_context.draws {
-            geometry := *geometries[it_index];
-            geometry.geometryType = .TRIANGLES;
-            if scene_context.materials[it.material_index].alpha_cutoff == 0  geometry.flags = .OPAQUE;
-            geometry.geometry.triangles = .{
-                vertexFormat                = .R32G32B32_SFLOAT,
-                vertexData.deviceAddress    = it.positions.address,
-                vertexStride                = size_of(Vector3),
-                maxVertex                   = it.vertex_count - 1,
-                indexType                   = .UINT32,
-                indexData.deviceAddress     = it.indices.address,
-                transformData.deviceAddress = heap_address(*heap_context.buffer, transforms_offset + xx (it_index * size_of(VkTransformMatrixKHR))),
-            };
-            primitive_counts[it_index] = it.index_count / 3;
-        }
-
-        scene_context.blas, scene_context.blas_address = build_acceleration_structure(.BOTTOM_LEVEL, geometries, primitive_counts);
+    for scene_context.draws {
+        geometry := triangle_geometry(it);
+        primitive_count := it.index_count / 3;
+        blas := create_acceleration_structure(.BOTTOM_LEVEL, .PREFER_FAST_TRACE, .[geometry], .[primitive_count]);
+        record_acceleration_structure_build(upload_context.command_buffer, blas, .BUILD, .[geometry], .[primitive_count], *heap_context.scratch);
+        array_add(*scene_context.blases, blas);
     }
-    acceleration_structure_build_barrier(.ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR | .ACCELERATION_STRUCTURE_WRITE_KHR);
+    memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR);
 
-    tlas_instance : VkAccelerationStructureInstanceKHR;
-    tlas_instance.transform.matrix[0][0] = 1;
-    tlas_instance.transform.matrix[1][1] = 1;
-    tlas_instance.transform.matrix[2][2] = 1;
-    tlas_instance.__bitmask0 = 0xFF << 24;
-    tlas_instance.__bitmask1 = cast(u32) VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE << 24;
-    tlas_instance.accelerationStructureReference = scene_context.blas_address;
-
-    scene_context.tlas, scene_context.tlas_address = build_tlas(.[tlas_instance]);
-    acceleration_structure_build_barrier(.FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
+    tlas_geometry := instance_geometry(write_tlas_instances(*heap_context.scratch));
+    instance_count := cast(u32) scene_context.draws.count;
+    scene_context.tlas = create_acceleration_structure(.TOP_LEVEL, .PREFER_FAST_TRACE, .[tlas_geometry], .[instance_count]);
+    record_acceleration_structure_build(upload_context.command_buffer, scene_context.tlas, .BUILD, .[tlas_geometry], .[instance_count], *heap_context.scratch);
+    memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
 }
 
 deinit_scene :: () {
-    vkDestroyAccelerationStructureKHR(device_context.device, scene_context.tlas, null);
-    vkDestroyAccelerationStructureKHR(device_context.device, scene_context.blas, null);
+    destroy_acceleration_structure(scene_context.tlas);
+    for scene_context.blases  destroy_acceleration_structure(it);
+    array_free(scene_context.blases);
     array_free(scene_context.draws);
     array_free(scene_context.materials);
     for scene_context.textures  destroy_texture(it);
@@ -153,6 +128,35 @@ add_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
 }
 
 #scope_file
+
+triangle_geometry :: (draw: Draw_Data) -> VkAccelerationStructureGeometryKHR {
+    geometry := VkAccelerationStructureGeometryKHR.{geometryType = .TRIANGLES};
+    if scene_context.materials[draw.material_index].alpha_cutoff == 0  geometry.flags = .OPAQUE;
+    geometry.geometry.triangles = .{
+        vertexFormat             = .R32G32B32_SFLOAT,
+        vertexData.deviceAddress = draw.positions.address,
+        vertexStride             = size_of(Vector3),
+        maxVertex                = draw.vertex_count - 1,
+        indexType                = .UINT32,
+        indexData.deviceAddress  = draw.indices.address,
+    };
+    return geometry;
+}
+
+write_tlas_instances :: (heap: *Heap) -> VkDeviceAddress {
+    assert(scene_context.draws.count < 1 << 24);
+    size := cast(VkDeviceSize) (scene_context.draws.count * size_of(VkAccelerationStructureInstanceKHR));
+    offset := heap_allocate(heap, size, 16);
+    instances : [] VkAccelerationStructureInstanceKHR = .{scene_context.draws.count, heap_pointer(heap, offset)};
+    for scene_context.draws {
+        instance := *instances[it_index];
+        for row : 0..2  for column : 0..3  instance.transform.matrix[row][column] = it.transform.v[row].component[column];
+        instance.__bitmask0 = cast(u32) it_index | (0xFF << 24);
+        instance.__bitmask1 = cast(u32) VkGeometryInstanceFlagsKHR.TRIANGLE_FACING_CULL_DISABLE << 24;
+        instance.accelerationStructureReference = scene_context.blases[it_index].address;
+    }
+    return heap_address(heap, offset);
+}
 
 upload :: (array: [] $T) -> VkDeviceSize {
     size := array.count * size_of(T);

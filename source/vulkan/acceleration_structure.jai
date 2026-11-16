@@ -1,25 +1,18 @@
-build_tlas :: (instances: [] VkAccelerationStructureInstanceKHR) -> VkAccelerationStructureKHR, VkDeviceAddress {
-    instances_size := cast(VkDeviceSize) (instances.count * size_of(VkAccelerationStructureInstanceKHR));
-    instances_offset := heap_allocate(*heap_context.scratch, instances_size, 16);
-    memcpy(heap_pointer(*heap_context.scratch, instances_offset), instances.data, xx instances_size);
-
-    instance_geometry := VkAccelerationStructureGeometryKHR.{geometryType = .INSTANCES};
-    instance_geometry.geometry.instances = .{data.deviceAddress = heap_address(*heap_context.scratch, instances_offset)};
-
-    structure, address := build_acceleration_structure(.TOP_LEVEL, .[instance_geometry], .[cast(u32) instances.count]);
-    return structure, address;
+Acceleration_Structure :: struct {
+    handle              : VkAccelerationStructureKHR;
+    address             : VkDeviceAddress;
+    type                : VkAccelerationStructureTypeKHR;
+    flags               : VkBuildAccelerationStructureFlagsKHR;
+    build_scratch_size  : VkDeviceSize;
+    update_scratch_size : VkDeviceSize;
 }
 
-acceleration_structure_build_barrier :: (dst_stage: VkPipelineStageFlags2, dst_access: VkAccessFlags2) {
-    memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, dst_stage, dst_access);
-}
-
-build_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> VkAccelerationStructureKHR, VkDeviceAddress {
+create_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, flags: VkBuildAccelerationStructureFlagsKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32) -> Acceleration_Structure {
     assert(geometries.count == primitive_counts.count);
 
     build_geometry_info := VkAccelerationStructureBuildGeometryInfoKHR.{
         type          = type,
-        flags         = .PREFER_FAST_TRACE,
+        flags         = flags,
         mode          = .BUILD,
         geometryCount = xx geometries.count,
         pGeometries   = geometries.data,
@@ -29,28 +22,58 @@ build_acceleration_structure :: (type: VkAccelerationStructureTypeKHR, geometrie
     vkGetAccelerationStructureBuildSizesKHR(device_context.device, .DEVICE, *build_geometry_info, primitive_counts.data, *build_sizes);
 
     storage_offset := heap_allocate(*heap_context.buffer, build_sizes.accelerationStructureSize, 256);
-    scratch_offset := heap_allocate(*heap_context.scratch, build_sizes.buildScratchSize, device_context.acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment);
 
     create_info := VkAccelerationStructureCreateInfo2KHR.{
         addressRange = .{address = heap_address(*heap_context.buffer, storage_offset), size = build_sizes.accelerationStructureSize},
         addressFlags = .STORAGE_BUFFER_USAGE,
         type         = type,
     };
-    acceleration_structure : VkAccelerationStructureKHR;
-    result := vkCreateAccelerationStructure2KHR(device_context.device, *create_info, null, *acceleration_structure);
+    structure := Acceleration_Structure.{
+        type                = type,
+        flags               = flags,
+        build_scratch_size  = build_sizes.buildScratchSize,
+        update_scratch_size = build_sizes.updateScratchSize,
+    };
+    result := vkCreateAccelerationStructure2KHR(device_context.device, *create_info, null, *structure.handle);
     assert(result == .SUCCESS);
 
-    device_address_info := VkAccelerationStructureDeviceAddressInfoKHR.{accelerationStructure = acceleration_structure};
-    address := vkGetAccelerationStructureDeviceAddressKHR(device_context.device, *device_address_info);
-    assert(address != 0);
+    device_address_info := VkAccelerationStructureDeviceAddressInfoKHR.{accelerationStructure = structure.handle};
+    structure.address = vkGetAccelerationStructureDeviceAddressKHR(device_context.device, *device_address_info);
+    assert(structure.address != 0);
 
-    build_geometry_info.dstAccelerationStructure  = acceleration_structure;
-    build_geometry_info.scratchData.deviceAddress = heap_address(*heap_context.scratch, scratch_offset);
+    return structure;
+}
+
+destroy_acceleration_structure :: (structure: Acceleration_Structure) {
+    vkDestroyAccelerationStructureKHR(device_context.device, structure.handle, null);
+}
+
+record_acceleration_structure_build :: (command_buffer: VkCommandBuffer, structure: Acceleration_Structure, mode: VkBuildAccelerationStructureModeKHR, geometries: [] VkAccelerationStructureGeometryKHR, primitive_counts: [] u32, scratch_heap: *Heap) {
+    assert(geometries.count == primitive_counts.count);
+    assert(mode == .BUILD || (structure.flags & .ALLOW_UPDATE));
+
+    scratch_size := ifx mode == .UPDATE then structure.update_scratch_size else structure.build_scratch_size;
+    scratch_offset := heap_allocate(scratch_heap, scratch_size, device_context.acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment);
+
+    build_geometry_info := VkAccelerationStructureBuildGeometryInfoKHR.{
+        type                     = structure.type,
+        flags                    = structure.flags,
+        mode                     = mode,
+        dstAccelerationStructure = structure.handle,
+        geometryCount            = xx geometries.count,
+        pGeometries              = geometries.data,
+        scratchData.deviceAddress = heap_address(scratch_heap, scratch_offset),
+    };
+    if mode == .UPDATE  build_geometry_info.srcAccelerationStructure = structure.handle;
 
     build_range_infos := NewArray(primitive_counts.count, VkAccelerationStructureBuildRangeInfoKHR,, temp);
     for primitive_counts  build_range_infos[it_index].primitiveCount = it;
     build_range_info_pointer := build_range_infos.data;
-    vkCmdBuildAccelerationStructuresKHR(upload_context.command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
+    vkCmdBuildAccelerationStructuresKHR(command_buffer, 1, *build_geometry_info, xx *build_range_info_pointer);
+}
 
-    return acceleration_structure, address;
+instance_geometry :: (instances_address: VkDeviceAddress) -> VkAccelerationStructureGeometryKHR {
+    geometry := VkAccelerationStructureGeometryKHR.{geometryType = .INSTANCES};
+    geometry.geometry.instances = .{data.deviceAddress = instances_address};
+    return geometry;
 }
