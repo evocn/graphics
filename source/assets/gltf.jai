@@ -49,7 +49,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
     }
     default_material := add_material(.{base_color = .{1, 1, 1, 1}, sampler = sampler});
 
-    mesh_primitives := NewArray(xx data.meshes_count, [..] Draw_Data);
+    mesh_primitives := NewArray(xx data.meshes_count, [..] Gltf_Primitive);
     defer {
         for mesh_primitives  array_free(it);
         array_free(mesh_primitives);
@@ -63,13 +63,13 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
                 continue;
             }
 
-            mesh, success := add_gltf_primitive(primitive);
+            gltf_primitive, success := add_gltf_primitive(primitive);
             if !success continue;
 
-            mesh.material_index = default_material;
-            if primitive.material  mesh.material_index = material_indices[cgltf_material_index(data, primitive.material)];
+            gltf_primitive.mesh.material_index = default_material;
+            if primitive.material  gltf_primitive.mesh.material_index = material_indices[cgltf_material_index(data, primitive.material)];
 
-            array_add(*mesh_primitives[mesh_index], mesh);
+            array_add(*mesh_primitives[mesh_index], gltf_primitive);
         }
     }
 
@@ -78,27 +78,171 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
     gltf_to_world._33 = -1;
     root_from_gltf := multiply(root, gltf_to_world);
 
+    skeleton_indices := NewArray(xx data.skins_count, s64,, temp);
+    for * skeleton_indices  it.* = -1;
+
     for node_index : 0..cast(s64) data.nodes_count - 1 {
         node := *data.nodes[node_index];
         if !node.mesh continue;
 
+        if node.skin {
+            skin_index := cgltf_skin_index(data, node.skin);
+            if skeleton_indices[skin_index] < 0  skeleton_indices[skin_index] = add_gltf_skeleton(data, node.skin);
+
+            for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
+                assert(it.skin_vertices.address != 0, "A skinned primitive in % has no JOINTS_0/WEIGHTS_0.", path);
+                add_deformable_draw(it.mesh, it.mesh.material_index, root_from_gltf, .{
+                    kind           = .SKIN,
+                    skin_vertices  = it.skin_vertices,
+                    skeleton_index = xx skeleton_indices[skin_index],
+                });
+            }
+            continue;
+        }
+
         column_major : [16] float;
         cgltf_node_transform_world(node, column_major.data);
 
-        node_transform : Matrix4;
-        for row : 0..3  for column : 0..3  node_transform.v[row].component[column] = column_major[column * 4 + row];
-
-        transform := multiply(root_from_gltf, node_transform);
+        transform := multiply(root_from_gltf, gltf_matrix(column_major));
         for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
-            add_draw(it, it.material_index, transform);
+            add_draw(it.mesh, it.mesh.material_index, transform);
         }
     }
 
-    log("Loaded % (% meshes, % materials, % images).", path, data.meshes_count, data.materials_count, data.images_count);
+    log("Loaded % (% meshes, % materials, % images, % skins, % animations).", path, data.meshes_count, data.materials_count, data.images_count, data.skins_count, data.animations_count);
     return true;
 }
 
 #scope_file
+
+Gltf_Primitive :: struct {
+    mesh          : Draw_Data;
+    skin_vertices : Gpu_Pointer(Skin_Vertex);
+}
+
+gltf_matrix :: (column_major: [16] float) -> Matrix4 {
+    result : Matrix4;
+    for row : 0..3  for column : 0..3  result.v[row].component[column] = column_major[column * 4 + row];
+    return result;
+}
+
+add_gltf_skeleton :: (data: *cgltf_data, skin: *cgltf_skin) -> s64 {
+    skeleton : Skeleton;
+
+    skeleton.nodes = NewArray(xx data.nodes_count, Skeleton_Node);
+    for node_index : 0..cast(s64) data.nodes_count - 1 {
+        node := *data.nodes[node_index];
+        out := *skeleton.nodes[node_index];
+        if node.parent           out.parent      = xx cgltf_node_index(data, node.parent);
+        if node.has_translation  out.translation = .{node.translation[0], node.translation[1], node.translation[2]};
+        if node.has_rotation     out.rotation    = .{node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]};
+        if node.has_scale        out.scale       = .{node.scale[0], node.scale[1], node.scale[2]};
+        if node.has_matrix {
+            out.has_matrix = true;
+            out.matrix     = gltf_matrix(node.matrix);
+        }
+    }
+
+    order : [..] s32;
+    stack : [..] s32;
+    stack.allocator = temp;
+    for skeleton.nodes  if it.parent < 0  array_add(*stack, xx it_index);
+    while stack.count {
+        node_index := pop(*stack);
+        array_add(*order, node_index);
+        node := *data.nodes[node_index];
+        for 0..cast(s64) node.children_count - 1  array_add(*stack, xx cgltf_node_index(data, node.children[it]));
+    }
+    skeleton.order = order;
+
+    joint_count := cast(s64) skin.joints_count;
+    assert(joint_count <= 256, "Skins are limited to 256 joints, this one has %.", joint_count);
+    skeleton.joints                = NewArray(joint_count, s32);
+    skeleton.inverse_bind_matrices = NewArray(joint_count, Matrix4);
+    skeleton.joint_rows            = NewArray(joint_count * 3, Vector4);
+    for 0..joint_count - 1 {
+        skeleton.joints[it] = xx cgltf_node_index(data, skin.joints[it]);
+        skeleton.inverse_bind_matrices[it] = Matrix4_Identity;
+        if skin.inverse_bind_matrices {
+            column_major : [16] float;
+            cgltf_accessor_read_float(skin.inverse_bind_matrices, xx it, column_major.data, 16);
+            skeleton.inverse_bind_matrices[it] = gltf_matrix(column_major);
+        }
+    }
+
+    skeleton.clips = NewArray(xx data.animations_count, Animation_Clip);
+    for animation_index : 0..cast(s64) data.animations_count - 1 {
+        animation := *data.animations[animation_index];
+        clip := *skeleton.clips[animation_index];
+        clip.name = copy_string(ifx animation.name then to_string(animation.name) else tprint("Animation %", animation_index));
+
+        channels : [..] Animation_Channel;
+        for channel_index : 0..cast(s64) animation.channels_count - 1 {
+            channel := *animation.channels[channel_index];
+            if !channel.target_node continue;
+
+            path : Animation_Path;
+            if channel.target_path == {
+                case .translation; path = .TRANSLATION;
+                case .rotation;    path = .ROTATION;
+                case .scale;       path = .SCALE;
+                case;              continue;
+            }
+            components := ifx path == .ROTATION then 4 else 3;
+
+            sampler := channel.sampler;
+            key_count := cast(s64) sampler.input.count;
+            times := NewArray(key_count, float);
+            cgltf_accessor_unpack_floats(sampler.input, times.data, xx key_count);
+
+            values := NewArray(key_count * components, float);
+            if sampler.interpolation == .cubic_spline {
+                raw := NewArray(key_count * components * 3, float,, temp);
+                cgltf_accessor_unpack_floats(sampler.output, raw.data, xx raw.count);
+                for key : 0..key_count - 1  for component : 0..components - 1  values[key * components + component] = raw[(key * 3 + 1) * components + component];
+            } else {
+                cgltf_accessor_unpack_floats(sampler.output, values.data, xx values.count);
+            }
+
+            array_add(*channels, .{
+                node   = xx cgltf_node_index(data, channel.target_node),
+                path   = path,
+                step   = sampler.interpolation == .step,
+                times  = times,
+                values = values,
+            });
+            clip.duration = max(clip.duration, times[key_count - 1]);
+        }
+        clip.channels = channels;
+    }
+
+    array_add(*animation_context.skeletons, skeleton);
+    return animation_context.skeletons.count - 1;
+}
+
+pack_skin_vertex :: (joints: [4] u32, weights: [4] float) -> Skin_Vertex {
+    total := weights[0] + weights[1] + weights[2] + weights[3];
+    normalized := weights;
+    if total <= 0  normalized = .[1, 0, 0, 0];
+    else           for * normalized  it.* /= total;
+
+    quantized : [4] s32;
+    sum, largest : s32;
+    for normalized {
+        quantized[it_index] = cast(s32) (it * 255 + 0.5);
+        sum += quantized[it_index];
+        if it > normalized[largest]  largest = xx it_index;
+    }
+    quantized[largest] += 255 - sum;
+
+    result : Skin_Vertex;
+    for 0..3 {
+        assert(joints[it] < 256);
+        result.joints  |= joints[it] << (8 * it);
+        result.weights |= (cast(u32) quantized[it]) << (8 * it);
+    }
+    return result;
+}
 
 load_gltf_image :: (image: *cgltf_image, directory: string, format: VkFormat) -> Texture_Handle {
     name := ifx image.name then to_string(image.name) else "gltf image";
@@ -194,14 +338,16 @@ gltf_sampler_info :: (sampler: *cgltf_sampler) -> VkSamplerCreateInfo {
     return info;
 }
 
-add_gltf_primitive :: (primitive: *cgltf_primitive) -> Draw_Data, success: bool {
-    position_accessor, normal_accessor, tangent_accessor, uv_accessor : *cgltf_accessor;
+add_gltf_primitive :: (primitive: *cgltf_primitive) -> Gltf_Primitive, success: bool {
+    position_accessor, normal_accessor, tangent_accessor, uv_accessor, joints_accessor, weights_accessor : *cgltf_accessor;
     for attribute_index : 0..cast(s64) primitive.attributes_count - 1 {
         attribute := *primitive.attributes[attribute_index];
         if attribute.type == .position                          position_accessor = attribute.data;
         if attribute.type == .normal                            normal_accessor   = attribute.data;
         if attribute.type == .tangent                           tangent_accessor  = attribute.data;
         if attribute.type == .texcoord && attribute.index == 0  uv_accessor       = attribute.data;
+        if attribute.type == .joints   && attribute.index == 0  joints_accessor   = attribute.data;
+        if attribute.type == .weights  && attribute.index == 0  weights_accessor  = attribute.data;
     }
     if !position_accessor return .{}, false;
 
@@ -264,7 +410,22 @@ add_gltf_primitive :: (primitive: *cgltf_primitive) -> Draw_Data, success: bool 
         a.*, b.* = b.*, a.*;
     }
 
-    return add_mesh(positions, attributes, indices), true;
+    result := Gltf_Primitive.{mesh = add_mesh(positions, attributes, indices)};
+
+    if joints_accessor && weights_accessor {
+        assert(cast(s64) joints_accessor.count == vertex_count && cast(s64) weights_accessor.count == vertex_count);
+        skin_vertices := NewArray(vertex_count, Skin_Vertex,, temp);
+        for * skin_vertices {
+            joints  : [4] u32;
+            weights : [4] float;
+            cgltf_accessor_read_uint(joints_accessor, xx it_index, joints.data, 4);
+            cgltf_accessor_read_float(weights_accessor, xx it_index, weights.data, 4);
+            it.* = pack_skin_vertex(joints, weights);
+        }
+        result.skin_vertices = add_skin_vertices(skin_vertices);
+    }
+
+    return result, true;
 }
 
 generate_tangents :: (positions: [] Vector3, indices: [] u32, attributes: [] Vertex_Attributes) {

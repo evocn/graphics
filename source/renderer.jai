@@ -13,6 +13,7 @@ renderer_context : struct {
     depth_shaders    : [2] VkShaderEXT;
     tonemap_shaders  : [2] VkShaderEXT;
     wave_shader      : VkShaderEXT;
+    skin_shader      : VkShaderEXT;
 
     target_heap : Heap;
     depth_image : VkImage;
@@ -63,11 +64,22 @@ Wave_Push_Data :: struct @Gpu {
     time              : float;
 }
 
+Skin_Push_Data :: struct @Gpu {
+    source_positions  : Gpu_Pointer(Vector3);
+    source_attributes : Gpu_Pointer(Vertex_Attributes);
+    skin_vertices     : Gpu_Pointer(Skin_Vertex);
+    joint_matrices    : Gpu_Pointer(Vector4);
+    positions         : Gpu_Pointer(Vector3);
+    attributes        : Gpu_Pointer(Vertex_Attributes);
+    vertex_count      : u32;
+}
+
 init_renderer :: () {
     renderer_context.material_shaders = create_graphics_shaders("material");
     renderer_context.tonemap_shaders  = create_graphics_shaders("tonemap");
     renderer_context.depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
     renderer_context.wave_shader      = create_compute_shader("wave", "wave_main");
+    renderer_context.skin_shader      = create_compute_shader("skin", "skin_main");
 
     init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
     renderer_context.hdr_texture = .{id = reserve_image_descriptor()};
@@ -81,6 +93,7 @@ deinit_renderer :: () {
     destroy_shaders(renderer_context.tonemap_shaders);
     destroy_shaders(renderer_context.depth_shaders);
     destroy_shaders(renderer_context.wave_shader);
+    destroy_shaders(renderer_context.skin_shader);
 }
 
 resize_render_targets :: () {
@@ -122,7 +135,7 @@ draw_frame :: () {
     command_buffer := frame.command_buffer;
 
     bind_descriptor_heaps(command_buffer);
-    deform_pass(command_buffer);
+    deform_pass(command_buffer, frame.heap);
     update_acceleration_structures(command_buffer, frame.heap);
 
     pipeline_barrier(command_buffer, .[
@@ -164,8 +177,7 @@ draw_frame :: () {
         materials = heap_gpu_pointer(*heap_context.buffer, Material, scene_context.materials_offset),
     };
 
-    push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Push_Data)}};
-    vkCmdPushDataEXT(command_buffer, *push_data_info);
+    push(command_buffer, push_data);
 
     index_buffer_info := VkBindIndexBuffer3InfoKHR.{
         addressRange = .{address = heap_context.buffer.address, size = heap_context.buffer.size},
@@ -219,8 +231,7 @@ draw_frame :: () {
     bind_shaders(command_buffer, renderer_context.tonemap_shaders);
 
     tonemap_push_data := Tonemap_Push_Data.{hdr = renderer_context.hdr_texture, exposure = renderer_context.exposure, raw = xx (renderer_context.debug_view != .LIT)};
-    tonemap_push_data_info := VkPushDataInfoEXT.{data = .{address = *tonemap_push_data, size = size_of(Tonemap_Push_Data)}};
-    vkCmdPushDataEXT(command_buffer, *tonemap_push_data_info);
+    push(command_buffer, tonemap_push_data);
 
     vkCmdDraw(command_buffer, vertexCount = 3, instanceCount = 1, firstVertex = 0, firstInstance = 0);
 
@@ -237,24 +248,44 @@ draw_frame :: () {
 
 #scope_file
 
-deform_pass :: (command_buffer: VkCommandBuffer) {
+deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
     if !scene_context.deformers.count return;
+
+    joint_matrices := NewArray(animation_context.skeletons.count, Gpu_Pointer(Vector4),, temp);
+    for animation_context.skeletons {
+        size := it.joint_rows.count * size_of(Vector4);
+        offset := heap_allocate(heap, xx size, 16);
+        memcpy(heap_pointer(heap, offset), it.joint_rows.data, size);
+        joint_matrices[it_index] = heap_gpu_pointer(heap, Vector4, offset);
+    }
 
     memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
 
-    bind_shaders(command_buffer, renderer_context.wave_shader);
     for scene_context.deformers {
         draw := scene_context.draws[it.draw_index];
-        push_data := Wave_Push_Data.{
-            source_positions  = it.source_positions,
-            source_attributes = it.source_attributes,
-            positions         = draw.positions,
-            attributes        = draw.attributes,
-            vertex_count      = draw.vertex_count,
-            time              = renderer_context.animation_time,
-        };
-        push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Wave_Push_Data)}};
-        vkCmdPushDataEXT(command_buffer, *push_data_info);
+        if it.kind == {
+            case .WAVE;
+                bind_shaders(command_buffer, renderer_context.wave_shader);
+                push(command_buffer, Wave_Push_Data.{
+                    source_positions  = it.source_positions,
+                    source_attributes = it.source_attributes,
+                    positions         = draw.positions,
+                    attributes        = draw.attributes,
+                    vertex_count      = draw.vertex_count,
+                    time              = renderer_context.animation_time,
+                });
+            case .SKIN;
+                bind_shaders(command_buffer, renderer_context.skin_shader);
+                push(command_buffer, Skin_Push_Data.{
+                    source_positions  = it.source_positions,
+                    source_attributes = it.source_attributes,
+                    skin_vertices     = it.skin_vertices,
+                    joint_matrices    = joint_matrices[it.skeleton_index],
+                    positions         = draw.positions,
+                    attributes        = draw.attributes,
+                    vertex_count      = draw.vertex_count,
+                });
+        }
         dispatch(command_buffer, draw.vertex_count, 64);
     }
 

@@ -71,6 +71,7 @@ main :: () {
 
     init_scene();
     defer deinit_scene();
+    defer deinit_animation();
     init_demo_scene();
     build_scene();
 
@@ -99,13 +100,16 @@ main :: () {
 
         update_camera(dt);
 
-        if renderer_context.animate  renderer_context.animation_time += dt;
+        animation_dt := ifx renderer_context.animate then dt else 0;
+        renderer_context.animation_time += animation_dt;
+        update_animations(animation_dt);
 
         sun_angle := cast(float) now * 0.4;
         renderer_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
 
         imgui_new_frame();
         renderer_debug_ui();
+        animation_debug_ui();
         ImGui.Render();
 
         if args.screenshot && frame_context.index + 1 == cast(u64) args.frames then screenshot_context.requested = true;
@@ -149,6 +153,7 @@ Clipboard :: #import "Clipboard";
 #load "input.jai";
 #load "camera.jai";
 #load "scene.jai";
+#load "animation.jai";
 #load "demo_scene.jai";
 #load "renderer.jai";
 

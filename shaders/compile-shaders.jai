@@ -36,7 +36,7 @@ slangc :: (name: string) -> success: bool {
     return true;
 }
 
-SHADER_NAMES :: string.["material", "tonemap", "imgui", "wave"];
+SHADER_NAMES :: string.["material", "tonemap", "imgui", "wave", "skin"];
 
 compile_shaders :: () {
     make_directory_if_it_does_not_exist(tprint("%compiled", #filepath));

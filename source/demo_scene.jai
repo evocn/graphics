@@ -41,7 +41,7 @@ init_demo_scene :: () {
     }
 
     add_draw(quad, green_croc_material,  placement(.{-1.3, 0.0, 0.6},  0.4));
-    add_deformable_draw(flag, orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4));
+    add_deformable_draw(flag, orange_croc_material, placement(.{ 1.3, 0.0, 0.8}, -0.4), .{kind = .WAVE});
 
     box_first_material := scene_context.materials.count;
     if !load_gltf(tprint("%/BoxTextured/BoxTextured.gltf", models_path), placement(.{0.0, 0.5, 1.0}, 0.6), trilinear_sampler) {
@@ -50,6 +50,16 @@ init_demo_scene :: () {
     for box_first_material..scene_context.materials.count - 1 {
         scene_context.materials[it].texture = croc_texture;
         scene_context.materials[it].sampler = sampler;
+    }
+
+    fox_first_skeleton := animation_context.skeletons.count;
+    fox_root := multiply(placement(.{0.0, 1.0, 0.1}, PI / 2), make_scale_matrix4(.{0.008, 0.008, 0.008}));
+    if !load_gltf(tprint("%/Fox/Fox.gltf", models_path), fox_root, trilinear_sampler) {
+        log_error("Could not load Fox.");
+    }
+    for fox_first_skeleton..animation_context.skeletons.count - 1 {
+        skeleton := *animation_context.skeletons[it];
+        for skeleton.clips  if it.name == "Walk"  skeleton.clip_index = xx it_index;
     }
 }
 

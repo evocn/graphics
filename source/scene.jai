@@ -16,16 +16,29 @@ scene_context : struct {
     tlas   : Acceleration_Structure;
 }
 
+Deformer_Kind :: enum u8 {
+    WAVE;
+    SKIN;
+}
+
 Deformer :: struct {
+    kind              : Deformer_Kind;
     draw_index        : u32;
     source_positions  : Gpu_Pointer(Vector3);
     source_attributes : Gpu_Pointer(Vertex_Attributes);
+    skin_vertices     : Gpu_Pointer(Skin_Vertex);
+    skeleton_index    : u32;
 }
 
 Vertex_Attributes :: struct @Gpu {
     normal  : Vector3;
     tangent : Vector4;
     uv      : Vector2;
+}
+
+Skin_Vertex :: struct @Gpu {
+    joints  : u32;
+    weights : u32;
 }
 
 Material :: struct @Gpu {
@@ -157,17 +170,21 @@ add_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
     array_add(*scene_context.draws, draw);
 }
 
-add_deformable_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4) {
-    array_add(*scene_context.deformers, .{
-        draw_index        = xx scene_context.draws.count,
-        source_positions  = mesh.positions,
-        source_attributes = mesh.attributes,
-    });
+add_deformable_draw :: (mesh: Draw_Data, material_index: u32, transform: Matrix4, deformer_in: Deformer) {
+    deformer := deformer_in;
+    deformer.draw_index        = xx scene_context.draws.count;
+    deformer.source_positions  = mesh.positions;
+    deformer.source_attributes = mesh.attributes;
+    array_add(*scene_context.deformers, deformer);
 
     deformed := mesh;
     deformed.positions  = duplicate(mesh.positions,  mesh.vertex_count);
     deformed.attributes = duplicate(mesh.attributes, mesh.vertex_count);
     add_draw(deformed, material_index, transform);
+}
+
+add_skin_vertices :: (skin_vertices: [] Skin_Vertex) -> Gpu_Pointer(Skin_Vertex) {
+    return heap_gpu_pointer(*heap_context.buffer, Skin_Vertex, upload(skin_vertices));
 }
 
 #scope_file
