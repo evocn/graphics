@@ -48,6 +48,12 @@ bind_shaders :: (command_buffer: VkCommandBuffer, shader: VkShaderEXT) {
     vkCmdBindShadersEXT(command_buffer, 1, *stage, *shader);
 }
 
+push :: (command_buffer: VkCommandBuffer, data: $T) {
+    value := data;
+    info := VkPushDataInfoEXT.{data = .{address = *value, size = size_of(T)}};
+    vkCmdPushDataEXT(command_buffer, *info);
+}
+
 dispatch :: (command_buffer: VkCommandBuffer, thread_count: u32, group_size: u32) {
     vkCmdDispatch(command_buffer, (thread_count + group_size - 1) / group_size, 1, 1);
 }

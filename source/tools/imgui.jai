@@ -253,8 +253,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
 
                     push_data.texture = .{id = cast(u32) cast(u64) pcmd.TextureId};
 
-                    push_data_info := VkPushDataInfoEXT.{data = .{address = *push_data, size = size_of(Imgui_Push_Data)}};
-                    vkCmdPushDataEXT(command_buffer, *push_data_info);
+                    push(command_buffer, push_data);
 
                     vkCmdDrawIndexed(command_buffer,
                         indexCount    = pcmd.ElemCount,
