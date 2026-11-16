@@ -77,7 +77,7 @@ init_imgui :: () {
 }
 
 deinit_imgui :: () {
-    destroy_graphics_shaders(imgui_context.shaders);
+    destroy_shaders(imgui_context.shaders);
     destroy_texture(imgui_context.font_texture);
 
     free(imgui_context.clipboard_cstring);
@@ -212,7 +212,7 @@ render_imgui :: (command_buffer: VkCommandBuffer, frame_heap: *Heap) {
     };
     vkCmdSetColorBlendEquationEXT(command_buffer, 0, 1, *blend_equation);
 
-    bind_graphics_shaders(command_buffer, imgui_context.shaders);
+    bind_shaders(command_buffer, imgui_context.shaders);
 
     index_buffer_info := VkBindIndexBuffer3InfoKHR.{
         addressRange = .{

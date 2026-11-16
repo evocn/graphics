@@ -77,10 +77,10 @@ init_renderer :: () {
 deinit_renderer :: () {
     destroy_render_targets();
     destroy_heap(renderer_context.target_heap);
-    destroy_graphics_shaders(renderer_context.material_shaders);
-    destroy_graphics_shaders(renderer_context.tonemap_shaders);
-    destroy_graphics_shaders(renderer_context.depth_shaders);
-    destroy_compute_shader(renderer_context.wave_shader);
+    destroy_shaders(renderer_context.material_shaders);
+    destroy_shaders(renderer_context.tonemap_shaders);
+    destroy_shaders(renderer_context.depth_shaders);
+    destroy_shaders(renderer_context.wave_shader);
 }
 
 resize_render_targets :: () {
@@ -186,14 +186,14 @@ draw_frame :: () {
 
     no_components : VkColorComponentFlags;
     vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *no_components);
-    bind_graphics_shaders(command_buffer, renderer_context.depth_shaders);
+    bind_shaders(command_buffer, renderer_context.depth_shaders);
     vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
 
     all_components := VkColorComponentFlags.R | .G | .B | .A;
     vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *all_components);
     vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
     vkCmdSetDepthCompareOp(command_buffer, .EQUAL);
-    bind_graphics_shaders(command_buffer, renderer_context.material_shaders);
+    bind_shaders(command_buffer, renderer_context.material_shaders);
     vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
 
     vkCmdEndRendering(command_buffer);
@@ -216,7 +216,7 @@ draw_frame :: () {
 
     vkCmdSetDepthTestEnable(command_buffer,  VK_FALSE);
     vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
-    bind_graphics_shaders(command_buffer, renderer_context.tonemap_shaders);
+    bind_shaders(command_buffer, renderer_context.tonemap_shaders);
 
     tonemap_push_data := Tonemap_Push_Data.{hdr = renderer_context.hdr_texture, exposure = renderer_context.exposure, raw = xx (renderer_context.debug_view != .LIT)};
     tonemap_push_data_info := VkPushDataInfoEXT.{data = .{address = *tonemap_push_data, size = size_of(Tonemap_Push_Data)}};
@@ -242,7 +242,7 @@ deform_pass :: (command_buffer: VkCommandBuffer) {
 
     memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
 
-    bind_compute_shader(command_buffer, renderer_context.wave_shader);
+    bind_shaders(command_buffer, renderer_context.wave_shader);
     for scene_context.deformers {
         draw := scene_context.draws[it.draw_index];
         push_data := Wave_Push_Data.{
