@@ -75,11 +75,18 @@ build_scene :: () {
     }
     memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_READ_KHR);
 
-    tlas_geometry := instance_geometry(write_tlas_instances(*heap_context.scratch));
     instance_count := cast(u32) scene_context.draws.count;
-    scene_context.tlas = create_acceleration_structure(.TOP_LEVEL, .PREFER_FAST_TRACE, .[tlas_geometry], .[instance_count]);
-    record_acceleration_structure_build(upload_context.command_buffer, scene_context.tlas, .BUILD, .[tlas_geometry], .[instance_count], *heap_context.scratch);
-    memory_barrier(upload_context.command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
+    scene_context.tlas = create_acceleration_structure(.TOP_LEVEL, .PREFER_FAST_BUILD, .[instance_geometry(0)], .[instance_count]);
+}
+
+build_tlas :: (command_buffer: VkCommandBuffer, heap: *Heap) {
+    memory_barrier(command_buffer, .FRAGMENT_SHADER, .NONE, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR);
+
+    tlas_geometry := instance_geometry(write_tlas_instances(heap));
+    instance_count := cast(u32) scene_context.draws.count;
+    record_acceleration_structure_build(command_buffer, scene_context.tlas, .BUILD, .[tlas_geometry], .[instance_count], heap);
+
+    memory_barrier(command_buffer, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR, .FRAGMENT_SHADER, .ACCELERATION_STRUCTURE_READ_KHR);
 }
 
 deinit_scene :: () {

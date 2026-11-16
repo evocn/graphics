@@ -106,6 +106,8 @@ draw_frame :: () {
 
     command_buffer := frame.command_buffer;
 
+    build_tlas(command_buffer, frame.heap);
+
     pipeline_barrier(command_buffer, .[
         image_barrier(renderer_context.depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .NONE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH),
         image_barrier(renderer_context.hdr_image, .FRAGMENT_SHADER, .NONE, .COLOR_ATTACHMENT_OUTPUT, .COLOR_ATTACHMENT_WRITE),
