@@ -26,3 +26,32 @@ bind_graphics_shaders :: (command_buffer: VkCommandBuffer, shaders: [2] VkShader
     stages := VkShaderStageFlagBits.[.VERTEX, .FRAGMENT];
     vkCmdBindShadersEXT(command_buffer, stages.count, stages.data, shaders.data);
 }
+
+create_compute_shader :: (name: string, entry: string) -> VkShaderEXT {
+    path := tprint("%/%.spv", compiled_shaders_directory, name);
+    spirv, success := read_entire_file(path);
+    assert(success, "Unable to read shader file %", path);
+    defer free(spirv);
+
+    info := VkShaderCreateInfoEXT.{flags = .DESCRIPTOR_HEAP, stage = .COMPUTE, codeType = .SPIRV, codeSize = xx spirv.count, pCode = spirv.data, pName = temp_c_string(entry)};
+
+    shader : VkShaderEXT;
+    result := vkCreateShadersEXT(device_context.device, 1, *info, null, *shader);
+    assert(result == .SUCCESS);
+
+    set_debug_name(.SHADER_EXT, shader, tprint("% %", name, entry));
+    return shader;
+}
+
+destroy_compute_shader :: (shader: VkShaderEXT) {
+    vkDestroyShaderEXT(device_context.device, shader, null);
+}
+
+bind_compute_shader :: (command_buffer: VkCommandBuffer, shader: VkShaderEXT) {
+    stage := VkShaderStageFlagBits.COMPUTE;
+    vkCmdBindShadersEXT(command_buffer, 1, *stage, *shader);
+}
+
+dispatch :: (command_buffer: VkCommandBuffer, thread_count: u32, group_size: u32) {
+    vkCmdDispatch(command_buffer, (thread_count + group_size - 1) / group_size, 1, 1);
+}
