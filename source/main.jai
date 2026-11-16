@@ -150,11 +150,11 @@ Clipboard :: #import "Clipboard";
 }
 
 #load "utils.jai";
-#load "input.jai";
-#load "camera.jai";
-#load "scene.jai";
-#load "animation.jai";
-#load "demo_scene.jai";
+#load "core/input.jai";
+#load "core/camera.jai";
+#load "scene/scene.jai";
+#load "scene/animation.jai";
+#load "scene/demo_scene.jai";
 #load "renderer.jai";
 
 #load "vulkan/vulkan.jai";
