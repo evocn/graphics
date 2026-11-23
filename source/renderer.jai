@@ -200,6 +200,16 @@ draw_frame :: () {
     vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *no_components);
     bind_shaders(command_buffer, renderer_context.depth_shaders);
     vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
+    vkCmdEndRendering(command_buffer);
+
+    pipeline_barrier(command_buffer, .[
+        image_barrier(renderer_context.depth_image, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_WRITE, .EARLY_FRAGMENT_TESTS | .LATE_FRAGMENT_TESTS, .DEPTH_STENCIL_ATTACHMENT_READ | .DEPTH_STENCIL_ATTACHMENT_WRITE, aspect = .DEPTH, old_layout = .GENERAL),
+    ]);
+    depth_attachment.loadOp = .LOAD;
+    vkCmdBeginRendering(command_buffer, *rendering_info);
+    set_draw_state(command_buffer);
+    push(command_buffer, push_data);
+    vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
 
     all_components := VkColorComponentFlags.R | .G | .B | .A;
     vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *all_components);

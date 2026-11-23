@@ -18,12 +18,14 @@ main :: () {
         frames     : int;   @"?Quit after this many frames. 0 runs until closed."
         screenshot : bool;  @"?Save the last frame to bin/screenshots/ and quit. Runs 1 frame unless -frames is given."
         view       : int;   @"?Start in a debug view: 0 lit, 1 base color, 2 normals, 3 metallic/roughness, 4 sun only, 5 ambient only."
+        no_ray_tracing : bool;  @"?Skip acceleration structures and ray-traced shadows."
     }
     success, args := parse_arguments(Command_Line_Arguments);
     if !success return;
 
     if args.screenshot && args.frames == 0 then args.frames = 1;
     renderer_context.debug_view = xx args.view;
+    scene_context.ray_tracing = !args.no_ray_tracing;
 
     main_context.window = create_window(
         xx main_context.window_width, xx main_context.window_height,

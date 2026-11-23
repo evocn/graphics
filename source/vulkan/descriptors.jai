@@ -28,15 +28,18 @@ init_descriptor_heaps :: () {
     assert(resource_heap_size % device_context.descriptor_heap_properties.resourceHeapAlignment == 0);
     assert(sampler_heap_size  % device_context.descriptor_heap_properties.samplerHeapAlignment  == 0);
 
-    descriptor_context.sampler_heap_offset  = heap_allocate(*heap_context.buffer, sampler_heap_size,  device_context.descriptor_heap_properties.samplerHeapAlignment);
-    descriptor_context.resource_heap_offset = heap_allocate(*heap_context.buffer, resource_heap_size, device_context.descriptor_heap_properties.resourceHeapAlignment);
+    descriptor_heap_size := sampler_heap_size + resource_heap_size + device_context.descriptor_heap_properties.samplerHeapAlignment + device_context.descriptor_heap_properties.resourceHeapAlignment;
+    init_buffer_heap(*heap_context.descriptor, "descriptor heap", descriptor_heap_size, usage = BUFFER_HEAP_USAGE | .DESCRIPTOR_HEAP_EXT);
+
+    descriptor_context.sampler_heap_offset  = heap_allocate(*heap_context.descriptor, sampler_heap_size,  device_context.descriptor_heap_properties.samplerHeapAlignment);
+    descriptor_context.resource_heap_offset = heap_allocate(*heap_context.descriptor, resource_heap_size, device_context.descriptor_heap_properties.resourceHeapAlignment);
 
     descriptor_context.bind_sampler_heap_info = .{
-        heapRange         = .{address = heap_address(*heap_context.buffer, descriptor_context.sampler_heap_offset), size = sampler_heap_size},
+        heapRange         = .{address = heap_address(*heap_context.descriptor, descriptor_context.sampler_heap_offset), size = sampler_heap_size},
         reservedRangeSize = device_context.descriptor_heap_properties.minSamplerHeapReservedRange,
     };
     descriptor_context.bind_resource_heap_info = .{
-        heapRange         = .{address = heap_address(*heap_context.buffer, descriptor_context.resource_heap_offset), size = resource_heap_size},
+        heapRange         = .{address = heap_address(*heap_context.descriptor, descriptor_context.resource_heap_offset), size = resource_heap_size},
         reservedRangeSize = device_context.descriptor_heap_properties.minResourceHeapReservedRange,
     };
 
@@ -74,7 +77,7 @@ write_image_descriptor :: (id: u32, type: VkDescriptorType, view_create_info: Vk
     resource_descriptor_info.data.pImage = *image_descriptor_info;
 
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heap_context.buffer, descriptor_context.resource_heap_offset + id * descriptor_context.image_stride),
+        address = heap_pointer(*heap_context.descriptor, descriptor_context.resource_heap_offset + id * descriptor_context.image_stride),
         size    = descriptor_context.image_stride,
     };
     result := vkWriteResourceDescriptorsEXT(device_context.device, 1, *resource_descriptor_info, *destination);
@@ -88,7 +91,7 @@ create_sampler :: (sampler_create_info: VkSamplerCreateInfo) -> Sampler_Handle {
 
     info := sampler_create_info;
     destination := VkHostAddressRangeEXT.{
-        address = heap_pointer(*heap_context.buffer, descriptor_context.sampler_heap_offset + id * descriptor_context.sampler_stride),
+        address = heap_pointer(*heap_context.descriptor, descriptor_context.sampler_heap_offset + id * descriptor_context.sampler_stride),
         size    = descriptor_context.sampler_stride,
     };
     result := vkWriteSamplerDescriptorsEXT(device_context.device, 1, *info, *destination);

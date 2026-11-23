@@ -11,18 +11,21 @@ Heap :: struct {
 }
 
 heap_context : struct {
-    buffer   : Heap;
-    scratch  : Heap;
-    readback : Heap;
-    image    : Heap;
-    frames   : [FRAMES_IN_FLIGHT] Heap;
+    buffer     : Heap;
+    scratch    : Heap;
+    readback   : Heap;
+    descriptor : Heap;
+    image      : Heap;
+    frames     : [FRAMES_IN_FLIGHT] Heap;
 }
 
 MiB :: 1024 * 1024;
 
+BUFFER_HEAP_USAGE :: VkBufferUsageFlags.SHADER_DEVICE_ADDRESS | .INDEX_BUFFER | .INDIRECT_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR | .ACCELERATION_STRUCTURE_STORAGE_KHR;
+
 init_heaps :: () {
     init_buffer_heap(*heap_context.buffer,  "buffer heap",  128 * MiB);
-    init_buffer_heap(*heap_context.scratch, "scratch heap", 512 * MiB);
+    init_buffer_heap(*heap_context.scratch, "scratch heap", 512 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
     init_buffer_heap(*heap_context.readback, "readback heap", 64 * MiB, .HOST_VISIBLE | .HOST_COHERENT | .HOST_CACHED);
     for * heap_context.frames  init_buffer_heap(it, sprint("frame heap %", it_index), 8 * MiB);
 
@@ -33,6 +36,7 @@ deinit_heaps :: () {
     destroy_heap(heap_context.buffer);
     destroy_heap(heap_context.scratch);
     destroy_heap(heap_context.readback);
+    destroy_heap(heap_context.descriptor);
     destroy_heap(heap_context.image);
     for heap_context.frames  destroy_heap(it);
 }
@@ -77,7 +81,7 @@ heap_bind_image :: (heap: *Heap, image: VkImage) {
     assert(result == .SUCCESS);
 }
 
-init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties := VkMemoryPropertyFlagBits.DEVICE_LOCAL | .HOST_VISIBLE) {
+init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties := VkMemoryPropertyFlagBits.DEVICE_LOCAL | .HOST_VISIBLE, usage := BUFFER_HEAP_USAGE) {
     result : VkResult;
 
     heap.name = name;
@@ -85,7 +89,7 @@ init_buffer_heap :: (heap: *Heap, name: string, size: VkDeviceSize, properties :
 
     buffer_create_info := VkBufferCreateInfo.{
         size  = heap.size,
-        usage = .DESCRIPTOR_HEAP_EXT | .SHADER_DEVICE_ADDRESS | .INDEX_BUFFER | .INDIRECT_BUFFER | .TRANSFER_SRC | .TRANSFER_DST | .STORAGE_BUFFER | .ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR | .ACCELERATION_STRUCTURE_STORAGE_KHR,
+        usage = usage,
     };
     result = vkCreateBuffer(device_context.device, *buffer_create_info, null, *heap.buffer);
     assert(result == .SUCCESS);

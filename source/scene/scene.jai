@@ -12,8 +12,9 @@ scene_context : struct {
 
     deformers : [..] Deformer;
 
-    blases : [..] Acceleration_Structure;
-    tlas   : Acceleration_Structure;
+    ray_tracing : bool = true;
+    blases      : [..] Acceleration_Structure;
+    tlas        : Acceleration_Structure;
 }
 
 Deformer_Kind :: enum u8 {
@@ -87,6 +88,8 @@ build_scene :: () {
     }
     scene_context.draw_commands_offset = upload(draw_commands);
 
+    if !scene_context.ray_tracing return;
+
     deformed := NewArray(scene_context.draws.count, bool,, temp);
     for scene_context.deformers  deformed[it.draw_index] = true;
 
@@ -105,6 +108,8 @@ build_scene :: () {
 }
 
 update_acceleration_structures :: (command_buffer: VkCommandBuffer, heap: *Heap) {
+    if !scene_context.ray_tracing return;
+
     memory_barrier(command_buffer, .FRAGMENT_SHADER, .NONE, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR);
 
     if scene_context.deformers.count {
