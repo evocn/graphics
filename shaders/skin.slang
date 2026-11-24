@@ -1,6 +1,6 @@
 #include "geometry.slang"
 
-[[vk::push_constant]] Deform_Push_Data push_data;
+[[vk::push_constant]] Skin_Push_Data push_data;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

@@ -17,15 +17,13 @@ main :: () {
         automation : bool;  @"?Open the window at the bottom of the z-order without taking focus."
         frames     : int;   @"?Quit after this many frames. 0 runs until closed."
         screenshot : bool;  @"?Save the last frame to bin/screenshots/ and quit. Runs 1 frame unless -frames is given."
-        view       : int;   @"?Start in a debug view: 0 lit, 1 base color, 2 normals, 3 metallic/roughness, 4 sun only, 5 ambient only."
-        no_ray_tracing : bool;  @"?Skip acceleration structures and ray-traced shadows."
+        view       : int;   @"?Start in a debug view: 0 lit, 1 base color, 2 normals."
     }
     success, args := parse_arguments(Command_Line_Arguments);
     if !success return;
 
     if args.screenshot && args.frames == 0 then args.frames = 1;
     renderer_context.debug_view = xx args.view;
-    scene_context.ray_tracing = !args.no_ray_tracing;
 
     main_context.window = create_window(
         xx main_context.window_width, xx main_context.window_height,
@@ -105,12 +103,8 @@ main :: () {
         animation_dt := ifx renderer_context.animate then dt else 0;
         update_animations(animation_dt);
 
-        sun_angle := cast(float) now * 0.4;
-        renderer_context.light_direction = unit_vector(Vector3.{cos(sun_angle) * 0.3, 1.0, sin(sun_angle) * 0.3});
-
         imgui_new_frame();
         renderer_debug_ui();
-        animation_debug_ui();
         ImGui.Render();
 
         if args.screenshot && frame_context.index + 1 == cast(u64) args.frames then screenshot_context.requested = true;

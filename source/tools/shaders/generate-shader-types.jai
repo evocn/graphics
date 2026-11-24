@@ -1,19 +1,6 @@
 #import "Sort";
 gpu_structs : [..] *Type_Info_Struct;
 
-Generated_Layout :: struct {
-    name   : string;
-    size   : s64;
-    fields : [..] Generated_Field;
-}
-
-Generated_Field :: struct {
-    name   : string;
-    offset : s64;
-}
-
-generated_layouts : [..] Generated_Layout;
-
 collect_gpu_structs :: (message: *Message) {
     if message.kind != .TYPECHECKED return;
 
@@ -73,10 +60,6 @@ emit_struct :: (builder: *String_Builder, emitted: *[..] *Type_Info_Struct, info
 
     array_add(emitted, info);
 
-    layout := array_add(*generated_layouts);
-    layout.name = info.name;
-    layout.size = info.runtime_size;
-
     print_to_builder(builder, "struct % {\n", info.name);
 
     cursor := 0;
@@ -84,7 +67,7 @@ emit_struct :: (builder: *String_Builder, emitted: *[..] *Type_Info_Struct, info
         if member.flags & .CONSTANT continue;
 
         if member.offset_in_bytes > cursor {
-            if !emit_padding(builder, layout, cursor, member.offset_in_bytes - cursor) return false;
+            if !emit_padding(builder, info.name, cursor, member.offset_in_bytes - cursor) return false;
         }
 
         slang_type, array_suffix, success := slang_type_of(member.type);
@@ -94,27 +77,25 @@ emit_struct :: (builder: *String_Builder, emitted: *[..] *Type_Info_Struct, info
         }
 
         print_to_builder(builder, "    % %%;\n", slang_type, member.name, array_suffix);
-        array_add(*layout.fields, .{member.name, member.offset_in_bytes});
         cursor = member.offset_in_bytes + member.type.runtime_size;
     }
 
     if info.runtime_size > cursor {
-        if !emit_padding(builder, layout, cursor, info.runtime_size - cursor) return false;
+        if !emit_padding(builder, info.name, cursor, info.runtime_size - cursor) return false;
     }
 
     append(builder, "}\n\n");
     return true;
 }
 
-emit_padding :: (builder: *String_Builder, layout: *Generated_Layout, offset: s64, bytes: s64) -> success: bool {
+emit_padding :: (builder: *String_Builder, struct_name: string, offset: s64, bytes: s64) -> success: bool {
     if bytes % 4 != 0 {
-        log_error("% needs % bytes of padding, which isn't a multiple of 4.", layout.name, bytes);
+        log_error("% needs % bytes of padding, which isn't a multiple of 4.", struct_name, bytes);
         return false;
     }
 
     name := tprint("padding%", offset);
     print_to_builder(builder, "    uint %[%];\n", name, bytes / 4);
-    array_add(*layout.fields, .{name, offset});
     return true;
 }
 

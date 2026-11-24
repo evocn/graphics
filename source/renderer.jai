@@ -35,12 +35,9 @@ Debug_View :: enum u32 {
     LIT;
     BASE_COLOR;
     NORMALS;
-    METALLIC_ROUGHNESS;
-    SUN_ONLY;
-    AMBIENT_ONLY;
 }
 
-DEBUG_VIEW_NAMES :: "Lit\0Base color\0Normals\0Metallic (R) / roughness (G)\0Sun only\0Ambient only\0\0";
+DEBUG_VIEW_NAMES :: "Lit\0Base color\0Normals\0\0";
 
 Push_Data :: struct @Gpu {
     frame      : Gpu_Pointer(Frame_Constants);
@@ -54,7 +51,7 @@ Tonemap_Push_Data :: struct @Gpu {
     raw      : u32;
 }
 
-Deform_Push_Data :: struct @Gpu {
+Skin_Push_Data :: struct @Gpu {
     source_positions  : Gpu_Pointer(Vector3);
     source_attributes : Gpu_Pointer(Packed_Vertex_Attributes);
     positions         : Gpu_Pointer(Vector3);
@@ -70,6 +67,8 @@ init_renderer :: () {
     renderer_context.depth_shaders        = create_vertex_only_shaders("material", "depth_vertex_main");
     renderer_context.masked_depth_shaders = create_graphics_shaders("material", "masked_depth_vertex_main", "depth_fragment_main");
     renderer_context.skin_shader          = create_compute_shader("skin", "skin_main");
+
+    renderer_context.light_direction = unit_vector(Vector3.{0.3, 1.0, 0.2});
 
     init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
     renderer_context.hdr_texture = .{id = reserve_image_descriptor()};
@@ -125,7 +124,7 @@ draw_frame :: () {
     command_buffer := frame.command_buffer;
 
     bind_descriptor_heaps(command_buffer);
-    deform_pass(command_buffer, frame.heap);
+    skin_pass(command_buffer, frame.heap);
     update_acceleration_structures(command_buffer, frame.heap);
 
     pipeline_barrier(command_buffer, .[
@@ -258,8 +257,8 @@ draw_commands :: (command_buffer: VkCommandBuffer, first: u32, count: u32) {
     vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
 }
 
-deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
-    if !scene_context.deformers.count return;
+skin_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
+    if !scene_context.skinned_draws.count return;
 
     joint_matrices := NewArray(animation_context.skeletons.count, Gpu_Pointer(Matrix4x3),, temp);
     for animation_context.skeletons {
@@ -272,9 +271,9 @@ deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
     memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
 
     bind_shaders(command_buffer, renderer_context.skin_shader);
-    for scene_context.deformers {
+    for scene_context.skinned_draws {
         mesh := scene_context.draws[it.draw_index].mesh;
-        push(command_buffer, Deform_Push_Data.{
+        push(command_buffer, Skin_Push_Data.{
             source_positions  = it.source_positions,
             source_attributes = it.source_attributes,
             positions         = mesh.positions,

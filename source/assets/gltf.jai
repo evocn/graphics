@@ -91,10 +91,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 
             for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
                 assert(it.skin_vertices.address != 0, "A skinned primitive in % has no JOINTS_0/WEIGHTS_0.", path);
-                add_deformable_draw(it.mesh, it.material_index, root_from_gltf, .{
-                    skin_vertices  = it.skin_vertices,
-                    skeleton_index = xx skeleton_indices[skin_index],
-                });
+                add_skinned_draw(it.mesh, it.material_index, root_from_gltf, it.skin_vertices, xx skeleton_indices[skin_index]);
             }
             continue;
         }

@@ -73,28 +73,6 @@ update_animations :: (dt: float) {
     }
 }
 
-animation_debug_ui :: () {
-    if !animation_context.skeletons.count return;
-
-    ImGui.SetNextWindowPos(.{10, 260}, .FirstUseEver);
-    if ImGui.Begin("Animation", null, .AlwaysAutoResize | .NoSavedSettings) {
-        for * skeleton : animation_context.skeletons {
-            if !skeleton.clips.count continue;
-
-            builder : String_Builder;
-            builder.allocator = temp;
-            for skeleton.clips  print_to_builder(*builder, "%\0", it.name);
-            append(*builder, "\0");
-            names := builder_to_string(*builder,, temp);
-
-            previous := skeleton.clip_index;
-            ImGui.Combo(temp_c_string(tprint("Skeleton %", it_index)), *skeleton.clip_index, names.data);
-            if skeleton.clip_index != previous  skeleton.time = 0;
-        }
-    }
-    ImGui.End();
-}
-
 #scope_file
 
 pose_skeleton :: (skeleton: *Skeleton) {

@@ -158,14 +158,6 @@ build :: () {
     compile_shaders();
 
     {
-        spirv_paths : [..] string;
-        for name : SHADER_NAMES {
-            array_add(*spirv_paths, tprint("%/%/%.spv", root, compiled_shaders_directory, name));
-        }
-        if !check_shader_layouts(spirv_paths) exit(1);
-    }
-
-    {
         log("\nCompilation ended on the target workspace. On to publishing work!");
 
         executable_path := sprint("%/%.exe", options.output_path, options.output_executable_name);
@@ -242,4 +234,3 @@ plugins: [..] *Metaprogram_Plugin;
 
 #load "source/tools/shaders/compile-shaders.jai";
 #load "source/tools/shaders/generate-shader-types.jai";
-#load "source/tools/shaders/check-shader-layouts.jai";

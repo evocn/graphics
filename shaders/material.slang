@@ -111,7 +111,6 @@ float3 fresnel_schlick(float3 f0, float v_dot_h) {
 }
 
 bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction, float max_distance) {
-    if (push_data.frame.tlas_address == 0) return true;
     RaytracingAccelerationStructure tlas = acceleration_structure_from_address(push_data.frame.tlas_address);
     RayDesc ray;
     ray.Origin      = world_position + geometric_normal * 0.01;
@@ -191,11 +190,8 @@ float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_f
     float3 ambient_light = ambient * (diffuse_color + f0);
 
     switch (push_data.frame.debug_view) {
-        case Debug_View.BASE_COLOR:         return float4(base_color, 1.0);
-        case Debug_View.NORMALS:            return float4(normal * 0.5 + 0.5, 1.0);
-        case Debug_View.METALLIC_ROUGHNESS: return float4(metallic, roughness, 0.0, 1.0);
-        case Debug_View.SUN_ONLY:           return float4(sun, 1.0);
-        case Debug_View.AMBIENT_ONLY:       return float4(ambient_light, 1.0);
-        default:                            return float4(ambient_light + sun, 1.0);
+        case Debug_View.BASE_COLOR: return float4(base_color, 1.0);
+        case Debug_View.NORMALS:    return float4(normal * 0.5 + 0.5, 1.0);
+        default:                    return float4(ambient_light + sun, 1.0);
     }
 }

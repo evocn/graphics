@@ -11,14 +11,13 @@ scene_context : struct {
     draw_commands_offset : VkDeviceSize;
     opaque_draw_count    : u32;
 
-    deformers : [..] Deformer;
+    skinned_draws : [..] Skinned_Draw;
 
-    ray_tracing : bool = true;
-    blases      : [..] Acceleration_Structure;
-    tlas        : Acceleration_Structure;
+    blases        : [..] Acceleration_Structure;
+    tlas          : Acceleration_Structure;
 }
 
-Deformer :: struct {
+Skinned_Draw :: struct {
     source_positions  : Gpu_Pointer(Vector3);
     source_attributes : Gpu_Pointer(Packed_Vertex_Attributes);
     skin_vertices     : Gpu_Pointer(Skin_Vertex);
@@ -116,15 +115,13 @@ build_scene :: () {
     }
     scene_context.draw_commands_offset = upload(draw_commands);
 
-    if !scene_context.ray_tracing return;
-
-    deformed := NewArray(scene_context.draws.count, bool,, temp);
-    for scene_context.deformers  deformed[it.draw_index] = true;
+    skinned := NewArray(scene_context.draws.count, bool,, temp);
+    for scene_context.skinned_draws  skinned[it.draw_index] = true;
 
     for scene_context.draws {
         geometry := triangle_geometry(it);
         primitive_count := it.mesh.index_count / 3;
-        flags := ifx deformed[it_index] then VkBuildAccelerationStructureFlagsKHR.PREFER_FAST_BUILD | .ALLOW_UPDATE else .PREFER_FAST_TRACE;
+        flags := ifx skinned[it_index] then VkBuildAccelerationStructureFlagsKHR.PREFER_FAST_BUILD | .ALLOW_UPDATE else .PREFER_FAST_TRACE;
         blas := create_acceleration_structure(.BOTTOM_LEVEL, flags, .[geometry], .[primitive_count]);
         record_acceleration_structure_build(upload_context.command_buffer, blas, .BUILD, .[geometry], .[primitive_count], *heap_context.scratch);
         array_add(*scene_context.blases, blas);
@@ -136,12 +133,10 @@ build_scene :: () {
 }
 
 update_acceleration_structures :: (command_buffer: VkCommandBuffer, heap: *Heap) {
-    if !scene_context.ray_tracing return;
-
     memory_barrier(command_buffer, .FRAGMENT_SHADER, .NONE, .ACCELERATION_STRUCTURE_BUILD_KHR, .ACCELERATION_STRUCTURE_WRITE_KHR);
 
-    if scene_context.deformers.count {
-        for scene_context.deformers {
+    if scene_context.skinned_draws.count {
+        for scene_context.skinned_draws {
             draw := scene_context.draws[it.draw_index];
             geometry := triangle_geometry(draw);
             primitive_count := draw.mesh.index_count / 3;
@@ -161,7 +156,7 @@ deinit_scene :: () {
     destroy_acceleration_structure(scene_context.tlas);
     for scene_context.blases  destroy_acceleration_structure(it);
     array_free(scene_context.blases);
-    array_free(scene_context.deformers);
+    array_free(scene_context.skinned_draws);
     array_free(scene_context.draws);
     array_free(scene_context.materials);
     for scene_context.textures  destroy_texture(it);
@@ -202,17 +197,19 @@ add_draw :: (mesh: Mesh, material_index: u32, transform: Matrix4) {
     array_add(*scene_context.draws, .{mesh = mesh, material_index = material_index, transform = affine(transform)});
 }
 
-add_deformable_draw :: (mesh: Mesh, material_index: u32, transform: Matrix4, deformer_in: Deformer) {
-    deformer := deformer_in;
-    deformer.draw_index        = xx scene_context.draws.count;
-    deformer.source_positions  = mesh.positions;
-    deformer.source_attributes = mesh.attributes;
-    array_add(*scene_context.deformers, deformer);
+add_skinned_draw :: (mesh: Mesh, material_index: u32, transform: Matrix4, skin_vertices: Gpu_Pointer(Skin_Vertex), skeleton_index: u32) {
+    array_add(*scene_context.skinned_draws, .{
+        source_positions  = mesh.positions,
+        source_attributes = mesh.attributes,
+        skin_vertices     = skin_vertices,
+        draw_index        = xx scene_context.draws.count,
+        skeleton_index    = skeleton_index,
+    });
 
-    deformed := mesh;
-    deformed.positions  = duplicate(mesh.positions,  mesh.vertex_count);
-    deformed.attributes = duplicate(mesh.attributes, mesh.vertex_count);
-    add_draw(deformed, material_index, transform);
+    skinned := mesh;
+    skinned.positions  = duplicate(mesh.positions,  mesh.vertex_count);
+    skinned.attributes = duplicate(mesh.attributes, mesh.vertex_count);
+    add_draw(skinned, material_index, transform);
 }
 
 add_skin_vertices :: (skin_vertices: [] Skin_Vertex) -> Gpu_Pointer(Skin_Vertex) {
