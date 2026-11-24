@@ -240,6 +240,6 @@ plugins: [..] *Metaprogram_Plugin;
 
 #import "ctags";
 
-#load "shaders/compile-shaders.jai";
-#load "shaders/generate-shader-types.jai";
-#load "shaders/check-shader-layouts.jai";
+#load "source/tools/shaders/compile-shaders.jai";
+#load "source/tools/shaders/generate-shader-types.jai";
+#load "source/tools/shaders/check-shader-layouts.jai";

@@ -26,7 +26,7 @@ slangc :: (name: string) -> success: bool {
             "-capability", "spvRayQueryKHR",
             "-capability", "spvGroupNonUniformBallot",
         ],
-        working_directory = #filepath,
+        working_directory = tprint("%/shaders", root),
     );
 
     if process_result.exit_code != 0 {
