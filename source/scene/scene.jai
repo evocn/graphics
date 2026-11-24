@@ -18,18 +18,12 @@ scene_context : struct {
     tlas        : Acceleration_Structure;
 }
 
-Deformer_Kind :: enum u8 {
-    WAVE;
-    SKIN;
-}
-
 Deformer :: struct {
     source_positions  : Gpu_Pointer(Vector3);
     source_attributes : Gpu_Pointer(Packed_Vertex_Attributes);
     skin_vertices     : Gpu_Pointer(Skin_Vertex);
     draw_index        : u32;
     skeleton_index    : u32;
-    kind              : Deformer_Kind;
 }
 
 Vertex_Attributes :: struct {

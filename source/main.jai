@@ -103,7 +103,6 @@ main :: () {
         update_camera(dt);
 
         animation_dt := ifx renderer_context.animate then dt else 0;
-        renderer_context.animation_time += animation_dt;
         update_animations(animation_dt);
 
         sun_angle := cast(float) now * 0.4;

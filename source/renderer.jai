@@ -7,13 +7,11 @@ renderer_context : struct {
     exposure        : float = 1.0;
     debug_view      : Debug_View;
     animate         := true;
-    animation_time  : float;
 
     material_shaders     : [2] VkShaderEXT;
     depth_shaders        : [2] VkShaderEXT;
     masked_depth_shaders : [2] VkShaderEXT;
     tonemap_shaders      : [2] VkShaderEXT;
-    wave_shader          : VkShaderEXT;
     skin_shader          : VkShaderEXT;
 
     target_heap : Heap;
@@ -64,7 +62,6 @@ Deform_Push_Data :: struct @Gpu {
     skin_vertices     : Gpu_Pointer(Skin_Vertex);
     joint_matrices    : Gpu_Pointer(Matrix4x3);
     vertex_count      : u32;
-    time              : float;
 }
 
 init_renderer :: () {
@@ -72,7 +69,6 @@ init_renderer :: () {
     renderer_context.tonemap_shaders      = create_graphics_shaders("tonemap");
     renderer_context.depth_shaders        = create_vertex_only_shaders("material", "depth_vertex_main");
     renderer_context.masked_depth_shaders = create_graphics_shaders("material", "masked_depth_vertex_main", "depth_fragment_main");
-    renderer_context.wave_shader          = create_compute_shader("wave", "wave_main");
     renderer_context.skin_shader          = create_compute_shader("skin", "skin_main");
 
     init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
@@ -87,7 +83,6 @@ deinit_renderer :: () {
     destroy_shaders(renderer_context.tonemap_shaders);
     destroy_shaders(renderer_context.depth_shaders);
     destroy_shaders(renderer_context.masked_depth_shaders);
-    destroy_shaders(renderer_context.wave_shader);
     destroy_shaders(renderer_context.skin_shader);
 }
 
@@ -276,25 +271,18 @@ deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
 
     memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
 
+    bind_shaders(command_buffer, renderer_context.skin_shader);
     for scene_context.deformers {
         mesh := scene_context.draws[it.draw_index].mesh;
-        push_data := Deform_Push_Data.{
+        push(command_buffer, Deform_Push_Data.{
             source_positions  = it.source_positions,
             source_attributes = it.source_attributes,
             positions         = mesh.positions,
             attributes        = mesh.attributes,
+            skin_vertices     = it.skin_vertices,
+            joint_matrices    = joint_matrices[it.skeleton_index],
             vertex_count      = mesh.vertex_count,
-        };
-        if it.kind == {
-            case .WAVE;
-                bind_shaders(command_buffer, renderer_context.wave_shader);
-                push_data.time = renderer_context.animation_time;
-            case .SKIN;
-                bind_shaders(command_buffer, renderer_context.skin_shader);
-                push_data.skin_vertices  = it.skin_vertices;
-                push_data.joint_matrices = joint_matrices[it.skeleton_index];
-        }
-        push(command_buffer, push_data);
+        });
         dispatch(command_buffer, mesh.vertex_count, 64);
     }
 
