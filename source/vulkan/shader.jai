@@ -1,17 +1,32 @@
-create_graphics_shaders :: (name: string, fragment_entry := "fragment_main") -> [2] VkShaderEXT {
+create_graphics_shaders :: (name: string, vertex_entry := "vertex_main", fragment_entry := "fragment_main") -> [2] VkShaderEXT {
     spirv := read_spirv(name);
     defer free(spirv);
 
     infos := VkShaderCreateInfoEXT.[
-        .{flags = .LINK_STAGE | .DESCRIPTOR_HEAP, stage = .VERTEX, nextStage = .FRAGMENT, codeType = .SPIRV, codeSize = xx spirv.count, pCode = spirv.data, pName = "vertex_main"},
+        .{flags = .LINK_STAGE | .DESCRIPTOR_HEAP, stage = .VERTEX, nextStage = .FRAGMENT, codeType = .SPIRV, codeSize = xx spirv.count, pCode = spirv.data, pName = temp_c_string(vertex_entry)},
         .{flags = .LINK_STAGE | .DESCRIPTOR_HEAP, stage = .FRAGMENT, codeType = .SPIRV, codeSize = xx spirv.count, pCode = spirv.data, pName = temp_c_string(fragment_entry)},
     ];
 
     shaders : [2] VkShaderEXT;
-    create_shaders(tprint("%.%", name, fragment_entry), spirv, infos, shaders);
+    create_shaders(tprint("%.%.%", name, vertex_entry, fragment_entry), spirv, infos, shaders);
 
-    set_debug_name(.SHADER_EXT, shaders[0], tprint("% vertex_main", name));
+    set_debug_name(.SHADER_EXT, shaders[0], tprint("% %", name, vertex_entry));
     set_debug_name(.SHADER_EXT, shaders[1], tprint("% %", name, fragment_entry));
+    return shaders;
+}
+
+create_vertex_only_shaders :: (name: string, vertex_entry: string) -> [2] VkShaderEXT {
+    spirv := read_spirv(name);
+    defer free(spirv);
+
+    infos := VkShaderCreateInfoEXT.[
+        .{flags = .DESCRIPTOR_HEAP, stage = .VERTEX, nextStage = .FRAGMENT, codeType = .SPIRV, codeSize = xx spirv.count, pCode = spirv.data, pName = temp_c_string(vertex_entry)},
+    ];
+
+    shaders : [2] VkShaderEXT;
+    create_shaders(tprint("%.%", name, vertex_entry), spirv, infos, array_view(shaders, 0, 1));
+
+    set_debug_name(.SHADER_EXT, shaders[0], tprint("% %", name, vertex_entry));
     return shaders;
 }
 

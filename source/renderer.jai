@@ -9,11 +9,12 @@ renderer_context : struct {
     animate         := true;
     animation_time  : float;
 
-    material_shaders : [2] VkShaderEXT;
-    depth_shaders    : [2] VkShaderEXT;
-    tonemap_shaders  : [2] VkShaderEXT;
-    wave_shader      : VkShaderEXT;
-    skin_shader      : VkShaderEXT;
+    material_shaders     : [2] VkShaderEXT;
+    depth_shaders        : [2] VkShaderEXT;
+    masked_depth_shaders : [2] VkShaderEXT;
+    tonemap_shaders      : [2] VkShaderEXT;
+    wave_shader          : VkShaderEXT;
+    skin_shader          : VkShaderEXT;
 
     target_heap : Heap;
     depth_image : VkImage;
@@ -75,11 +76,12 @@ Skin_Push_Data :: struct @Gpu {
 }
 
 init_renderer :: () {
-    renderer_context.material_shaders = create_graphics_shaders("material");
-    renderer_context.tonemap_shaders  = create_graphics_shaders("tonemap");
-    renderer_context.depth_shaders    = create_graphics_shaders("material", "depth_fragment_main");
-    renderer_context.wave_shader      = create_compute_shader("wave", "wave_main");
-    renderer_context.skin_shader      = create_compute_shader("skin", "skin_main");
+    renderer_context.material_shaders     = create_graphics_shaders("material");
+    renderer_context.tonemap_shaders      = create_graphics_shaders("tonemap");
+    renderer_context.depth_shaders        = create_vertex_only_shaders("material", "depth_vertex_main");
+    renderer_context.masked_depth_shaders = create_graphics_shaders("material", "masked_depth_vertex_main", "depth_fragment_main");
+    renderer_context.wave_shader          = create_compute_shader("wave", "wave_main");
+    renderer_context.skin_shader          = create_compute_shader("skin", "skin_main");
 
     init_image_heap(*renderer_context.target_heap, "render target heap", 256 * MiB, DEPTH_FORMAT, .DEPTH_STENCIL_ATTACHMENT);
     renderer_context.hdr_texture = .{id = reserve_image_descriptor()};
@@ -92,6 +94,7 @@ deinit_renderer :: () {
     destroy_shaders(renderer_context.material_shaders);
     destroy_shaders(renderer_context.tonemap_shaders);
     destroy_shaders(renderer_context.depth_shaders);
+    destroy_shaders(renderer_context.masked_depth_shaders);
     destroy_shaders(renderer_context.wave_shader);
     destroy_shaders(renderer_context.skin_shader);
 }
@@ -186,20 +189,15 @@ draw_frame :: () {
     };
     vkCmdBindIndexBuffer3KHR(command_buffer, *index_buffer_info);
 
-    draw_info := VkDrawIndirect2InfoKHR.{
-        addressRange = .{
-            address = heap_address(*heap_context.buffer, scene_context.draw_commands_offset),
-            size    = xx (scene_context.draws.count * size_of(VkDrawIndexedIndirectCommand)),
-            stride  = size_of(VkDrawIndexedIndirectCommand),
-        },
-        addressFlags = .STORAGE_BUFFER_USAGE,
-        drawCount    = xx scene_context.draws.count,
-    };
+    draw_count   := cast(u32) scene_context.draws.count;
+    opaque_count := scene_context.opaque_draw_count;
 
     no_components : VkColorComponentFlags;
     vkCmdSetColorWriteMaskEXT(command_buffer, 0, 1, *no_components);
     bind_shaders(command_buffer, renderer_context.depth_shaders);
-    vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
+    draw_commands(command_buffer, 0, opaque_count);
+    bind_shaders(command_buffer, renderer_context.masked_depth_shaders);
+    draw_commands(command_buffer, opaque_count, draw_count - opaque_count);
     vkCmdEndRendering(command_buffer);
 
     pipeline_barrier(command_buffer, .[
@@ -216,7 +214,7 @@ draw_frame :: () {
     vkCmdSetDepthWriteEnable(command_buffer, VK_FALSE);
     vkCmdSetDepthCompareOp(command_buffer, .EQUAL);
     bind_shaders(command_buffer, renderer_context.material_shaders);
-    vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
+    draw_commands(command_buffer, 0, draw_count);
 
     vkCmdEndRendering(command_buffer);
 
@@ -257,6 +255,21 @@ draw_frame :: () {
 }
 
 #scope_file
+
+draw_commands :: (command_buffer: VkCommandBuffer, first: u32, count: u32) {
+    if !count return;
+
+    draw_info := VkDrawIndirect2InfoKHR.{
+        addressRange = .{
+            address = heap_address(*heap_context.buffer, scene_context.draw_commands_offset + first * size_of(VkDrawIndexedIndirectCommand)),
+            size    = count * size_of(VkDrawIndexedIndirectCommand),
+            stride  = size_of(VkDrawIndexedIndirectCommand),
+        },
+        addressFlags = .STORAGE_BUFFER_USAGE,
+        drawCount    = count,
+    };
+    vkCmdDrawIndexedIndirect2KHR(command_buffer, *draw_info);
+}
 
 deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
     if !scene_context.deformers.count return;

@@ -13,12 +13,30 @@ struct Coarse_Vertex {
     float4 tangent;
     float2 uv;
     float3 world_position;
-    nointerpolation uint draw_index;
+    nointerpolation uint material_index;
 }
 
 struct Vertex_Stage_Output {
     Coarse_Vertex   coarse_vertex   : CoarseVertex;
     float4          sv_position     : SV_Position;
+}
+
+struct Masked_Vertex {
+    float2 uv;
+    nointerpolation uint material_index;
+}
+
+struct Masked_Vertex_Stage_Output {
+    Masked_Vertex   masked_vertex   : MaskedVertex;
+    float4          sv_position     : SV_Position;
+}
+
+float3 world_position(Draw_Data draw, uint vertex_id) {
+    return mul(draw.transform, float4(draw.positions[vertex_id], 1.0)).xyz;
+}
+
+float4 clip_position(float3 world_position) {
+    return mul(push_data.frame.view_projection, float4(world_position, 1.0));
 }
 
 float3 transform_normal(float4x4 transform, float3 normal) {
@@ -32,7 +50,7 @@ float3 transform_normal(float4x4 transform, float3 normal) {
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID, uint draw_index : SV_StartInstanceLocation) {
     Draw_Data draw = push_data.draws[draw_index];
-    float3 position = mul(draw.transform, float4(draw.positions[vertex_id], 1.0)).xyz;
+    float3 position = world_position(draw, vertex_id);
     Vertex_Attributes attributes = draw.attributes[vertex_id];
 
     Vertex_Stage_Output output;
@@ -40,8 +58,24 @@ Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID, uint draw_index : 
     output.coarse_vertex.tangent        = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
     output.coarse_vertex.uv             = attributes.uv;
     output.coarse_vertex.world_position = position;
-    output.coarse_vertex.draw_index     = draw_index;
-    output.sv_position                  = mul(push_data.frame.view_projection, float4(position, 1.0));
+    output.coarse_vertex.material_index = draw.material_index;
+    output.sv_position                  = clip_position(position);
+    return output;
+}
+
+[shader("vertex")]
+float4 depth_vertex_main(uint vertex_id : SV_VertexID, uint draw_index : SV_StartInstanceLocation) : SV_Position {
+    return clip_position(world_position(push_data.draws[draw_index], vertex_id));
+}
+
+[shader("vertex")]
+Masked_Vertex_Stage_Output masked_depth_vertex_main(uint vertex_id : SV_VertexID, uint draw_index : SV_StartInstanceLocation) {
+    Draw_Data draw = push_data.draws[draw_index];
+
+    Masked_Vertex_Stage_Output output;
+    output.masked_vertex.uv             = draw.attributes[vertex_id].uv;
+    output.masked_vertex.material_index = draw.material_index;
+    output.sv_position                  = clip_position(world_position(draw, vertex_id));
     return output;
 }
 
@@ -103,20 +137,16 @@ bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction
 }
 
 [shader("fragment")]
-void depth_fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex) {
-    Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
-    Material material = push_data.materials[draw.material_index];
-    if (material.alpha_cutoff == 0.0) return;
-    float alpha = material.base_color.a * material.texture.Sample(material.sampler, coarse_vertex.uv).a;
+void depth_fragment_main(Masked_Vertex masked_vertex : MaskedVertex) {
+    Material material = push_data.materials[masked_vertex.material_index];
+    float alpha = material.base_color.a * material.texture.Sample(material.sampler, masked_vertex.uv).a;
     if (alpha < material.alpha_cutoff) discard;
 }
 
 [earlydepthstencil]
 [shader("fragment")]
 float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_face : SV_IsFrontFace) : SV_Target {
-    Draw_Data draw = push_data.draws[coarse_vertex.draw_index];
-
-    Material material = push_data.materials[draw.material_index];
+    Material material = push_data.materials[coarse_vertex.material_index];
     float2 uv = coarse_vertex.uv;
     float4 texture_color = material.texture.Sample(material.sampler, uv);
     float3 base_color = material.base_color.rgb * texture_color.rgb;

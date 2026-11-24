@@ -9,6 +9,7 @@ scene_context : struct {
     draws                : [..] Draw_Data;
     draws_offset         : VkDeviceSize;
     draw_commands_offset : VkDeviceSize;
+    opaque_draw_count    : u32;
 
     deformers : [..] Deformer;
 
@@ -77,14 +78,19 @@ build_scene :: () {
     scene_context.materials_offset = upload(scene_context.materials);
     scene_context.draws_offset     = upload(scene_context.draws);
 
-    draw_commands := NewArray(scene_context.draws.count, VkDrawIndexedIndirectCommand,, temp);
-    for scene_context.draws {
-        draw_commands[it_index] = .{
-            indexCount    = it.index_count,
-            instanceCount = 1,
-            firstIndex    = xx ((it.indices.address - heap_context.buffer.address) / size_of(u32)),
-            firstInstance = xx it_index,
-        };
+    draw_commands : [..] VkDrawIndexedIndirectCommand;
+    draw_commands.allocator = temp;
+    for masked : bool.[false, true] {
+        for scene_context.draws {
+            if is_masked(it) != masked continue;
+            array_add(*draw_commands, .{
+                indexCount    = it.index_count,
+                instanceCount = 1,
+                firstIndex    = xx ((it.indices.address - heap_context.buffer.address) / size_of(u32)),
+                firstInstance = xx it_index,
+            });
+        }
+        if !masked  scene_context.opaque_draw_count = xx draw_commands.count;
     }
     scene_context.draw_commands_offset = upload(draw_commands);
 
@@ -201,9 +207,13 @@ duplicate :: (source: Gpu_Pointer($T), count: u32) -> Gpu_Pointer(T) {
     return heap_gpu_pointer(*heap_context.buffer, T, offset);
 }
 
+is_masked :: (draw: Draw_Data) -> bool {
+    return scene_context.materials[draw.material_index].alpha_cutoff != 0;
+}
+
 triangle_geometry :: (draw: Draw_Data) -> VkAccelerationStructureGeometryKHR {
     geometry := VkAccelerationStructureGeometryKHR.{geometryType = .TRIANGLES};
-    if scene_context.materials[draw.material_index].alpha_cutoff == 0  geometry.flags = .OPAQUE;
+    if !is_masked(draw)  geometry.flags = .OPAQUE;
     geometry.geometry.triangles = .{
         vertexFormat             = .R32G32B32_SFLOAT,
         vertexData.deviceAddress = draw.positions.address,
