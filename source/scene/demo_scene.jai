@@ -97,7 +97,7 @@ quad_attributes :: Vertex_Attributes.[
 
 quad_indices :: u32.[0, 1, 2, 0, 2, 3];
 
-add_grid_mesh :: (columns: u32, rows: u32) -> Draw_Data {
+add_grid_mesh :: (columns: u32, rows: u32) -> Mesh {
     positions  := NewArray((columns + 1) * (rows + 1), Vector3,,           temp);
     attributes := NewArray((columns + 1) * (rows + 1), Vertex_Attributes,, temp);
     indices    := NewArray(columns * rows * 6,         u32,,               temp);

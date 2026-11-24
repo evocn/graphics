@@ -1,4 +1,4 @@
-#include "generated/shared.slang"
+#include "geometry.slang"
 
 [[vk::push_constant]] Push_Data push_data;
 
@@ -32,30 +32,22 @@ struct Masked_Vertex_Stage_Output {
 }
 
 float3 world_position(Draw_Data draw, uint vertex_id) {
-    return mul(draw.transform, float4(draw.positions[vertex_id], 1.0)).xyz;
+    return mul(draw.transform, float4(draw.positions[vertex_id], 1.0));
 }
 
 float4 clip_position(float3 world_position) {
     return mul(push_data.frame.view_projection, float4(world_position, 1.0));
 }
 
-float3 transform_normal(float4x4 transform, float3 normal) {
-    float3 a = transform[0].xyz;
-    float3 b = transform[1].xyz;
-    float3 c = transform[2].xyz;
-    float3 n = float3(dot(cross(b, c), normal), dot(cross(c, a), normal), dot(cross(a, b), normal));
-    return dot(a, cross(b, c)) < 0.0 ? -n : n;
-}
-
 [shader("vertex")]
 Vertex_Stage_Output vertex_main(uint vertex_id : SV_VertexID, uint draw_index : SV_StartInstanceLocation) {
     Draw_Data draw = push_data.draws[draw_index];
     float3 position = world_position(draw, vertex_id);
-    Vertex_Attributes attributes = draw.attributes[vertex_id];
+    Vertex_Attributes attributes = unpack_attributes(draw.attributes[vertex_id]);
 
     Vertex_Stage_Output output;
     output.coarse_vertex.normal         = transform_normal(draw.transform, attributes.normal);
-    output.coarse_vertex.tangent        = float4(mul((float3x3)draw.transform, attributes.tangent.xyz), attributes.tangent.w);
+    output.coarse_vertex.tangent        = float4(transform_direction(draw.transform, attributes.tangent.xyz), attributes.tangent.w);
     output.coarse_vertex.uv             = attributes.uv;
     output.coarse_vertex.world_position = position;
     output.coarse_vertex.material_index = draw.material_index;
@@ -80,16 +72,18 @@ Masked_Vertex_Stage_Output masked_depth_vertex_main(uint vertex_id : SV_VertexID
 }
 
 bool shadow_alpha_test(uint draw_index, uint primitive_index, float2 barycentrics) {
-    Draw_Data draw = push_data.draws[draw_index];
+    Draw_Data* draw = push_data.draws + draw_index;
+    uint* triangle = draw.indices + primitive_index * 3;
 
-    float2 uv0 = draw.attributes[draw.indices[primitive_index * 3 + 0]].uv;
-    float2 uv1 = draw.attributes[draw.indices[primitive_index * 3 + 1]].uv;
-    float2 uv2 = draw.attributes[draw.indices[primitive_index * 3 + 2]].uv;
+    float2 uv0 = draw.attributes[triangle[0]].uv;
+    float2 uv1 = draw.attributes[triangle[1]].uv;
+    float2 uv2 = draw.attributes[triangle[2]].uv;
     float2 uv = uv0 * (1.0 - barycentrics.x - barycentrics.y) + uv1 * barycentrics.x + uv2 * barycentrics.y;
 
+    uint material_index = draw.material_index;
     for (;;) {
-        uint material_index = WaveReadLaneFirst(draw.material_index);
-        if (material_index == draw.material_index) {
+        uint wave_material_index = WaveReadLaneFirst(material_index);
+        if (wave_material_index == material_index) {
             Material material = push_data.materials[material_index];
             float alpha = material.base_color.a * material.texture.SampleLevel(material.sampler, uv, 0).a;
             return alpha >= material.alpha_cutoff;
@@ -122,7 +116,7 @@ bool unoccluded(float3 world_position, float3 geometric_normal, float3 direction
     RayDesc ray;
     ray.Origin      = world_position + geometric_normal * 0.01;
     ray.Direction   = direction;
-    ray.TMin        = 0.01;
+    ray.TMin        = 0.0;
     ray.TMax        = max_distance;
 
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
@@ -197,11 +191,11 @@ float4 fragment_main(Coarse_Vertex coarse_vertex : CoarseVertex, bool is_front_f
     float3 ambient_light = ambient * (diffuse_color + f0);
 
     switch (push_data.frame.debug_view) {
-        case 1:  return float4(base_color, 1.0);
-        case 2:  return float4(normal * 0.5 + 0.5, 1.0);
-        case 3:  return float4(metallic, roughness, 0.0, 1.0);
-        case 4:  return float4(sun, 1.0);
-        case 5:  return float4(ambient_light, 1.0);
-        default: return float4(ambient_light + sun, 1.0);
+        case Debug_View.BASE_COLOR:         return float4(base_color, 1.0);
+        case Debug_View.NORMALS:            return float4(normal * 0.5 + 0.5, 1.0);
+        case Debug_View.METALLIC_ROUGHNESS: return float4(metallic, roughness, 0.0, 1.0);
+        case Debug_View.SUN_ONLY:           return float4(sun, 1.0);
+        case Debug_View.AMBIENT_ONLY:       return float4(ambient_light, 1.0);
+        default:                            return float4(ambient_light + sun, 1.0);
     }
 }

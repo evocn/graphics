@@ -66,8 +66,8 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
             gltf_primitive, success := add_gltf_primitive(primitive);
             if !success continue;
 
-            gltf_primitive.mesh.material_index = default_material;
-            if primitive.material  gltf_primitive.mesh.material_index = material_indices[cgltf_material_index(data, primitive.material)];
+            gltf_primitive.material_index = default_material;
+            if primitive.material  gltf_primitive.material_index = material_indices[cgltf_material_index(data, primitive.material)];
 
             array_add(*mesh_primitives[mesh_index], gltf_primitive);
         }
@@ -91,7 +91,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 
             for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
                 assert(it.skin_vertices.address != 0, "A skinned primitive in % has no JOINTS_0/WEIGHTS_0.", path);
-                add_deformable_draw(it.mesh, it.mesh.material_index, root_from_gltf, .{
+                add_deformable_draw(it.mesh, it.material_index, root_from_gltf, .{
                     kind           = .SKIN,
                     skin_vertices  = it.skin_vertices,
                     skeleton_index = xx skeleton_indices[skin_index],
@@ -105,7 +105,7 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 
         transform := multiply(root_from_gltf, gltf_matrix(column_major));
         for mesh_primitives[cgltf_mesh_index(data, node.mesh)] {
-            add_draw(it.mesh, it.mesh.material_index, transform);
+            add_draw(it.mesh, it.material_index, transform);
         }
     }
 
@@ -116,8 +116,9 @@ load_gltf :: (path: string, root: Matrix4, sampler: Sampler_Handle) -> bool {
 #scope_file
 
 Gltf_Primitive :: struct {
-    mesh          : Draw_Data;
-    skin_vertices : Gpu_Pointer(Skin_Vertex);
+    mesh           : Mesh;
+    material_index : u32;
+    skin_vertices  : Gpu_Pointer(Skin_Vertex);
 }
 
 gltf_matrix :: (column_major: [16] float) -> Matrix4 {
@@ -159,7 +160,7 @@ add_gltf_skeleton :: (data: *cgltf_data, skin: *cgltf_skin) -> s64 {
     assert(joint_count <= 256, "Skins are limited to 256 joints, this one has %.", joint_count);
     skeleton.joints                = NewArray(joint_count, s32);
     skeleton.inverse_bind_matrices = NewArray(joint_count, Matrix4);
-    skeleton.joint_rows            = NewArray(joint_count * 3, Vector4);
+    skeleton.joint_matrices        = NewArray(joint_count, Matrix4x3);
     for 0..joint_count - 1 {
         skeleton.joints[it] = xx cgltf_node_index(data, skin.joints[it]);
         skeleton.inverse_bind_matrices[it] = Matrix4_Identity;

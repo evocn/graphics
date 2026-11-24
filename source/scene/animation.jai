@@ -10,7 +10,7 @@ Skeleton :: struct {
     clips                 : [] Animation_Clip;
     clip_index            : s32;
     time                  : float;
-    joint_rows            : [] Vector4;
+    joint_matrices        : [] Matrix4x3;
 }
 
 Skeleton_Node :: struct {
@@ -48,7 +48,7 @@ deinit_animation :: () {
         array_free(skeleton.order);
         array_free(skeleton.joints);
         array_free(skeleton.inverse_bind_matrices);
-        array_free(skeleton.joint_rows);
+        array_free(skeleton.joint_matrices);
         for clip : skeleton.clips {
             for clip.channels {
                 array_free(it.times);
@@ -129,7 +129,7 @@ pose_skeleton :: (skeleton: *Skeleton) {
 
     for joint, joint_index : skeleton.joints {
         joint_matrix := multiply(globals[joint], skeleton.inverse_bind_matrices[joint_index]);
-        for row : 0..2  skeleton.joint_rows[joint_index * 3 + row] = joint_matrix.v[row];
+        for row : 0..2  skeleton.joint_matrices[joint_index].v[row] = joint_matrix.v[row];
     }
 }
 

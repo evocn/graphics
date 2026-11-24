@@ -62,6 +62,11 @@ emit_struct :: (builder: *String_Builder, emitted: *[..] *Type_Info_Struct, info
     for member : info.members {
         if member.flags & .CONSTANT continue;
 
+        if member.type.type == .ENUM {
+            if !emit_enum(builder, cast(*Type_Info_Enum) member.type) return false;
+            continue;
+        }
+
         dependency := struct_dependency(member.type);
         if dependency && !emit_struct(builder, emitted, dependency) return false;
     }
@@ -125,6 +130,9 @@ struct_dependency :: (type: *Type_Info) -> *Type_Info_Struct {
 
 slang_type_of :: (type: *Type_Info) -> slang_type: string, array_suffix: string, success: bool {
     if type.type == {
+        case .ENUM;
+            return (cast(*Type_Info_Enum) type).name, "", type.runtime_size == 4;
+
         case .INTEGER;
             signed := (cast(*Type_Info_Integer) type).signed;
             if type.runtime_size == {
@@ -172,6 +180,7 @@ builtin_slang_name :: (info: *Type_Info_Struct) -> string {
         case "Vector4"; return "float4";
         case "ImVec4";  return "float4";
         case "Matrix4"; return "float4x4";
+        case "Matrix4x3"; return "float3x4";
 
         case "Texture_Handle"; return "DescriptorHandle<Texture2D>";
         case "Sampler_Handle"; return "DescriptorHandle<SamplerState>";
@@ -188,4 +197,21 @@ gpu_pointer_target :: (info: *Type_Info_Struct) -> *Type_Info {
     parameter := info.specified_parameters[0];
     target := (cast(*Type) (info.constant_storage.data + parameter.offset_into_constant_storage)).*;
     return cast(*Type_Info) target;
+}
+
+emitted_enums : [..] *Type_Info_Enum;
+
+emit_enum :: (builder: *String_Builder, info: *Type_Info_Enum) -> success: bool {
+    if array_find(emitted_enums, info) return true;
+
+    if info.runtime_size != 4 || info.internal_type.signed {
+        log_error("% must be a u32 enum to be shared with Slang.", info.name);
+        return false;
+    }
+
+    array_add(*emitted_enums, info);
+    print_to_builder(builder, "enum % : uint {\n", info.name);
+    for info.names  print_to_builder(builder, "    % = %,\n", it, info.values[it_index]);
+    append(builder, "}\n\n");
+    return true;
 }

@@ -30,10 +30,10 @@ Frame_Constants :: struct @Gpu {
     light_direction : Vector3;
     sun_intensity   : float;
     camera_position : Vector3;
-    debug_view      : u32;
+    debug_view      : Debug_View;
 }
 
-Debug_View :: enum s32 {
+Debug_View :: enum u32 {
     LIT;
     BASE_COLOR;
     NORMALS;
@@ -56,23 +56,15 @@ Tonemap_Push_Data :: struct @Gpu {
     raw      : u32;
 }
 
-Wave_Push_Data :: struct @Gpu {
+Deform_Push_Data :: struct @Gpu {
     source_positions  : Gpu_Pointer(Vector3);
-    source_attributes : Gpu_Pointer(Vertex_Attributes);
+    source_attributes : Gpu_Pointer(Packed_Vertex_Attributes);
     positions         : Gpu_Pointer(Vector3);
-    attributes        : Gpu_Pointer(Vertex_Attributes);
+    attributes        : Gpu_Pointer(Packed_Vertex_Attributes);
+    skin_vertices     : Gpu_Pointer(Skin_Vertex);
+    joint_matrices    : Gpu_Pointer(Matrix4x3);
     vertex_count      : u32;
     time              : float;
-}
-
-Skin_Push_Data :: struct @Gpu {
-    source_positions  : Gpu_Pointer(Vector3);
-    source_attributes : Gpu_Pointer(Vertex_Attributes);
-    skin_vertices     : Gpu_Pointer(Skin_Vertex);
-    joint_matrices    : Gpu_Pointer(Vector4);
-    positions         : Gpu_Pointer(Vector3);
-    attributes        : Gpu_Pointer(Vertex_Attributes);
-    vertex_count      : u32;
 }
 
 init_renderer :: () {
@@ -172,7 +164,7 @@ draw_frame :: () {
     frame_constants.light_direction = renderer_context.light_direction;
     frame_constants.sun_intensity   = renderer_context.sun_intensity;
     frame_constants.camera_position = camera_context.position;
-    frame_constants.debug_view      = cast(u32) renderer_context.debug_view;
+    frame_constants.debug_view      = renderer_context.debug_view;
 
     push_data := Push_Data.{
         frame     = heap_gpu_pointer(frame.heap, Frame_Constants, frame_constants_offset),
@@ -274,42 +266,36 @@ draw_commands :: (command_buffer: VkCommandBuffer, first: u32, count: u32) {
 deform_pass :: (command_buffer: VkCommandBuffer, heap: *Heap) {
     if !scene_context.deformers.count return;
 
-    joint_matrices := NewArray(animation_context.skeletons.count, Gpu_Pointer(Vector4),, temp);
+    joint_matrices := NewArray(animation_context.skeletons.count, Gpu_Pointer(Matrix4x3),, temp);
     for animation_context.skeletons {
-        size := it.joint_rows.count * size_of(Vector4);
+        size := it.joint_matrices.count * size_of(Matrix4x3);
         offset := heap_allocate(heap, xx size, 16);
-        memcpy(heap_pointer(heap, offset), it.joint_rows.data, size);
-        joint_matrices[it_index] = heap_gpu_pointer(heap, Vector4, offset);
+        memcpy(heap_pointer(heap, offset), it.joint_matrices.data, size);
+        joint_matrices[it_index] = heap_gpu_pointer(heap, Matrix4x3, offset);
     }
 
     memory_barrier(command_buffer, .VERTEX_SHADER | .FRAGMENT_SHADER | .ACCELERATION_STRUCTURE_BUILD_KHR, .NONE, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE);
 
     for scene_context.deformers {
-        draw := scene_context.draws[it.draw_index];
+        mesh := scene_context.draws[it.draw_index].mesh;
+        push_data := Deform_Push_Data.{
+            source_positions  = it.source_positions,
+            source_attributes = it.source_attributes,
+            positions         = mesh.positions,
+            attributes        = mesh.attributes,
+            vertex_count      = mesh.vertex_count,
+        };
         if it.kind == {
             case .WAVE;
                 bind_shaders(command_buffer, renderer_context.wave_shader);
-                push(command_buffer, Wave_Push_Data.{
-                    source_positions  = it.source_positions,
-                    source_attributes = it.source_attributes,
-                    positions         = draw.positions,
-                    attributes        = draw.attributes,
-                    vertex_count      = draw.vertex_count,
-                    time              = renderer_context.animation_time,
-                });
+                push_data.time = renderer_context.animation_time;
             case .SKIN;
                 bind_shaders(command_buffer, renderer_context.skin_shader);
-                push(command_buffer, Skin_Push_Data.{
-                    source_positions  = it.source_positions,
-                    source_attributes = it.source_attributes,
-                    skin_vertices     = it.skin_vertices,
-                    joint_matrices    = joint_matrices[it.skeleton_index],
-                    positions         = draw.positions,
-                    attributes        = draw.attributes,
-                    vertex_count      = draw.vertex_count,
-                });
+                push_data.skin_vertices  = it.skin_vertices;
+                push_data.joint_matrices = joint_matrices[it.skeleton_index];
         }
-        dispatch(command_buffer, draw.vertex_count, 64);
+        push(command_buffer, push_data);
+        dispatch(command_buffer, mesh.vertex_count, 64);
     }
 
     memory_barrier(command_buffer, .COMPUTE_SHADER, .SHADER_STORAGE_WRITE, .ACCELERATION_STRUCTURE_BUILD_KHR | .VERTEX_SHADER | .FRAGMENT_SHADER, .SHADER_READ);
