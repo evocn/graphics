@@ -142,6 +142,7 @@ main :: () {
 #import "cgltf";
 #import "stb_image_write";
 #import "Base64";
+#import "Hash";
 
 ImGui     :: #import "ImGui";
 Clipboard :: #import "Clipboard";

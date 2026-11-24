@@ -1,3 +1,4 @@
+#import "Sort";
 gpu_structs : [..] *Type_Info_Struct;
 
 Generated_Layout :: struct {
@@ -30,12 +31,21 @@ generate_shader_types :: (path: string) -> success: bool {
     emitted : [..] *Type_Info_Struct;
     defer array_free(emitted);
 
+    quick_sort(gpu_structs, (a: *Type_Info_Struct, b: *Type_Info_Struct) -> s64 { return compare(a.name, b.name); });
     for gpu_structs {
         if !emit_struct(*builder, *emitted, it) return false;
     }
 
+    contents := builder_to_string(*builder,, temp);
+    previous, read := read_entire_file(path, log_errors = false);
+    defer free(previous);
+    if read && previous == contents {
+        log("% is up to date (% structs).", path, emitted.count);
+        return true;
+    }
+
     make_directory_if_it_does_not_exist(path_strip_filename(path), recursive = true);
-    if !write_entire_file(path, *builder) {
+    if !write_entire_file(path, contents) {
         log_error("Unable to write %.", path);
         return false;
     }

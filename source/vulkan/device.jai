@@ -8,6 +8,7 @@ device_context : struct {
     memory_properties                 : VkPhysicalDeviceMemoryProperties;
     descriptor_heap_properties        : VkPhysicalDeviceDescriptorHeapPropertiesEXT;
     acceleration_structure_properties : VkPhysicalDeviceAccelerationStructurePropertiesKHR;
+    shader_object_properties          : VkPhysicalDeviceShaderObjectPropertiesEXT;
 
     device             : VkDevice;
     queue_family_index : u32;
@@ -121,7 +122,8 @@ init_device :: () {
     }
     assert(device_context.physical_device != null, "No GPU has a queue family that supports both graphics and present.");
 
-    device_context.acceleration_structure_properties = .{};
+    device_context.shader_object_properties = .{};
+    device_context.acceleration_structure_properties = .{pNext = *device_context.shader_object_properties};
     device_context.descriptor_heap_properties = .{pNext = *device_context.acceleration_structure_properties};
     properties2 := VkPhysicalDeviceProperties2.{pNext = *device_context.descriptor_heap_properties};
     vkGetPhysicalDeviceProperties2(device_context.physical_device, *properties2);
