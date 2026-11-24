@@ -1,8 +1,5 @@
 tags
-bin/screenshots/
-bin/shimmer/
-bin/profiles/
-bin/packages/
+bin/
 .fleet/
 *.ini
 *.tweaks
@@ -11,6 +8,4 @@ bin/packages/
 *.pdb
 *.rdbg
 *.build
-shaders/compiled/
-shaders/generated/
 assets/models/Sponza/

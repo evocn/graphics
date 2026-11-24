@@ -34,7 +34,7 @@ generate_shader_types :: (path: string) -> success: bool {
         if !emit_struct(*builder, *emitted, it) return false;
     }
 
-    make_directory_if_it_does_not_exist(path_strip_filename(path));
+    make_directory_if_it_does_not_exist(path_strip_filename(path), recursive = true);
     if !write_entire_file(path, *builder) {
         log_error("Unable to write %.", path);
         return false;

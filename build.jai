@@ -11,7 +11,7 @@ build_settings : struct {
 
 program_title :: "Graphics";
 
-compiled_shaders_directory :: "shaders/compiled";
+compiled_shaders_directory :: "bin/shaders";
 
 DONE
 #run add_build_string(shared_data, w = -1);
@@ -154,7 +154,7 @@ build :: () {
 
     if compilation_failed exit(1);
 
-    if !generate_shader_types(tprint("%/shaders/generated/shared.slang", root)) exit(1);
+    if !generate_shader_types(tprint("%/%/generated/shared.slang", root, compiled_shaders_directory)) exit(1);
     compile_shaders();
 
     {

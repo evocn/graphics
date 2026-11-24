@@ -11,12 +11,13 @@ vulkan_sdk_path :: () -> string {
 
 slangc :: (name: string) -> success: bool {
     input_file  := tprint("%.slang", name);
-    output_file := tprint("compiled/%.spv", name);
+    output_file := tprint("%/%/%.spv", root, compiled_shaders_directory, name);
 
     process_result := run_command(args = ...[
             tprint("%/Bin/slangc.exe", vulkan_sdk_path()),
             input_file,
             "-o", output_file,
+            "-I", tprint("%/%", root, compiled_shaders_directory),
             "-fvk-use-entrypoint-name",
             "-profile", "spirv_1_6",
             "-target", "spirv",
@@ -39,6 +40,6 @@ slangc :: (name: string) -> success: bool {
 SHADER_NAMES :: string.["material", "tonemap", "imgui", "wave", "skin"];
 
 compile_shaders :: () {
-    make_directory_if_it_does_not_exist(tprint("%compiled", #filepath));
+    make_directory_if_it_does_not_exist(tprint("%/%", root, compiled_shaders_directory), recursive = true);
     for SHADER_NAMES  assert(slangc(it));
 }
